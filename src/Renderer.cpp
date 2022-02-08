@@ -279,7 +279,7 @@ bool StagingHeap_CopyImage(
     VkQueue Queue,
     VkCommandBuffer CmdBuffer,
     VkImage Image,
-    u32 Width, u32 Height, u32 ArrayCount,
+    u32 Width, u32 Height, u32 MipCount, u32 ArrayCount,
     VkFormat Format,
     const void* Src)
 {
@@ -290,11 +290,26 @@ bool StagingHeap_CopyImage(
     // TODO: For now there's only one copy in-flight at maximum,
     //       but we'll want to use the staging heap as a ring-buffer
     //       and check the outstanding copy operations to find where to allocate the memory from
-    u64 Offset = Heap->HeapOffset; // For now this is always 0
+    u64 BaseOffset = Heap->HeapOffset; // For now this is always 0
 
     if (Format == VK_FORMAT_R8G8B8A8_SRGB)
     {
+#if 1
+        u64 SrcSize = 0;
+        {
+            u64 CurrentWidth = (u64)Width;
+            u64 CurrentHeight = (u64)Height;
+
+            for (u32 i = 0; i < MipCount; i++)
+            {
+                SrcSize += CurrentWidth*CurrentHeight * 4;
+            }
+
+            SrcSize *= 4;
+        }
+#else
         u64 SrcSize = (u64)Width * Height * ArrayCount * 4;
+#endif
         u64 MapSize = AlignToPow2(SrcSize, Heap->Granularity);
 
         VkMappedMemoryRange Range = 
@@ -302,7 +317,7 @@ bool StagingHeap_CopyImage(
             .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
             .pNext = nullptr,
             .memory = Heap->Heap,
-            .offset = Offset,
+            .offset = BaseOffset,
             .size = MapSize,
         };
 
@@ -338,7 +353,7 @@ bool StagingHeap_CopyImage(
                 {
                     .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                     .baseMipLevel = 0,
-                    .levelCount = 1,
+                    .levelCount = MipCount,
                     .baseArrayLayer = 0,
                     .layerCount = ArrayCount,
                 },
@@ -350,23 +365,35 @@ bool StagingHeap_CopyImage(
                 0, nullptr,
                 1, &BeginBarrier);
 
-            VkBufferImageCopy CopyDesc = 
+            u64 Offset = BaseOffset;
+            for (u32 Layer = 0; Layer < ArrayCount; Layer++)
             {
-                .bufferOffset = Offset,
-                .bufferRowLength = 0, // Tightly packed
-                .bufferImageHeight = 0,
-                .imageSubresource = 
+                u32 CurrentWidth = Width;
+                u32 CurrentHeight = Height;
+                for (u32 MipLevel = 0; MipLevel < MipCount; MipLevel++)
                 {
-                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                    .mipLevel = 0,
-                    .baseArrayLayer = 0,
-                    .layerCount = ArrayCount,
-                },
-                .imageOffset = { 0, 0, 0 },
-                .imageExtent = { Width, Height, 1 },
-            };
-            vkCmdCopyBufferToImage(CmdBuffer, Heap->Buffer, Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &CopyDesc);
-            
+                    VkBufferImageCopy CopyDesc = 
+                    {
+                        .bufferOffset = Offset,
+                        .bufferRowLength = 0, // Tightly packed
+                        .bufferImageHeight = 0,
+                        .imageSubresource = 
+                        {
+                            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                            .mipLevel = MipLevel,
+                            .baseArrayLayer = Layer,
+                            .layerCount = 1,
+                        },
+                        .imageOffset = { 0, 0, 0 },
+                        .imageExtent = { CurrentWidth, CurrentHeight, 1 },
+                    };
+                    vkCmdCopyBufferToImage(CmdBuffer, Heap->Buffer, Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &CopyDesc);
+
+                    Offset += CurrentWidth*CurrentHeight * 4;
+                    CurrentWidth /= 2;
+                    CurrentHeight /= 2;
+                }
+            }
             VkImageMemoryBarrier EndBarrier = 
             {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -382,7 +409,7 @@ bool StagingHeap_CopyImage(
                 {
                     .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                     .baseMipLevel = 0,
-                    .levelCount = 1,
+                    .levelCount = MipCount,
                     .baseArrayLayer = 0,
                     .layerCount = ArrayCount,
                 },
@@ -1190,7 +1217,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .ppEnabledLayerNames = RequiredDeviceLayers,
             .enabledExtensionCount = RequiredDeviceExtensionCount,
             .ppEnabledExtensionNames = RequiredDeviceExtensions,
-            .pEnabledFeatures = nullptr,
+            .pEnabledFeatures = &DeviceFeatures.features,
         };
 
         Result = vkCreateDevice(Renderer->PhysicalDevice, &DeviceCreateInfo, nullptr, &Renderer->Device);

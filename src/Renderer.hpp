@@ -23,10 +23,20 @@ inline constexpr u32 PackColor(u32 R, u32 G, u32 B, u32 A = 0xFF)
 inline u32 PackColor(const vec3& v)
 {
     u32 R = (u32)Round(255.0f * Clamp(v.x, 0.0f, 1.0f));
-    u32 G = (u32)Round(255.0f * Clamp(v.x, 0.0f, 1.0f));
-    u32 B = (u32)Round(255.0f * Clamp(v.x, 0.0f, 1.0f));
+    u32 G = (u32)Round(255.0f * Clamp(v.y, 0.0f, 1.0f));
+    u32 B = (u32)Round(255.0f * Clamp(v.z, 0.0f, 1.0f));
 
     u32 Result = PackColor(R, G, B);
+    return Result;
+}
+
+inline vec3 UnpackColor3(u32 c)
+{
+    f32 R = ((c >> 0) & 0xFF) / 255.0f;
+    f32 G = ((c >> 8) & 0xFF) / 255.0f;
+    f32 B = ((c >> 16) & 0xFF) / 255.0f;
+
+    vec3 Result = { R, G, B };
     return Result;
 }
 
@@ -131,7 +141,7 @@ bool StagingHeap_CopyImage(
     VkQueue Queue,
     VkCommandBuffer CmdBuffer,
     VkImage Image,
-    u32 Width, u32 Height, u32 ArrayCount,
+    u32 Width, u32 Height, u32 MipCount, u32 ArrayCount,
     VkFormat Format,
     const void* Src);
 
