@@ -279,7 +279,7 @@ bool StagingHeap_CopyImage(
     VkQueue Queue,
     VkCommandBuffer CmdBuffer,
     VkImage Image,
-    u32 Width, u32 Height,
+    u32 Width, u32 Height, u32 ArrayCount,
     VkFormat Format,
     const void* Src)
 {
@@ -294,7 +294,7 @@ bool StagingHeap_CopyImage(
 
     if (Format == VK_FORMAT_R8G8B8A8_SRGB)
     {
-        u64 SrcSize = (u64)Width * Height * 4;
+        u64 SrcSize = (u64)Width * Height * ArrayCount * 4;
         u64 MapSize = AlignToPow2(SrcSize, Heap->Granularity);
 
         VkMappedMemoryRange Range = 
@@ -340,7 +340,7 @@ bool StagingHeap_CopyImage(
                     .baseMipLevel = 0,
                     .levelCount = 1,
                     .baseArrayLayer = 0,
-                    .layerCount = 1,
+                    .layerCount = ArrayCount,
                 },
             };
 
@@ -360,7 +360,7 @@ bool StagingHeap_CopyImage(
                     .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                     .mipLevel = 0,
                     .baseArrayLayer = 0,
-                    .layerCount = 1,
+                    .layerCount = ArrayCount,
                 },
                 .imageOffset = { 0, 0, 0 },
                 .imageExtent = { Width, Height, 1 },
@@ -384,7 +384,7 @@ bool StagingHeap_CopyImage(
                     .baseMipLevel = 0,
                     .levelCount = 1,
                     .baseArrayLayer = 0,
-                    .layerCount = 1,
+                    .layerCount = ArrayCount,
                 },
             };
             vkCmdPipelineBarrier(
@@ -413,6 +413,10 @@ bool StagingHeap_CopyImage(
 
             Result = true;
         }
+    }
+    else
+    {
+        assert(!"Unimplemented texture format");
     }
 
     return Result;

@@ -73,61 +73,65 @@ static std::vector<vertex> Chunk_Mesh(const chunk* Chunk)
             {
                 vec3 VoxelP = vec3{ (f32)x, (f32)y, (f32)z };
 
-                if (Chunk->Data->Voxels[z][y][x] == 0)
+                u16 VoxelType = Chunk->Data->Voxels[z][y][x];
+                assert(VoxelType < VoxelDescCount);
+
+                const voxel_desc* Desc = VoxelDescs + VoxelType;
+                if (Desc->Flags & VOXEL_FLAGS_NO_MESH)
                 {
                     continue;
                 }
-                else if(Chunk->Data->Voxels[z][y][x] == 1)
+                else
                 {
                     static const vertex Cube[] = 
                     {
                         // EAST
-                        { { 1.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
-                        { { 1.0f, 1.0f, 0.0f, }, { 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
-                        { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f }, PackColor(0xFF, 0x00, 0x00) },
-                        { { 1.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
-                        { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f }, PackColor(0xFF, 0x00, 0x00) },
-                        { { 1.0f, 0.0f, 1.0f, }, { 0.0f, 1.0f }, PackColor(0xFF, 0x00, 0x00) },
+                        { { 1.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
+                        { { 1.0f, 1.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
+                        { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
+                        { { 1.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
+                        { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
+                        { { 1.0f, 0.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
 
                         // WEST
-                        { { 0.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
-                        { { 0.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f }, PackColor(0x00, 0xFF, 0xFF) },
-                        { { 0.0f, 1.0f, 0.0f, }, { 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
-                        { { 0.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
-                        { { 0.0f, 0.0f, 1.0f, }, { 1.0f, 1.0f }, PackColor(0x00, 0xFF, 0xFF) },
-                        { { 0.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f }, PackColor(0x00, 0xFF, 0xFF) },
+                        { { 0.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
+                        { { 0.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
+                        { { 0.0f, 1.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
+                        { { 0.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
+                        { { 0.0f, 0.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
+                        { { 0.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
 
                         // NORTH
-                        { { 0.0f, 1.0f, 0.0f, }, { 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
-                        { { 1.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f }, PackColor(0xFF, 0x00, 0xFF) },
-                        { { 1.0f, 1.0f, 0.0f, }, { 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
-                        { { 0.0f, 1.0f, 0.0f, }, { 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
-                        { { 0.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f }, PackColor(0xFF, 0x00, 0xFF) },
-                        { { 1.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f }, PackColor(0xFF, 0x00, 0xFF) },
+                        { { 0.0f, 1.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
+                        { { 1.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
+                        { { 1.0f, 1.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
+                        { { 0.0f, 1.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
+                        { { 0.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
+                        { { 1.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
 
                         // SOUTH
-                        { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
-                        { { 1.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
-                        { { 1.0f, 0.0f, 1.0f, }, { 1.0f, 1.0f }, PackColor(0x00, 0xFF, 0x00) },
-                        { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
-                        { { 1.0f, 0.0f, 1.0f, }, { 1.0f, 1.0f }, PackColor(0x00, 0xFF, 0x00) },
-                        { { 0.0f, 0.0f, 1.0f, }, { 0.0f, 1.0f }, PackColor(0x00, 0xFF, 0x00) },
+                        { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
+                        { { 1.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
+                        { { 1.0f, 0.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
+                        { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
+                        { { 1.0f, 0.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
+                        { { 0.0f, 0.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
 
                         // TOP
-                        { { 0.0f, 0.0f, 1.0f, }, { 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
-                        { { 1.0f, 0.0f, 1.0f, }, { 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
-                        { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f }, PackColor(0xFF, 0xFF, 0xFF) },
-                        { { 0.0f, 0.0f, 1.0f, }, { 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
-                        { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f }, PackColor(0xFF, 0xFF, 0xFF) },
-                        { { 0.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f }, PackColor(0xFF, 0xFF, 0xFF) },
+                        { { 0.0f, 0.0f, 1.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
+                        { { 1.0f, 0.0f, 1.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
+                        { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
+                        { { 0.0f, 0.0f, 1.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
+                        { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
+                        { { 0.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
 
                         // BOTTOM
-                        { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
-                        { { 1.0f, 1.0f, 0.0f, }, { 1.0f, 1.0f }, PackColor(0xFF, 0xFF, 0x00) },
-                        { { 1.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
-                        { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
-                        { { 0.0f, 1.0f, 0.0f, }, { 0.0f, 1.0f }, PackColor(0xFF, 0xFF, 0x00) },
-                        { { 1.0f, 1.0f, 0.0f, }, { 1.0f, 1.0f }, PackColor(0xFF, 0xFF, 0x00) },
+                        { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
+                        { { 1.0f, 1.0f, 0.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
+                        { { 1.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
+                        { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
+                        { { 0.0f, 1.0f, 0.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
+                        { { 1.0f, 1.0f, 0.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
                     };
                     constexpr u32 CubeVertexCount = CountOf(Cube);
 
@@ -209,21 +213,17 @@ static std::vector<vertex> Chunk_Mesh(const chunk* Chunk)
                             }
                         }
 
-
                         if (!IsOccluded)
                         {
                             for (u32 i = 0; i < 6; i++)
                             {
                                 vertex Vertex = Cube[Face*6 + i];
                                 Vertex.P += VoxelP;
+                                Vertex.UVW.z += (f32)Desc->FaceTextureIndices[Face];
                                 VertexList.push_back(Vertex);
                             }
                         }
                     }
-                }
-                else
-                {
-                    assert(!"Invalid code path");
                 }
             }
         }
@@ -296,7 +296,7 @@ static void Game_LoadChunks(game_state* GameState)
 
     constexpr u32 ImmediateMeshDistance = 1;
     constexpr u32 ImmediateGenerationDistance = ImmediateMeshDistance + 1;
-    constexpr u32 MeshDistance = 4;
+    constexpr u32 MeshDistance = 8;
     constexpr u32 GenerationDistance = MeshDistance + 1;
 
     // Create a stack that'll hold the chunks that haven't been meshed/generated around the player.
@@ -975,14 +975,14 @@ bool Game_Initialize(game_state* GameState)
             VkDescriptorSetLayoutBinding Bindings[] = 
             {
                 {
-                    .binding = 0, // TODO
+                    .binding = 0,
                     .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     .descriptorCount = 1,
                     .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
                     .pImmutableSamplers = nullptr,
                 },
                 {
-                    .binding = 1, // TODO
+                    .binding = 1,
                     .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
                     .descriptorCount = 1,
                     .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -1062,6 +1062,12 @@ bool Game_Initialize(game_state* GameState)
 
     // Textures
     {
+        constexpr u32 TexWidth = 16;
+        constexpr u32 TexHeight = 16;
+        constexpr u32 TexMaxArrayCount = 64;
+
+        u32* PixelBuffer = new u32[TexWidth*TexHeight*TexMaxArrayCount];
+        u32* PixelBufferAt = PixelBuffer;
         struct image
         {
             u32 Width;
@@ -1070,7 +1076,7 @@ bool Game_Initialize(game_state* GameState)
             u32* Pixels;
         };
 
-        auto LoadBMP = [](const char* Path, image* Image) -> bool
+        auto LoadBMP = [&PixelBufferAt](const char* Path, image* Image) -> bool
         {
             bool Result = false;
 
@@ -1089,8 +1095,11 @@ bool Game_Initialize(game_state* GameState)
                         Image->Height = (u32)Abs(Bitmap->Info.Height); // TODO: flip on negative height
                         Image->Format = VK_FORMAT_R8G8B8A8_SRGB;
 
+                        assert((Image->Width == TexWidth) && (Image->Height == TexHeight));
+
                         u32 PixelCount = Image->Width * Image->Height;
-                        Image->Pixels = new u32[PixelCount];
+                        Image->Pixels = PixelBufferAt;
+                        PixelBufferAt += PixelCount;
 
                         if (Image->Pixels)
                         {
@@ -1115,24 +1124,37 @@ bool Game_Initialize(game_state* GameState)
             return Result;
         };
 
-        image Top, Side, Bottom;
-        if (LoadBMP("texture/ground_top.bmp", &Top) &&
-            LoadBMP("texture/ground_side.bmp", &Side) &&
-            LoadBMP("texture/oak_log.bmp", &Bottom))
+        static const char* TexturePaths[] = 
+        {
+            "texture/ground_side.bmp",
+            "texture/ground_top.bmp",
+            "texture/ground_bottom.bmp",
+        };
+        constexpr u32 TextureCount = CountOf(TexturePaths);
+        image Images[TextureCount];
+        for (u32 i = 0; i < TextureCount; i++)
+        {
+            if (!LoadBMP(TexturePaths[i], &Images[i]))
+            {
+                return false;
+            }
+        }
+
+        u32 TotalTexMemorySize = (u32)(PixelBufferAt - PixelBuffer) * sizeof(u32);
+
         {
             VkDevice Device = GameState->Renderer->Device;
 
-            image* CurrentImage = &Bottom;
             VkImageCreateInfo CreateInfo = 
             {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 .pNext = nullptr,
                 .flags = 0,
                 .imageType = VK_IMAGE_TYPE_2D,
-                .format = CurrentImage->Format,
-                .extent = { CurrentImage->Width, CurrentImage->Height, 1 },
+                .format = VK_FORMAT_R8G8B8A8_SRGB,
+                .extent = { TexWidth, TexHeight, 1 },
                 .mipLevels = 1,
-                .arrayLayers = 1,
+                .arrayLayers = TextureCount,
                 .samples = VK_SAMPLE_COUNT_1_BIT,
                 .tiling = VK_IMAGE_TILING_OPTIMAL,
                 .usage = VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,
@@ -1151,13 +1173,11 @@ bool Game_Initialize(game_state* GameState)
                 u32 MemoryType = 0;
                 if (BitScanForward(&MemoryType, MemoryRequirements.memoryTypeBits & GameState->Renderer->DeviceLocalMemoryTypes))
                 {
-
-                    u64 MemorySize = CurrentImage->Width*CurrentImage->Height * sizeof(u32);
                     VkMemoryAllocateInfo AllocInfo = 
                     {
                         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                         .pNext = nullptr,
-                        .allocationSize = MemorySize,
+                        .allocationSize = TotalTexMemorySize,
                         .memoryTypeIndex = MemoryType,
                     };
 
@@ -1167,12 +1187,12 @@ bool Game_Initialize(game_state* GameState)
                         if (vkBindImageMemory(Device, Image, Memory, 0) == VK_SUCCESS)
                         {
                             if (StagingHeap_CopyImage(&GameState->StagingHeap, 
-                                    GameState->Renderer->TransferQueue,
-                                    GameState->Renderer->TransferCmdBuffer,
-                                    Image, 
-                                    CurrentImage->Width, CurrentImage->Height,
-                                    CurrentImage->Format,
-                                    CurrentImage->Pixels))
+                                GameState->Renderer->TransferQueue,
+                                GameState->Renderer->TransferCmdBuffer,
+                                Image, 
+                                TexWidth, TexHeight, TextureCount,
+                                VK_FORMAT_R8G8B8A8_SRGB,
+                                PixelBuffer))
                             {
                                 VkImageViewCreateInfo ViewInfo = 
                                 {
@@ -1180,8 +1200,8 @@ bool Game_Initialize(game_state* GameState)
                                     .pNext = nullptr,
                                     .flags = 0,
                                     .image = Image,
-                                    .viewType = VK_IMAGE_VIEW_TYPE_2D,
-                                    .format = CurrentImage->Format,
+                                    .viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+                                    .format = VK_FORMAT_R8G8B8A8_SRGB,
                                     .components = {},
                                     .subresourceRange = 
                                     {
@@ -1189,7 +1209,7 @@ bool Game_Initialize(game_state* GameState)
                                         .baseMipLevel = 0,
                                         .levelCount = 1,
                                         .baseArrayLayer = 0,
-                                        .layerCount = 1,
+                                        .layerCount = TextureCount,
                                     },
                                 };
 
@@ -1260,10 +1280,8 @@ bool Game_Initialize(game_state* GameState)
                 return false;
             }
         }
-        else
-        {
-            return false;
-        }
+
+        delete[] PixelBuffer;
     }
 
     // Debug visualizer
@@ -1461,8 +1479,8 @@ bool Game_Initialize(game_state* GameState)
             {
                 .location = 1,
                 .binding = 0,
-                .format = VK_FORMAT_R32G32_SFLOAT,
-                .offset = offsetof(vertex, UV),
+                .format = VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = offsetof(vertex, UVW),
             },
             // Color
             {

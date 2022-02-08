@@ -33,7 +33,7 @@ inline u32 PackColor(const vec3& v)
 struct vertex 
 {
     vec3 P;
-    vec2 UV;
+    vec3 UVW;
     u32 Color;
 };
 
@@ -131,7 +131,7 @@ bool StagingHeap_CopyImage(
     VkQueue Queue,
     VkCommandBuffer CmdBuffer,
     VkImage Image,
-    u32 Width, u32 Height,
+    u32 Width, u32 Height, u32 ArrayCount,
     VkFormat Format,
     const void* Src);
 

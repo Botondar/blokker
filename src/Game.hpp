@@ -13,6 +13,25 @@ constexpr s32 CHUNK_DIM_Z = 256;
 constexpr u16 VOXEL_AIR = 0;
 constexpr u16 VOXEL_GROUND = 1;
 
+enum voxel_flags : u32
+{
+    VOXEL_FLAGS_NONE = 0,
+    VOXEL_FLAGS_NO_MESH = 1,
+};
+
+struct voxel_desc
+{
+    voxel_flags Flags;
+    u32 FaceTextureIndices[6];
+};
+
+static voxel_desc VoxelDescs[] = 
+{
+    { VOXEL_FLAGS_NO_MESH, { } },
+    { VOXEL_FLAGS_NONE,   { 0, 0, 0, 0, 1, 2 } },
+};
+static constexpr u32 VoxelDescCount = CountOf(VoxelDescs);
+
 // TODO: namespace/enum class + operator overloads
 enum cardinal : u32
 {

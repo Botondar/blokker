@@ -7,7 +7,7 @@ del /q *
 popd
 
 set Warnings=-W4 -WX -wd4201 -wd4100 -wd4189 -wd4200
-set CommonOptions=-MT -Zi -EHsc -fp:fast -GT -Isrc/ -I%VULKAN_SDK%/Include/ -std:c++20 -arch:AVX2 -Oi -O2
+set CommonOptions=-MT -Zi -EHsc -fp:fast -GT -Isrc/ -I%VULKAN_SDK%/Include/ -std:c++20 -arch:AVX2 -Oi -Od
 set CommonDefines=-DDEVELOPER=1 -DPLATFORM_WIN32 -DWIN32_LEAN_AND_MEAN -DNOMINMAX
 set CompilerOptions=%CommonOptions% %CommonDefines% -c
 set LinkerOptions=-LIBPATH:%VULKAN_SDK%/Lib/ kernel32.lib user32.lib vulkan-1.lib /DEBUG
