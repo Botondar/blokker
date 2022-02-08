@@ -294,6 +294,8 @@ static void Game_LoadChunks(game_state* GameState)
     vec2 PlayerP = (vec2)GameState->Camera.P;
     vec2i PlayerChunkP = (vec2i)Floor(PlayerP / vec2{ (f32)CHUNK_DIM_X, (f32)CHUNK_DIM_Y });
 
+    constexpr u32 ImmediateMeshDistance = 1;
+    constexpr u32 ImmediateGenerationDistance = ImmediateMeshDistance + 1;
     constexpr u32 MeshDistance = 4;
     constexpr u32 GenerationDistance = MeshDistance + 1;
 
@@ -324,7 +326,6 @@ static void Game_LoadChunks(game_state* GameState)
 
         u32 CurrentCardinal = Cardinal_First;
         chunk* NextChunk = nullptr;
-
 
         /*
         * Walk to the next chunk in the current cardinal direction:
@@ -445,19 +446,33 @@ static void Game_LoadChunks(game_state* GameState)
         CurrentChunk = RingFirst;
     }
 
+    // Generate the chunk neighborhood.
+    // This could be done during the initial walk, but the logic of that is already complicated enough.
+    for (u32 i = 0; i < StackAt; i++)
+    {
+        chunk* Chunk= Stack[i];
+        Game_FindChunkNeighbors(GameState, Chunk);
+    }
+
+    // Limit the number of chunks that can be processed in a single frame so that we don't hitch
+    constexpr u32 ProcessedChunkLimit = 4;
+    u32 ProcessedChunkCount = 0;
+
     // Generate the chunks in the stack
     for (u32 i = 0; i < StackAt; i++)
     {
         chunk* Chunk = Stack[i];
 
+        s32 Distance = ChebyshevDistance(Chunk->P, PlayerChunkP);
         if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
         {
-            Chunk_Generate(&GameState->Perlin, Chunk);
-            Chunk->Flags |= CHUNK_STATE_GENERATED_BIT;
+            if ((Distance <= ImmediateGenerationDistance) || (ProcessedChunkCount < ProcessedChunkLimit))
+            {
+                Chunk_Generate(&GameState->Perlin, Chunk);
+                Chunk->Flags |= CHUNK_STATE_GENERATED_BIT;
+                ProcessedChunkCount++;
+            }
         }
-
-        // TODO: this really isn't optimal
-        Game_FindChunkNeighbors(GameState, Chunk);
     }
 
     // Mesh the chunks in the stack and upload them to the GPU
@@ -468,38 +483,44 @@ static void Game_LoadChunks(game_state* GameState)
 
         if (!(Chunk->Flags & CHUNK_STATE_MESHED_BIT) && (Distance <= MeshDistance))
         {
-            assert(!(Chunk->Flags & CHUNK_STATE_UPLOADED_BIT));
-
-            std::vector<vertex> VertexData = Chunk_Mesh(Chunk);
-            Chunk->Flags |= CHUNK_STATE_MESHED_BIT;
-
-            Chunk->AllocationIndex = VB_Allocate(&GameState->VB, (u32)VertexData.size());
-            if (Chunk->AllocationIndex != INVALID_INDEX_U32)
+            if ((Distance <= ImmediateMeshDistance) || (ProcessedChunkCount < ProcessedChunkLimit))
             {
-                TIMED_BLOCK("Upload");
+                assert(Chunk->Flags & CHUNK_STATE_GENERATED_BIT);
+                assert(!(Chunk->Flags & CHUNK_STATE_UPLOADED_BIT));
 
-                u64 Size = VertexData.size() * sizeof(vertex);
-                u64 Offset = VB_GetAllocationMemoryOffset(&GameState->VB, Chunk->AllocationIndex);                    
+                ProcessedChunkCount++;
 
-                if (StagingHeap_Copy(
+                std::vector<vertex> VertexData = Chunk_Mesh(Chunk);
+                Chunk->Flags |= CHUNK_STATE_MESHED_BIT;
+
+                Chunk->AllocationIndex = VB_Allocate(&GameState->VB, (u32)VertexData.size());
+                if (Chunk->AllocationIndex != INVALID_INDEX_U32)
+                {
+                    TIMED_BLOCK("Upload");
+
+                    u64 Size = VertexData.size() * sizeof(vertex);
+                    u64 Offset = VB_GetAllocationMemoryOffset(&GameState->VB, Chunk->AllocationIndex);                    
+
+                    if (StagingHeap_Copy(
                         &GameState->StagingHeap,
                         GameState->Renderer->TransferQueue,
                         GameState->Renderer->TransferCmdBuffer,
                         Offset, GameState->VB.Buffer,
                         Size, VertexData.data()))
-                {
-                    Chunk->Flags |= CHUNK_STATE_UPLOADED_BIT;
+                    {
+                        Chunk->Flags |= CHUNK_STATE_UPLOADED_BIT;
+                    }
+                    else
+                    {
+                        VB_Free(&GameState->VB, Chunk->AllocationIndex);
+                        Chunk->AllocationIndex = INVALID_INDEX_U32;
+                        assert(!"Upload failed");
+                    }
                 }
                 else
                 {
-                    VB_Free(&GameState->VB, Chunk->AllocationIndex);
-                    Chunk->AllocationIndex = INVALID_INDEX_U32;
-                    assert(!"Upload failed");
+                    assert(!"Allocation failed");
                 }
-            }
-            else
-            {
-                assert(!"Allocation failed");
             }
         }
     }
