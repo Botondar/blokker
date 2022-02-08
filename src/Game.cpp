@@ -1348,93 +1348,6 @@ bool Game_Initialize(game_state* GameState)
         delete[] PixelBuffer;
     }
 
-    // Debug visualizer
-#if 0
-    {
-        VkBufferCreateInfo BufferInfo = 
-        {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0,
-            .size = debug_visualizer::BufferSize,
-            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            .queueFamilyIndexCount = 0,
-            .pQueueFamilyIndices = nullptr,
-        };
-        VkBuffer Buffer = VK_NULL_HANDLE;
-        if (vkCreateBuffer(GameState->Renderer->Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
-        {
-            VkMemoryRequirements MemoryRequirements = {};
-            vkGetBufferMemoryRequirements(GameState->Renderer->Device, Buffer, &MemoryRequirements);
-
-            u32 MemoryTypes = GameState->Renderer->HostVisibleCoherentMemoryTypes;
-            MemoryTypes &= MemoryRequirements.memoryTypeBits;
-
-            u32 MemoryType = INVALID_INDEX_U32;
-            if (BitScanForward(&MemoryType, MemoryTypes) != 0)
-            {
-                VkMemoryAllocateInfo AllocInfo = 
-                {
-                    .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                    .pNext = nullptr,
-                    .allocationSize = debug_visualizer::BufferSize,
-                    .memoryTypeIndex = MemoryType,
-                };
-
-                VkDeviceMemory Memory = VK_NULL_HANDLE;
-                if (vkAllocateMemory(GameState->Renderer->Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
-                {
-                    if (vkBindBufferMemory(GameState->Renderer->Device, Buffer, Memory, 0) == VK_SUCCESS)
-                    {
-                        void* Data = nullptr;
-                        
-                        if (vkMapMemory(GameState->Renderer->Device, Memory, 0, VK_WHOLE_SIZE, 0, &Data) == VK_SUCCESS)
-                        {
-                            GameState->DebugVisualizer = {};
-                            GameState->DebugVisualizer.Memory = Memory;
-                            GameState->DebugVisualizer.Buffer = Buffer;
-
-                            GameState->DebugVisualizer.Data = Data;
-                            GameState->DebugVisualizer.VertexData = (vertex*)Data;
-                            u64 MaxVertexCount = debug_visualizer::BufferSize / sizeof(vertex);
-                            assert(MaxVertexCount <= 0x7FFFFFFFF);
-                            GameState->DebugVisualizer.MaxVertexCount = (u32)MaxVertexCount;
-                            GameState->DebugVisualizer.CurrentFrameIndex = 0;
-                        }
-                        else
-                        {
-                            vkFreeMemory(GameState->Renderer->Device, Memory, nullptr);
-                            vkDestroyBuffer(GameState->Renderer->Device, Buffer, nullptr);
-                            return false;
-                        }
-                    }
-                    else
-                    {
-                        vkFreeMemory(GameState->Renderer->Device, Memory, nullptr);
-                        vkDestroyBuffer(GameState->Renderer->Device, Buffer, nullptr);
-                        return false;
-                    }
-                }
-                else
-                {
-                    vkDestroyBuffer(GameState->Renderer->Device, Buffer, nullptr);
-                    return false;
-                }
-            }
-            else
-            {
-                vkDestroyBuffer(GameState->Renderer->Device, Buffer, nullptr);
-                return false;
-            }
-        }
-        else
-        {
-            return false;
-        }
-    }
-#endif
-
     {
         // Create pipeline layout
         {
@@ -1738,14 +1651,6 @@ bool Game_Initialize(game_state* GameState)
     GameState->Camera.P = { 0.5f * CHUNK_DIM_X + 0.5f, 0.5f * CHUNK_DIM_Y + 0.5f, 100.0f };
 
     Perlin2_Init(&GameState->Perlin, 0);
-
-#if 0
-    // NOTE: chunk::Data entries are permanently linked to ChunkData
-    for (u32 i = 0; i < game_state::MaxChunkCount; i++)
-    {
-        GameState->Chunks[i].Data = GameState->ChunkData + i;
-    }
-#endif
 
     DebugPrint("Game init done.\n");
     return true;

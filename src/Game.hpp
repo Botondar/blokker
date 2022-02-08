@@ -88,25 +88,6 @@ struct chunk
     u32 AllocationIndex; // in VB
 };
 
-struct debug_visualizer
-{
-    static constexpr u64 BufferSize = 4*1024*1024;
-
-    VkDeviceMemory Memory;
-    VkBuffer Buffer;
-    void* Data;
-
-    u32 MaxVertexCount;
-    vertex* VertexData;
-
-    u32 CurrentFrameIndex;
-    struct
-    {
-        u32 Begin;
-        u32 End;
-    } PerFrame[2];
-};
-
 struct game_input
 {
     vec2 MouseDelta;
@@ -158,8 +139,6 @@ struct game_state
     VkImage Tex;
     VkImageView TexView;
     VkDeviceMemory TexMemory;
-
-    debug_visualizer DebugVisualizer;
 };
 
 bool Game_Initialize(game_state* GameState);
