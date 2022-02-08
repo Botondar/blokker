@@ -1,0 +1,5 @@
+/shader/
+/build/
+*.10x
+/texture/oak_log.bmp
+/texture/oak_log.tga
