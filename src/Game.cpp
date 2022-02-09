@@ -296,7 +296,7 @@ static void Game_LoadChunks(game_state* GameState)
 
     constexpr u32 ImmediateMeshDistance = 1;
     constexpr u32 ImmediateGenerationDistance = ImmediateMeshDistance + 1;
-    constexpr u32 MeshDistance = 8;
+    constexpr u32 MeshDistance = 16;
     constexpr u32 GenerationDistance = MeshDistance + 1;
 
     // Create a stack that'll hold the chunks that haven't been meshed/generated around the player.
@@ -945,7 +945,7 @@ bool Game_Initialize(game_state* GameState)
                 .flags = 0,
                 .magFilter = VK_FILTER_NEAREST,
                 .minFilter = VK_FILTER_NEAREST,
-                .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
                 .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
                 .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
                 .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
@@ -1452,7 +1452,7 @@ bool Game_Initialize(game_state* GameState)
                 .format = VK_FORMAT_R32G32B32_SFLOAT,
                 .offset = offsetof(vertex, P),
             },
-            // UV
+            // UVW
             {
                 .location = 1,
                 .binding = 0,

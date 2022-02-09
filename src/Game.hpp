@@ -115,8 +115,7 @@ struct game_state
 
     perlin2 Perlin;
 
-    static constexpr u32 ChunkSqrtDim = 256;
-    static constexpr u32 MaxChunkCount = ChunkSqrtDim*ChunkSqrtDim;
+    static constexpr u32 MaxChunkCount = 16384;
 
     u32 ChunkCount;
     chunk* Chunks;
@@ -124,6 +123,8 @@ struct game_state
 
     // TODO: these will need to be part of the renderer
     vulkan_staging_heap StagingHeap;
+
+    u32 Temp;
 
     vulkan_vertex_buffer VB;
 

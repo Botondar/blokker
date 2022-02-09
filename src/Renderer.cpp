@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <Platform.hpp>
+#include <Profiler.hpp>
 
 PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR_ = nullptr;
 PFN_vkCmdEndRenderingKHR   vkCmdEndRenderingKHR_   = nullptr;
@@ -21,7 +22,7 @@ static VkBool32 VKAPI_PTR VulkanDebugCallback(
 
 bool RTHeap_Create(
     vulkan_rt_heap* Heap, 
-    u64 Size, u32 MemoryTypeBase, 
+    u64 Size, u32 MemoryTypeBase,
     u32 MemoryRequirementCount,
     const VkMemoryRequirements* MemoryRequirements,
     VkDevice Device)
@@ -577,9 +578,11 @@ u32 VB_Allocate(vulkan_vertex_buffer* VB, u32 VertexCount)
                             NextBlock->VertexCount = Block->VertexCount - VertexCount;
                             NextBlock->VertexOffset = Block->VertexOffset + VertexCount;
                             NextBlock->Flags &= ~VBBLOCK_ALLOCATED_BIT;
+                            NextBlock->AllocationIndex = INVALID_INDEX_U32;
 
                             Block->VertexCount = VertexCount;
                             Block->Flags |= VBBLOCK_ALLOCATED_BIT;
+                            Block->AllocationIndex = AllocationIndex;
 
                             Allocation->BlockIndex = i;
                         }
@@ -609,6 +612,7 @@ u32 VB_Allocate(vulkan_vertex_buffer* VB, u32 VertexCount)
             VB->FreeAllocationCount--;
 
             VB->MemoryUsage += (u64)VertexCount * sizeof(vertex);
+
             Result = AllocationIndex;
         }
         else
@@ -626,19 +630,43 @@ void VB_Free(vulkan_vertex_buffer* VB, u32 AllocationIndex)
     if (AllocationIndex != INVALID_INDEX_U32)
     {
         assert(AllocationIndex < vulkan_vertex_buffer::MaxAllocationCount);
+        
         vulkan_vertex_buffer_block* Block = VB->Blocks + VB->Allocations[AllocationIndex].BlockIndex;
+
         Block->Flags &= ~VBBLOCK_ALLOCATED_BIT;
-        VB->MemoryUsage -= (u64)Block->VertexCount * sizeof(vertex);
+        Block->AllocationIndex = INVALID_INDEX_U32;
 
         VB->FreeAllocationIndices[VB->FreeAllocationWrite++] = AllocationIndex;
         VB->FreeAllocationWrite %= vulkan_vertex_buffer::MaxAllocationCount;
         VB->FreeAllocationCount++;
+
+        VB->MemoryUsage -= (u64)Block->VertexCount * sizeof(vertex);
     }
 }
 
 void VB_Defragment(vulkan_vertex_buffer* VB)
 {
+    TIMED_FUNCTION();
+
     assert(VB);
+
+    u32 FreeBlockCount = 0;
+    u32 FreeBlocks[VB->MaxAllocationCount];
+    u32 AllocatedBlockCount = 0;
+    u32 AllocatedBlocks[VB->MaxAllocationCount];
+
+    for (u32 i = 0; i < VB->BlockCount; i++)
+    {
+        vulkan_vertex_buffer_block* Block = VB->Blocks + i;
+        if (Block->Flags & VBBLOCK_ALLOCATED_BIT)
+        {
+            AllocatedBlocks[AllocatedBlockCount++] = i;
+        }
+        else
+        {
+            FreeBlocks[FreeBlockCount++] = i;
+        }
+    }
 
     assert(!"Unimplemented code path");
 }
@@ -691,7 +719,7 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
             .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
             .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
             .presentMode = 
-#if 1
+#if 0
                 VK_PRESENT_MODE_FIFO_KHR,
 #else
                 VK_PRESENT_MODE_MAILBOX_KHR,

@@ -155,6 +155,7 @@ struct vulkan_vertex_buffer_block
     u32 VertexCount;
     u32 VertexOffset;
     u32 Flags; // vb_block_flags
+    u32 AllocationIndex;
 };
 
 struct vulkan_vertex_buffer_allocation

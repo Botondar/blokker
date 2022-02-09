@@ -208,7 +208,6 @@ static LRESULT CALLBACK MainWindowProc(HWND Window, UINT Message, WPARAM WParam,
                 }
             }
         } break;
-
         case WM_ERASEBKGND:
         {
             Result = 1;
@@ -245,45 +244,13 @@ static bool win32_ProcessInput(game_input* Input)
     Input->MouseDelta = {};
     MSG Message = {};
 
-    u32 MessageCount = 0;
-
-    while (PeekMessageA(&Message, nullptr, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE))
+    // NOTE(boti): Don't use multiple loops to remove only a certain range of messages, 
+    //             it will make windows think our app is frozen.
+    //             My hunch is that the messages that have a WM code less than the range
+    //             don't get returned but they _do_ get removed from the queue,
+    //             which makes win32 think (correctly so) that we aren't responding to messages.
+    while (PeekMessageA(&Message, nullptr, 0, 0, PM_REMOVE))
     {
-        MessageCount++;
-
-        switch (Message.message)
-        {
-            case WM_LBUTTONDOWN:
-            {
-                Win32State.MouseLDownP = { GET_X_LPARAM(Message.lParam), GET_Y_LPARAM(Message.lParam) };
-                SetCapture(Win32State.Window);
-            } break;
-            case WM_LBUTTONUP:
-            {
-                ReleaseCapture();
-            } break;
-            case WM_MOUSEMOVE:
-            {
-                vec2i P = { GET_X_LPARAM(Message.lParam), GET_Y_LPARAM(Message.lParam) };
-                bool IsLButtonDown = (Message.wParam & MK_LBUTTON) != 0;
-                if (IsLButtonDown)
-                {
-                    Input->MouseDelta.x += (f32)(P.x - Win32State.MouseLDownP.x);
-                    Input->MouseDelta.y += (f32)(P.y - Win32State.MouseLDownP.y);
-
-                    Win32State.MouseLDownP = P;
-                }
-            } break;
-        };
-
-        TranslateMessage(&Message);
-        DispatchMessageA(&Message);
-    }
-
-    while (PeekMessageA(&Message, nullptr, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE))
-    {
-        MessageCount++;
-
         switch (Message.message)
         {
             case WM_SYSKEYDOWN:
@@ -305,46 +272,56 @@ static bool win32_ProcessInput(game_input* Input)
                     case VK_LCONTROL: Input->LeftControl = IsDown; break;
                     case VK_MENU:
                     case VK_LMENU: Input->LeftAlt = IsDown; break;
-                        
                 }
+            } break;
+            case WM_LBUTTONDOWN:
+            {
+                Win32State.MouseLDownP = { GET_X_LPARAM(Message.lParam), GET_Y_LPARAM(Message.lParam) };
+                SetCapture(Win32State.Window);
+            } break;
+            case WM_LBUTTONUP:
+            {
+                ReleaseCapture();
+            } break;
+            case WM_MOUSEMOVE:
+            {
+                vec2i P = { GET_X_LPARAM(Message.lParam), GET_Y_LPARAM(Message.lParam) };
+                bool IsLButtonDown = (Message.wParam & MK_LBUTTON) != 0;
+                if (IsLButtonDown)
+                {
+                    Input->MouseDelta.x += (f32)(P.x - Win32State.MouseLDownP.x);
+                    Input->MouseDelta.y += (f32)(P.y - Win32State.MouseLDownP.y);
+
+                    Win32State.MouseLDownP = P;
+                }
+            } break;
+
+            case WM_QUIT: return true;
+            default:
+            {
+                TranslateMessage(&Message);
+                DispatchMessageA(&Message);
             } break;
         }
 
-        TranslateMessage(&Message);
-        DispatchMessageA(&Message);
-    }
-
-    while (PeekMessageA(&Message, nullptr, 0, 0, PM_REMOVE))
-    {
-        MessageCount++;
-
-        if (Message.message == WM_QUIT)
+        if (WM_KEYFIRST <= Message.message && Message.message <= WM_KEYLAST)
         {
-            return true;
+            TranslateMessage(&Message);
+            DispatchMessageA(&Message);
         }
-        
-        TranslateMessage(&Message);
-        DispatchMessageA(&Message);
     }
-    
-    //DebugPrint("Message count: %u\n", MessageCount);
     return false;
 }
+
+// Put these into global memory so we don't blow out the stack
+static vulkan_renderer Renderer;
+static game_state GameState;
 
 int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int CommandShow)
 {
     Win32State.Instance = Instance;
     Win32State.HasDebugger = IsDebuggerPresent();
     QueryPerformanceFrequency((LARGE_INTEGER*)&Win32State.PerformanceFrequency);
-
-    /* IMPORTANT/TODO:
-     * When Windows ghosting is enabled Windows will periodically send WM_SIZE messages to our window for seemingly _no reason at all_.
-     * When the window is not active (i.e. the user clicked on some other window) it will hang and ghost our window after 5-10 seconds,
-     * even though it _is_ processing messages.
-     * After this point even though the program is running, no messages will be received from PeekMessageA and our window
-     * will keep being ghosted indefinitely.
-     */
-    DisableProcessWindowsGhosting();
 
 #if DEVELOPER
     // Init debug cmd prompt
@@ -391,8 +368,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     
     ShowWindow(Win32State.Window, SW_SHOW);
     
-    vulkan_renderer Renderer;
-    game_state GameState = {};
     GameState.Renderer = &Renderer;
 
     // Allocate memory
@@ -468,7 +443,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
             Sleep(20);
         }
 
-        GlobalProfiler.Print(12.0e-3f);
+        GlobalProfiler.Print(33.0e-3f);
         GlobalProfiler.Reset();
 
         s64 EndTime;
