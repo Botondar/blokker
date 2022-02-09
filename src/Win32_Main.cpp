@@ -245,10 +245,7 @@ static bool win32_ProcessInput(game_input* Input)
     MSG Message = {};
 
     // NOTE(boti): Don't use multiple loops to remove only a certain range of messages, 
-    //             it will make windows think our app is frozen.
-    //             My hunch is that the messages that have a WM code less than the range
-    //             don't get returned but they _do_ get removed from the queue,
-    //             which makes win32 think (correctly so) that we aren't responding to messages.
+    //             See: https://docs.microsoft.com/en-us/troubleshoot/windows/win32/application-using-message-filters-unresponsive-win10
     while (PeekMessageA(&Message, nullptr, 0, 0, PM_REMOVE))
     {
         switch (Message.message)
