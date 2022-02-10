@@ -319,6 +319,12 @@ vec3 Floor(const vec3& v)
     return Result;
 }
 
+vec3 Ceil(const vec3& v)
+{
+    vec3 Result = { Ceil(v.x), Ceil(v.y), Ceil(v.z) };
+    return Result;
+}
+
 f32 Dot(const vec3& a, const vec3& b)
 {
     f32 Result = a.x*b.x + a.y*b.y + a.z*b.z;
@@ -381,6 +387,49 @@ vec3i::operator vec3() const
 vec3i::operator vec2i() const
 {
     vec2i Result = { x, y };
+    return Result;
+}
+
+vec3i operator-(const vec3i& v)
+{
+    vec3i Result = { -v.x, -v.y, -v.z };
+    return Result;
+}
+
+vec3i operator*(const vec3i& v, s32 s)
+{
+    vec3i Result = { v.x * s, v.y * s, v.z * s };
+    return Result;
+}
+vec3i operator*(s32 s, const vec3i& v)
+{
+    vec3i Result = { v.x*s, v.y*s, v.z*s };
+    return Result;
+}
+vec3i operator/(const vec3i& v, s32 s)
+{
+    vec3i Result = { v.x/s, v.y/s, v.z/s };
+    return Result;
+}
+
+vec3i operator+(const vec3i& a, const vec3i& b)
+{
+    vec3i Result = { a.x + b.x, a.y + b.y, a.z + b.z };
+    return Result;
+}
+vec3i operator-(const vec3i& a, const vec3i& b)
+{
+    vec3i Result = { a.x - b.x, a.y - b.y, a.z - b.z };
+    return Result;
+}
+vec3i operator*(const vec3i& a, const vec3i& b)
+{
+    vec3i Result = { a.x * b.x, a.y * b.y, a.z * b.z };
+    return Result;
+}
+vec3i operator/(const vec3i& a, const vec3i& b)
+{
+    vec3i Result = { a.x / b.x, a.y / b.y, a.z / b.z };
     return Result;
 }
 

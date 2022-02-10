@@ -12,6 +12,12 @@ inline s32 Abs(s32 x) { return abs(x); }
 inline s32 Min(s32 a, s32 b) { return (a < b) ? a : b; }
 inline s32 Max(s32 a, s32 b) { return (a < b) ? b : a; }
 
+inline f32 Signum(f32 x) 
+{  
+    if (x < 0.0f) return -1.0f;
+    else if (x > 0.0f) return 1.0f;
+    return 0.0f;
+}
 
 inline f32 Abs(f32 x) { return fabsf(x); }
 inline f32 Floor(f32 x) { return floorf(x); }
@@ -131,6 +137,7 @@ vec3 operator*(const vec3& a, const vec3& b);
 vec3 operator/(const vec3& a, const vec3& b);
 
 vec3 Floor(const vec3& v);
+vec3 Ceil(const vec3& v);
 
 f32 Dot(const vec3& a, const vec3& b);
 f32 Length(const vec3& v);
@@ -149,6 +156,17 @@ struct vec3i
     explicit operator vec3() const;
     explicit operator vec2i() const;
 };
+
+vec3i operator-(const vec3i& v);
+
+vec3i operator*(const vec3i& v, s32 s);
+vec3i operator*(s32 s, const vec3i& v);
+vec3i operator/(const vec3i& v, s32 s);
+
+vec3i operator+(const vec3i& a, const vec3i& b);
+vec3i operator-(const vec3i& a, const vec3i& b);
+vec3i operator*(const vec3i& a, const vec3i& b);
+vec3i operator/(const vec3i& a, const vec3i& b);
 
 struct vec4 
 {

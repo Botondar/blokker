@@ -88,6 +88,13 @@ struct chunk
     u32 AllocationIndex; // in VB
 };
 
+struct player
+{
+    camera Camera;
+    vec3 Velocity;
+    bool WasGroundedLastFrame;
+};
+
 struct game_input
 {
     vec2 MouseDelta;
@@ -111,7 +118,8 @@ struct game_state
     bool NeedRendererResize;
     bool IsMinimized;
 
-    camera Camera;
+    //camera Camera;
+    player Player;
 
     perlin2 Perlin;
 

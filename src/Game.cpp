@@ -2,6 +2,7 @@
 
 #include <Profiler.hpp>
 #include <bmp.hpp>
+#include <Float.hpp>
 
 #include <vector>
 
@@ -12,6 +13,7 @@
 #include "Camera.cpp"
 #include "Profiler.cpp"
 
+static u16 Chunk_GetVoxelType(const chunk* Chunk, s32 x, s32 y, s32 z);
 static void Chunk_Generate(const perlin2* Perlin, chunk* Chunk);
 static std::vector<vertex> Chunk_Mesh(const chunk* Chunk);
 
@@ -22,6 +24,47 @@ static void Game_LoadChunks(game_state* GameState);
 
 static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime);
 static void Game_Render(game_state* GameState, f32 DeltaTime);
+
+static u16 Chunk_GetVoxelType(const chunk* Chunk, s32 x, s32 y, s32 z)
+{
+    u16 Result = VOXEL_AIR;
+
+    // TODO: we may just want to return some special block if the coordinates point to some chunk that's not loaded/generated
+    while (x < 0)
+    {
+        assert(Chunk->Neighbors[West]);
+        Chunk = Chunk->Neighbors[West];
+        x += CHUNK_DIM_X;
+    }
+    while (x >= CHUNK_DIM_X)
+    {
+        assert(Chunk->Neighbors[East]);
+        Chunk = Chunk->Neighbors[East];
+        x -= CHUNK_DIM_X;
+    }
+    while (y < 0)
+    {
+        assert(Chunk->Neighbors[South]);
+        Chunk = Chunk->Neighbors[South];
+        y += CHUNK_DIM_Y;
+    }
+    while (y >= CHUNK_DIM_Y)
+    {
+        assert(Chunk->Neighbors[North]);
+        Chunk = Chunk->Neighbors[North];
+        y -= CHUNK_DIM_Y;
+    }
+
+    if (0 <= z && z <= CHUNK_DIM_Z)
+    {
+        if (Chunk->Flags & CHUNK_STATE_GENERATED_BIT)
+        {
+            assert(Chunk->Data);
+            Result = Chunk->Data->Voxels[z][y][x];
+        }
+    }
+    return Result;
+}
 
 static void Chunk_Generate(const perlin2* Perlin, chunk* Chunk)
 {
@@ -271,7 +314,7 @@ static chunk* Game_FindPlayerChunk(game_state* GameState)
 {
     TIMED_FUNCTION();
     chunk* Result = nullptr;
-    vec2i PlayerChunkP = (vec2i)Floor(vec2{ GameState->Camera.P.x / CHUNK_DIM_X, GameState->Camera.P.y / CHUNK_DIM_Y });
+    vec2i PlayerChunkP = (vec2i)Floor(vec2{ GameState->Player.Camera.P.x / CHUNK_DIM_X, GameState->Player.Camera.P.y / CHUNK_DIM_Y });
 
     for (u32 i = 0; i < GameState->ChunkCount; i++)
     {
@@ -291,7 +334,7 @@ static void Game_LoadChunks(game_state* GameState)
 {
     TIMED_FUNCTION();
 
-    vec2 PlayerP = (vec2)GameState->Camera.P;
+    vec2 PlayerP = (vec2)GameState->Player.Camera.P;
     vec2i PlayerChunkP = (vec2i)Floor(PlayerP / vec2{ (f32)CHUNK_DIM_X, (f32)CHUNK_DIM_Y });
 
     constexpr u32 ImmediateMeshDistance = 1;
@@ -535,59 +578,186 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
     // Player update
     {
         TIMED_BLOCK("UpdatePlayer");
-        constexpr f32 MoveSpeed = 2.5f;
         constexpr f32 MouseTurnSpeed = 5e-3f;
 
-        GameState->Camera.Yaw -= Input->MouseDelta.x * MouseTurnSpeed;
-        GameState->Camera.Pitch -= Input->MouseDelta.y * MouseTurnSpeed;
+        player* Player = &GameState->Player;
+
+        Player->Camera.Yaw -= Input->MouseDelta.x * MouseTurnSpeed;
+        Player->Camera.Pitch -= Input->MouseDelta.y * MouseTurnSpeed;
 
         constexpr f32 CameraClamp = 0.5f * PI - 1e-3f;
-        GameState->Camera.Pitch = Clamp(GameState->Camera.Pitch, -CameraClamp, CameraClamp);
+        Player->Camera.Pitch = Clamp(Player->Camera.Pitch, -CameraClamp, CameraClamp);
 
-        mat4 Transform = GameState->Camera.GetTransform();
+        // Camera axes in world space
+        mat4 Transform = Player->Camera.GetTransform();
         vec3 Forward = TransformDirection(Transform, { 0.0f, 0.0f, 1.0f });
         vec3 Right   = TransformDirection(Transform, { 1.0f, 0.0f, 0.0f });
         vec3 Up      = TransformDirection(Transform, { 0.0f, -1.0f, 0.0f });
 
-        vec3 MoveDirection = {};
+        // Project directions (except up) to the XY plane for movement
+        Forward = Normalize(vec3{ Forward.x, Forward.y, 0.0f });
+        Right = Normalize(vec3{ Right.x, Right.y, 0.0f });
+        Up = { 0.0f, 0.0f, 1.0f };
+
+        // HACK: save z velocity so that we can restore it to keep gravity
+        f32 VelocityZ = Player->Velocity.z;
+        Player->Velocity = {};
         if (Input->Forward)
         {
-            MoveDirection += Forward;
+            Player->Velocity += Forward;
         }
         if (Input->Back)
         {
-            MoveDirection -= Forward;
+            Player->Velocity -= Forward;
         }
         if (Input->Right)
         {
-            MoveDirection += Right;
+            Player->Velocity += Right;
         }
         if (Input->Left)
         {
-            MoveDirection -= Right;
+            Player->Velocity -= Right;
         }
 
-        if (Input->Space)
-        {
-            MoveDirection += vec3{ 0.0f, 0.0f, 1.0f };
-        }
-        if (Input->LeftControl)
-        {
-            MoveDirection -= vec3{ 0.0f, 0.0f, 1.0f };
-        }
+        Player->Velocity = SafeNormalize(Player->Velocity);
 
+        constexpr f32 MoveSpeed = 4.0f;
         f32 SpeedMul = 1.0f;
         if (Input->LeftShift)
         {
-            SpeedMul *= 2.5f;
+            SpeedMul *= 1.75f;
         }
-        if (Input->LeftAlt)
+        Player->Velocity *= MoveSpeed * SpeedMul;
+
+        constexpr f32 Gravity = 10.0f;
+        vec3 Acceleration = { 0.0f, 0.0f, -Gravity };
+        Player->Velocity.z = VelocityZ;
+        Player->Velocity += Acceleration * DeltaTime;
+
+        if (Input->Space && Player->WasGroundedLastFrame)
         {
-            SpeedMul *= 10.0f;
+            constexpr f32 JumpVelocity = 4.8989795f;
+            Player->Velocity.z += JumpVelocity;
         }
 
-        MoveDirection = SafeNormalize(MoveDirection);
-        GameState->Camera.P += MoveDirection * MoveSpeed * SpeedMul * DeltaTime;
+        Player->Camera.P += (Player->Velocity + 0.5f * Acceleration * DeltaTime) * DeltaTime;
+        Player->WasGroundedLastFrame = false;
+
+        // Collision
+        {
+            TIMED_BLOCK("Collision");
+
+            chunk* PlayerChunk = Game_FindPlayerChunk(GameState);
+            assert(PlayerChunk);
+            assert(
+                PlayerChunk->Neighbors[East] &&
+                PlayerChunk->Neighbors[North] &&
+                PlayerChunk->Neighbors[West] &&
+                PlayerChunk->Neighbors[South]);
+
+            constexpr f32 PlayerHeight = 1.8f;
+            constexpr f32 PlayerEyeHeight = 1.75f;
+            constexpr f32 PlayerWidth = 0.6f;
+
+            vec3 PlayerAABBMin = 
+            { 
+                GameState->Player.Camera.P.x - PlayerWidth, 
+                GameState->Player.Camera.P.y - PlayerWidth, 
+                GameState->Player.Camera.P.z - PlayerEyeHeight 
+            };
+            vec3 PlayerAABBMax = 
+            { 
+                GameState->Player.Camera.P.x + PlayerWidth, 
+                GameState->Player.Camera.P.y + PlayerWidth, 
+                GameState->Player.Camera.P.z + (PlayerHeight - PlayerEyeHeight) 
+            };
+            
+            vec3i ChunkP = (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
+
+            // Relative coordinates 
+            vec3 MinP = PlayerAABBMin - (vec3)ChunkP;
+            vec3 MaxP = PlayerAABBMax - (vec3)ChunkP;
+            
+            vec3i MinPi = (vec3i)Floor(MinP);
+            vec3i MaxPi = (vec3i)Ceil(MaxP);
+            
+            vec3 Displacement = {};
+            vec3 PenetrationSigns = {};
+            bool SkipCoords[3] = { false, false, false };
+
+            bool IsCollision = false;
+            for (s32 z = MinPi.z; z <= MaxPi.z; z++)
+            {
+                for (s32 y = MinPi.y; y <= MaxPi.y; y++)
+                {
+                    for (s32 x = MinPi.x; x <= MaxPi.x; x++)
+                    {
+                        u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, x, y, z);
+                        if (VoxelType == VOXEL_GROUND)
+                        {
+                            vec3 VoxelMinP = { (f32)x, (f32)y, (f32)z };
+                            vec3 VoxelMaxP = { (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) };
+
+                            if ((MinP.x <= VoxelMaxP.x) && (VoxelMinP.x < MaxP.x) &&
+                                (MinP.y <= VoxelMaxP.y) && (VoxelMinP.y < MaxP.y) &&
+                                (MinP.z <= VoxelMaxP.z) && (VoxelMinP.z < MaxP.z))
+                            {
+                                IsCollision = true;
+                                vec3 Penetration = {};
+
+                                f32 MinPenetration = F32_MAX_NORMAL;
+                                s32 MinCoord = -1;
+                                for (s32 i = 0; i < 3; i++)
+                                {
+                                    f32 AxisPenetration = (MaxP[i] < VoxelMaxP[i]) ? VoxelMinP[i] - MaxP[i] : VoxelMaxP[i] - MinP[i];
+                                    
+                                    if (Abs(AxisPenetration) < Abs(MinPenetration))
+                                    {
+                                        MinPenetration = AxisPenetration;
+                                        MinCoord = i;
+                                    }
+                                    Penetration[i] = AxisPenetration;
+                                }
+                                assert(MinCoord != -1);
+
+                                if ((Displacement[MinCoord] != 0.0f) && (ExtractSign(Displacement[MinCoord]) != ExtractSign(Penetration[MinCoord])))
+                                {
+                                    SkipCoords[MinCoord] = true;
+                                }
+                                else
+                                {
+                                    //vec3 Displacement = {};
+                                    //Displacement[MinCoord] = Penetration[MinCoord];
+                                    if (Abs(Displacement[MinCoord]) < Abs(Penetration[MinCoord]))
+                                    {
+                                        Displacement[MinCoord] = Penetration[MinCoord];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (IsCollision)
+            {
+                Player->Camera.P += Displacement;
+                // Clear velocities in the directions we collided
+                for (s32 i = 0; i < 3; i++)
+                {
+                    if (Displacement[i] != 0.0f)
+                    {
+                        Player->Velocity[i] = 0.0f;
+                    }
+                }
+
+                if (Displacement.z > 0.0f)
+                {
+                    Player->WasGroundedLastFrame = true;
+                }
+                //DebugPrint("Collision\n");
+            }
+        }
     }
 }
 
@@ -716,7 +886,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
             .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
             .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
             .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue =  { .color = { 0.0f, 0.0f, 0.0f, 0.0f, }, },
+            .clearValue =  { .color = { 0.0f, 1.0f, 1.0f, 0.0f, }, },
         };
         VkRenderingAttachmentInfoKHR DepthAttachment = 
         {
@@ -787,10 +957,11 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
         VkDeviceSize Offset = 0;
         vkCmdBindVertexBuffers(FrameParams->CmdBuffer, 0, 1, &GameState->VB.Buffer, &Offset);
 
-        mat4 ViewTransform = GameState->Camera.GetInverseTransform();
+        const camera* Camera = &GameState->Player.Camera;
+        mat4 ViewTransform = Camera->GetInverseTransform();
 
         const f32 AspectRatio = (f32)Renderer->SwapchainSize.width / (f32)Renderer->SwapchainSize.height;
-        mat4 Projection = PerspectiveMat4(ToRadians(90.0f), AspectRatio, 0.01f, 8000.0f);
+        mat4 Projection = PerspectiveMat4(ToRadians(90.0f), AspectRatio, 0.045f, 8000.0f);
         mat4 VP = Projection * ViewTransform;
 
         for (u32 i = 0; i < GameState->ChunkCount; i++)
@@ -1646,9 +1817,9 @@ bool Game_Initialize(game_state* GameState)
         vkDestroyShaderModule(GameState->Renderer->Device, FSModule, nullptr);
     }
 
-    GameState->Camera = {};
+    GameState->Player.Camera = {};
     // Place the player in the middle of the starting chunk
-    GameState->Camera.P = { 0.5f * CHUNK_DIM_X + 0.5f, 0.5f * CHUNK_DIM_Y + 0.5f, 100.0f };
+    GameState->Player.Camera.P = { 0.5f * CHUNK_DIM_X + 0.5f, 0.5f * CHUNK_DIM_Y + 0.5f, 100.0f };
 
     Perlin2_Init(&GameState->Perlin, 0);
 
