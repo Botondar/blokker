@@ -1,51 +1,14 @@
 #pragma once
 
-#include <Common.hpp>
 #include <vulkan/vulkan.h>
 
+#include <Common.hpp>
 #include <Math.hpp>
+#include <RendererCommon.hpp>
 
-inline constexpr u32 PackColor(u32 R, u32 G, u32 B, u32 A = 0xFF)
-{
-    R &= 0xFF;
-    G &= 0xFF;
-    B &= 0xFF;
-    A &= 0xFF;
+#include <Chunk.hpp>
+#include <Camera.hpp>
 
-    u32 Result = 
-        (A << 24) |
-        (B << 16) |
-        (G << 8) |
-        (R << 0);
-    return Result;
-}
-
-inline u32 PackColor(const vec3& v)
-{
-    u32 R = (u32)Round(255.0f * Clamp(v.x, 0.0f, 1.0f));
-    u32 G = (u32)Round(255.0f * Clamp(v.y, 0.0f, 1.0f));
-    u32 B = (u32)Round(255.0f * Clamp(v.z, 0.0f, 1.0f));
-
-    u32 Result = PackColor(R, G, B);
-    return Result;
-}
-
-inline vec3 UnpackColor3(u32 c)
-{
-    f32 R = ((c >> 0) & 0xFF) / 255.0f;
-    f32 G = ((c >> 8) & 0xFF) / 255.0f;
-    f32 B = ((c >> 16) & 0xFF) / 255.0f;
-
-    vec3 Result = { R, G, B };
-    return Result;
-}
-
-struct vertex 
-{
-    vec3 P;
-    vec3 UVW;
-    u32 Color;
-};
 
 extern PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR_;
 extern PFN_vkCmdEndRenderingKHR   vkCmdEndRenderingKHR_;
@@ -194,12 +157,11 @@ void VB_Defragment(vulkan_vertex_buffer* VB);
 
 u64 VB_GetAllocationMemoryOffset(const vulkan_vertex_buffer* VB, u32 AllocationIndex);
 
-
-// NOTE(boti): this _doesn't_ contain the swapchain images because that gets indexed
-//             separately by the result of vkAcquireNextImageKHR
 struct renderer_frame_params
 {
     u64 FrameIndex;
+
+    camera Camera;
 
     VkCommandPool CmdPool;
     VkCommandBuffer CmdBuffer;
@@ -211,6 +173,12 @@ struct renderer_frame_params
 
     VkImage DepthBuffer;
     VkImageView DepthBufferView;
+
+    VkImage SwapchainImage;
+    VkImageView SwapchainImageView;
+    u32 SwapchainImageIndex;
+
+    vulkan_renderer* Renderer;
 };
 
 struct vulkan_renderer 
@@ -253,9 +221,34 @@ struct vulkan_renderer
     };
     vulkan_rt_heap RTHeap;
 
-    u64 LatestFrameIndex;
+    u64 NextFrameIndex;
     renderer_frame_params FrameParams[16];
+
+    vulkan_staging_heap StagingHeap;
+
+    vulkan_vertex_buffer VB;
+
+    VkPipelineLayout PipelineLayout;
+    VkPipeline Pipeline;
+
+    VkSampler Sampler;
+
+    VkDescriptorSetLayout DescriptorSetLayout;
+    VkDescriptorPool DescriptorPool;
+    VkDescriptorSet DescriptorSet;
+
+    VkImage Tex;
+    VkImageView TexView;
+    VkDeviceMemory TexMemory;
 };
 
 bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer);
 bool Renderer_Initialize(vulkan_renderer* Renderer);
+
+renderer_frame_params* Renderer_NewFrame(vulkan_renderer* Renderer);
+void Renderer_SubmitFrame(vulkan_renderer* Renderer, renderer_frame_params* Frame);
+
+void Renderer_BeginRendering(renderer_frame_params* Frame);
+void Renderer_EndRendering(renderer_frame_params* Frame);
+
+void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, const chunk* Chunks);
