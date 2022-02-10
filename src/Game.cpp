@@ -20,9 +20,12 @@ static std::vector<vertex> Chunk_Mesh(const chunk* Chunk);
 static chunk* Game_ReserveChunk(game_state* GameState);
 static void Game_FindChunkNeighbors(game_state* GameState, chunk* Chunk);
 static chunk* Game_FindPlayerChunk(game_state* GameState);
+
 static void Game_LoadChunks(game_state* GameState);
 
+static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 DeltaTime);
 static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime);
+
 static void Game_Render(game_state* GameState, f32 DeltaTime);
 
 static u16 Chunk_GetVoxelType(const chunk* Chunk, s32 x, s32 y, s32 z)
@@ -580,189 +583,221 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
         Input->IsCursorEnabled = ToggleCursor();
     }
 
+    Game_UpdatePlayer(GameState, Input, DeltaTime);
+}
 
-    // Player update
+static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
+{
+    TIMED_FUNCTION();
+    constexpr f32 MouseTurnSpeed = 2.5e-3f;
+
+    player* Player = &GameState->Player;
+
+    if (!Input->IsCursorEnabled)
     {
-        TIMED_BLOCK("UpdatePlayer");
-        constexpr f32 MouseTurnSpeed = 5e-3f;
+        Player->Camera.Yaw -= Input->MouseDelta.x * MouseTurnSpeed;
+        Player->Camera.Pitch -= Input->MouseDelta.y * MouseTurnSpeed;
+    }
+    constexpr f32 CameraClamp = 0.5f * PI - 1e-3f;
+    Player->Camera.Pitch = Clamp(Player->Camera.Pitch, -CameraClamp, CameraClamp);
 
-        player* Player = &GameState->Player;
+    // Camera axes in world space
+    mat4 Transform = Player->Camera.GetTransform();
+    vec3 Forward = TransformDirection(Transform, { 0.0f, 0.0f, 1.0f });
+    vec3 Right   = TransformDirection(Transform, { 1.0f, 0.0f, 0.0f });
+    vec3 Up      = TransformDirection(Transform, { 0.0f, -1.0f, 0.0f });
 
-        if (!Input->IsCursorEnabled)
+    // Project directions to the XY plane for movement
+    Forward = Normalize(vec3{ Forward.x, Forward.y, 0.0f });
+    Right = Normalize(vec3{ Right.x, Right.y, 0.0f });
+    Up = { 0.0f, 0.0f, 1.0f };
+
+    vec3 DesiredMoveDirection = {};
+    if (Input->Forward)
+    {
+        DesiredMoveDirection += Forward;
+    }
+    if (Input->Back)
+    {
+        DesiredMoveDirection -= Forward;
+    }
+    if (Input->Right)
+    {
+        DesiredMoveDirection += Right;
+    }
+    if (Input->Left)
+    {
+        DesiredMoveDirection -= Right;
+    }
+    DesiredMoveDirection = SafeNormalize(DesiredMoveDirection);
+
+    constexpr f32 WalkSpeed = 4.0f;
+    constexpr f32 RunSpeed = 7.75f;
+    
+    vec3 Acceleration = {};
+    if (Player->WasGroundedLastFrame)
+    {
+        // Walk/Run controls
+
+        // Clear xy for now, we always move at a fixed speed
+        Player->Velocity.x = 0.0f;
+        Player->Velocity.y = 0.0f;
+        
+        f32 Speed = Input->LeftShift ? RunSpeed : WalkSpeed;
+        vec3 dVelocity = DesiredMoveDirection * Speed;
+        
+        Player->Velocity += dVelocity;
+
+        if (Input->Space)
         {
-            Player->Camera.Yaw -= Input->MouseDelta.x * MouseTurnSpeed;
-            Player->Camera.Pitch -= Input->MouseDelta.y * MouseTurnSpeed;
-        }
-        constexpr f32 CameraClamp = 0.5f * PI - 1e-3f;
-        Player->Camera.Pitch = Clamp(Player->Camera.Pitch, -CameraClamp, CameraClamp);
-
-        // Camera axes in world space
-        mat4 Transform = Player->Camera.GetTransform();
-        vec3 Forward = TransformDirection(Transform, { 0.0f, 0.0f, 1.0f });
-        vec3 Right   = TransformDirection(Transform, { 1.0f, 0.0f, 0.0f });
-        vec3 Up      = TransformDirection(Transform, { 0.0f, -1.0f, 0.0f });
-
-        // Project directions (except up) to the XY plane for movement
-        Forward = Normalize(vec3{ Forward.x, Forward.y, 0.0f });
-        Right = Normalize(vec3{ Right.x, Right.y, 0.0f });
-        Up = { 0.0f, 0.0f, 1.0f };
-
-        // HACK: save z velocity so that we can restore it to keep gravity
-        f32 VelocityZ = Player->Velocity.z;
-        Player->Velocity = {};
-        if (Input->Forward)
-        {
-            Player->Velocity += Forward;
-        }
-        if (Input->Back)
-        {
-            Player->Velocity -= Forward;
-        }
-        if (Input->Right)
-        {
-            Player->Velocity += Right;
-        }
-        if (Input->Left)
-        {
-            Player->Velocity -= Right;
-        }
-
-        Player->Velocity = SafeNormalize(Player->Velocity);
-
-        constexpr f32 MoveSpeed = 4.0f;
-        f32 SpeedMul = 1.0f;
-        if (Input->LeftShift)
-        {
-            SpeedMul *= 1.75f;
-        }
-        Player->Velocity *= MoveSpeed * SpeedMul;
-
-        constexpr f32 Gravity = 10.0f;
-        vec3 Acceleration = { 0.0f, 0.0f, -Gravity };
-        Player->Velocity.z = VelocityZ;
-        Player->Velocity += Acceleration * DeltaTime;
-
-        if (Input->Space && Player->WasGroundedLastFrame)
-        {
-            constexpr f32 JumpVelocity = 4.8989795f;
+            constexpr f32 DesiredJumpHeight = 1.2f; // This is here just for reference
+            constexpr f32 JumpVelocity = 7.7459667f; // sqrt(2 * Gravity * DesiredJumpHeight)
             Player->Velocity.z += JumpVelocity;
         }
+    }
+    else
+    {
+        // Duplicate walk code for now, but we'll want drag probably
+        Player->Velocity.x = 0.0f;
+        Player->Velocity.y = 0.0f;
+        
+        f32 Speed = Input->LeftShift ? RunSpeed : WalkSpeed;
+        vec3 dVelocity = DesiredMoveDirection * Speed;
+        
+        Player->Velocity += dVelocity;
+    }
 
-        Player->Camera.P += (Player->Velocity + 0.5f * Acceleration * DeltaTime) * DeltaTime;
-        Player->WasGroundedLastFrame = false;
+    constexpr f32 Gravity = 25.0f;
+    
+    Acceleration += vec3{ 0.0f, 0.0f, -Gravity };
+    Player->Velocity += Acceleration * dt;
 
-        // Collision
+    Player->Camera.P += (Player->Velocity + 0.5f * Acceleration * dt) * dt;
+    Player->WasGroundedLastFrame = false;
+
+    DebugPrint("Pv: { %.2f, %.2f, %.2f }\n", Player->Velocity.x, Player->Velocity.y, Player->Velocity.z);
+
+    // Collision
+    {
+        TIMED_BLOCK("Collision");
+
+        chunk* PlayerChunk = Game_FindPlayerChunk(GameState);
+        assert(PlayerChunk);
+        assert(
+            PlayerChunk->Neighbors[East] &&
+            PlayerChunk->Neighbors[North] &&
+            PlayerChunk->Neighbors[West] &&
+            PlayerChunk->Neighbors[South]);
+
+        constexpr f32 PlayerHeight = 1.8f;
+        constexpr f32 PlayerEyeHeight = 1.75f;
+        constexpr f32 PlayerLegHeight = 0.51f;
+        constexpr f32 PlayerWidth = 0.6f;
+
+        vec3 PlayerAABBMin = 
+        { 
+            Player->Camera.P.x - 0.5f * PlayerWidth, 
+            Player->Camera.P.y - 0.5f * PlayerWidth, 
+            Player->Camera.P.z - PlayerEyeHeight 
+        };
+        vec3 PlayerAABBMax = 
+        { 
+            Player->Camera.P.x + 0.5f * PlayerWidth, 
+            Player->Camera.P.y + 0.5f * PlayerWidth, 
+            Player->Camera.P.z + (PlayerHeight - PlayerEyeHeight) 
+        };
+
+        vec3i ChunkP = (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
+
+        // Relative coordinates 
+        vec3 MinP = PlayerAABBMin - (vec3)ChunkP;
+        vec3 MaxP = PlayerAABBMax - (vec3)ChunkP;
+
+        vec3i MinPi = (vec3i)Floor(MinP);
+        vec3i MaxPi = (vec3i)Ceil(MaxP);
+
+        vec3 Displacement = {};
+        vec3 PenetrationSigns = {};
+        bool SkipCoords[3] = { false, false, false };
+
+        bool IsCollision = false;
+        for (s32 z = MinPi.z; z <= MaxPi.z; z++)
         {
-            TIMED_BLOCK("Collision");
-
-            chunk* PlayerChunk = Game_FindPlayerChunk(GameState);
-            assert(PlayerChunk);
-            assert(
-                PlayerChunk->Neighbors[East] &&
-                PlayerChunk->Neighbors[North] &&
-                PlayerChunk->Neighbors[West] &&
-                PlayerChunk->Neighbors[South]);
-
-            constexpr f32 PlayerHeight = 1.8f;
-            constexpr f32 PlayerEyeHeight = 1.75f;
-            constexpr f32 PlayerWidth = 0.6f;
-
-            vec3 PlayerAABBMin = 
-            { 
-                Player->Camera.P.x - 0.5f * PlayerWidth, 
-                Player->Camera.P.y - 0.5f * PlayerWidth, 
-                Player->Camera.P.z - PlayerEyeHeight 
-            };
-            vec3 PlayerAABBMax = 
-            { 
-                Player->Camera.P.x + 0.5f * PlayerWidth, 
-                Player->Camera.P.y + 0.5f * PlayerWidth, 
-                Player->Camera.P.z + (PlayerHeight - PlayerEyeHeight) 
-            };
-            
-            vec3i ChunkP = (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
-
-            // Relative coordinates 
-            vec3 MinP = PlayerAABBMin - (vec3)ChunkP;
-            vec3 MaxP = PlayerAABBMax - (vec3)ChunkP;
-            
-            vec3i MinPi = (vec3i)Floor(MinP);
-            vec3i MaxPi = (vec3i)Ceil(MaxP);
-            
-            vec3 Displacement = {};
-            vec3 PenetrationSigns = {};
-            bool SkipCoords[3] = { false, false, false };
-
-            bool IsCollision = false;
-            for (s32 z = MinPi.z; z <= MaxPi.z; z++)
+            for (s32 y = MinPi.y; y <= MaxPi.y; y++)
             {
-                for (s32 y = MinPi.y; y <= MaxPi.y; y++)
+                for (s32 x = MinPi.x; x <= MaxPi.x; x++)
                 {
-                    for (s32 x = MinPi.x; x <= MaxPi.x; x++)
+                    u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, x, y, z);
+                    if (VoxelType == VOXEL_GROUND)
                     {
-                        u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, x, y, z);
-                        if (VoxelType == VOXEL_GROUND)
+                        vec3 VoxelMinP = { (f32)x, (f32)y, (f32)z };
+                        vec3 VoxelMaxP = { (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) };
+
+                        if ((MinP.x <= VoxelMaxP.x) && (VoxelMinP.x < MaxP.x) &&
+                            (MinP.y <= VoxelMaxP.y) && (VoxelMinP.y < MaxP.y) &&
+                            (MinP.z <= VoxelMaxP.z) && (VoxelMinP.z < MaxP.z))
                         {
-                            vec3 VoxelMinP = { (f32)x, (f32)y, (f32)z };
-                            vec3 VoxelMaxP = { (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) };
+                            IsCollision = true;
+                            vec3 Penetration = {};
 
-                            if ((MinP.x <= VoxelMaxP.x) && (VoxelMinP.x < MaxP.x) &&
-                                (MinP.y <= VoxelMaxP.y) && (VoxelMinP.y < MaxP.y) &&
-                                (MinP.z <= VoxelMaxP.z) && (VoxelMinP.z < MaxP.z))
+                            f32 MinPenetration = F32_MAX_NORMAL;
+                            s32 MinCoord = -1;
+                            for (s32 i = 0; i < 3; i++)
                             {
-                                IsCollision = true;
-                                vec3 Penetration = {};
+                                f32 AxisPenetration = (MaxP[i] < VoxelMaxP[i]) ? VoxelMinP[i] - MaxP[i] : VoxelMaxP[i] - MinP[i];
 
-                                f32 MinPenetration = F32_MAX_NORMAL;
-                                s32 MinCoord = -1;
-                                for (s32 i = 0; i < 3; i++)
+                                if (Abs(AxisPenetration) < Abs(MinPenetration))
                                 {
-                                    f32 AxisPenetration = (MaxP[i] < VoxelMaxP[i]) ? VoxelMinP[i] - MaxP[i] : VoxelMaxP[i] - MinP[i];
-                                    
-                                    if (Abs(AxisPenetration) < Abs(MinPenetration))
-                                    {
-                                        MinPenetration = AxisPenetration;
-                                        MinCoord = i;
-                                    }
-                                    Penetration[i] = AxisPenetration;
+                                    MinPenetration = AxisPenetration;
+                                    MinCoord = i;
                                 }
-                                assert(MinCoord != -1);
+                                Penetration[i] = AxisPenetration;
+                            }
+                            assert(MinCoord != -1);
 
-                                if ((Displacement[MinCoord] != 0.0f) && (ExtractSign(Displacement[MinCoord]) != ExtractSign(Penetration[MinCoord])))
+                            if ((Displacement[MinCoord] != 0.0f) && (ExtractSign(Displacement[MinCoord]) != ExtractSign(Penetration[MinCoord])))
+                            {
+                                SkipCoords[MinCoord] = true;
+                            }
+                            else
+                            {
+                                //vec3 Displacement = {};
+                                //Displacement[MinCoord] = Penetration[MinCoord];
+                                if (Abs(Displacement[MinCoord]) < Abs(Penetration[MinCoord]))
                                 {
-                                    SkipCoords[MinCoord] = true;
-                                }
-                                else
-                                {
-                                    //vec3 Displacement = {};
-                                    //Displacement[MinCoord] = Penetration[MinCoord];
-                                    if (Abs(Displacement[MinCoord]) < Abs(Penetration[MinCoord]))
-                                    {
-                                        Displacement[MinCoord] = Penetration[MinCoord];
-                                    }
+                                    Displacement[MinCoord] = Penetration[MinCoord];
                                 }
                             }
                         }
                     }
                 }
             }
+        }
 
-            if (IsCollision)
+        if (IsCollision)
+        {
+            Player->Camera.P += Displacement;
+#if 0
+            constexpr f32 Epsilon = 1e-7f;
+            vec3 Adjustment = { Signum(Displacement.x) * Epsilon, Signum(Displacement.y) * Epsilon, Signum(Displacement.z) * Epsilon };
+            Player->Camera.P += Adjustment;
+#endif
+            
+            // Clear velocities in the directions we collided
+            for (s32 i = 0; i < 3; i++)
             {
-                Player->Camera.P += Displacement;
-                // Clear velocities in the directions we collided
-                for (s32 i = 0; i < 3; i++)
+                if (!SkipCoords[i])
                 {
                     if (Displacement[i] != 0.0f)
                     {
                         Player->Velocity[i] = 0.0f;
                     }
                 }
+            }
 
-                if (Displacement.z > 0.0f)
-                {
-                    Player->WasGroundedLastFrame = true;
-                }
+            if (Displacement.z > 0.0f)
+            {
+                Player->WasGroundedLastFrame = true;
             }
         }
     }
