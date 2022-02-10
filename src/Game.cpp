@@ -575,6 +575,12 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
 
     Game_LoadChunks(GameState);
 
+    if (Input->EscapePressed)
+    {
+        Input->IsCursorEnabled = ToggleCursor();
+    }
+
+
     // Player update
     {
         TIMED_BLOCK("UpdatePlayer");
@@ -582,9 +588,11 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
 
         player* Player = &GameState->Player;
 
-        Player->Camera.Yaw -= Input->MouseDelta.x * MouseTurnSpeed;
-        Player->Camera.Pitch -= Input->MouseDelta.y * MouseTurnSpeed;
-
+        if (!Input->IsCursorEnabled)
+        {
+            Player->Camera.Yaw -= Input->MouseDelta.x * MouseTurnSpeed;
+            Player->Camera.Pitch -= Input->MouseDelta.y * MouseTurnSpeed;
+        }
         constexpr f32 CameraClamp = 0.5f * PI - 1e-3f;
         Player->Camera.Pitch = Clamp(Player->Camera.Pitch, -CameraClamp, CameraClamp);
 
@@ -661,15 +669,15 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
 
             vec3 PlayerAABBMin = 
             { 
-                GameState->Player.Camera.P.x - PlayerWidth, 
-                GameState->Player.Camera.P.y - PlayerWidth, 
-                GameState->Player.Camera.P.z - PlayerEyeHeight 
+                Player->Camera.P.x - 0.5f * PlayerWidth, 
+                Player->Camera.P.y - 0.5f * PlayerWidth, 
+                Player->Camera.P.z - PlayerEyeHeight 
             };
             vec3 PlayerAABBMax = 
             { 
-                GameState->Player.Camera.P.x + PlayerWidth, 
-                GameState->Player.Camera.P.y + PlayerWidth, 
-                GameState->Player.Camera.P.z + (PlayerHeight - PlayerEyeHeight) 
+                Player->Camera.P.x + 0.5f * PlayerWidth, 
+                Player->Camera.P.y + 0.5f * PlayerWidth, 
+                Player->Camera.P.z + (PlayerHeight - PlayerEyeHeight) 
             };
             
             vec3i ChunkP = (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
@@ -755,7 +763,6 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
                 {
                     Player->WasGroundedLastFrame = true;
                 }
-                //DebugPrint("Collision\n");
             }
         }
     }
@@ -792,7 +799,6 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
         GameState->VB.MemorySize >> 20,
         100.0 * GameState->VB.MemoryUsage / GameState->VB.MemorySize);
 #endif
-
     
     // Init frame params
     u64 FrameIndex = Renderer->LatestFrameIndex;
@@ -1830,6 +1836,13 @@ bool Game_Initialize(game_state* GameState)
 void Game_UpdateAndRender(game_state* GameState, game_input* Input, f32 DeltaTime)
 {
     TIMED_FUNCTION();
+
+    // Disable stepping if there was giant lag-spike
+    // TODO: The physics step should subdivide the frame when dt gets too large
+    if (DeltaTime > 0.4f)
+    {
+        DeltaTime = 0.0f;
+    }
 
     Game_Update(GameState, Input, DeltaTime);
     Game_Render(GameState, DeltaTime);

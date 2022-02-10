@@ -97,8 +97,12 @@ struct player
 
 struct game_input
 {
+    bool IsCursorEnabled;
+    vec2 MouseP;
     vec2 MouseDelta;
-    
+
+    bool EscapePressed;
+
     bool Forward;
     bool Back;
     bool Right;

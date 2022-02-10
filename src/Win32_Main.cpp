@@ -2,6 +2,7 @@
 #include <windowsx.h>
 #include <io.h>
 #include <fcntl.h>
+#include <hidusage.h>
 
 #include <cstdlib>
 #include <cstdio>
@@ -24,17 +25,53 @@ struct win32_state
 {
     HINSTANCE Instance;
     HWND Window;
+
+    WINDOWPLACEMENT PrevWindowPlacement = { sizeof(WINDOWPLACEMENT) };
+    DWORD WindowStyle;
     BOOL WasWindowResized;
     BOOL IsMinimized;
     BOOL IsFullscreen;
-    WINDOWPLACEMENT PrevWindowPlacement = { sizeof(WINDOWPLACEMENT) };
+    
+    s64 PerformanceFrequency;
 
     BOOL HasDebugger;
 
     vec2i MouseLDownP;
-    s64 PerformanceFrequency;
+    bool IsCursorDisabled;
 };
 static win32_state Win32State;
+
+static bool SetClipCursorToWindow(bool Clip)
+{
+    if (Clip)
+    {
+        RECT Rect;
+        GetClientRect(Win32State.Window, &Rect);
+        POINT P0 = { Rect.left, Rect.top };
+        POINT P1 = { Rect.right, Rect.bottom };
+        ClientToScreen(Win32State.Window, &P0);
+        ClientToScreen(Win32State.Window, &P1);
+        Rect = 
+        { 
+            .left = P0.x, .top = P0.y, 
+            .right = P1.x, .bottom = P1.y,
+        };
+        ClipCursor(&Rect);
+    }
+    else
+    {
+        ClipCursor(nullptr);
+    }
+    return Clip;
+}
+
+bool ToggleCursor()
+{
+    Win32State.IsCursorDisabled = !Win32State.IsCursorDisabled;
+    SetClipCursorToWindow(Win32State.IsCursorDisabled);
+    ShowCursor(!Win32State.IsCursorDisabled);
+    return !Win32State.IsCursorDisabled;
+}
 
 s64 GetPerformanceCounter()
 {
@@ -81,6 +118,10 @@ static bool win32_ToggleFullscreen()
         SetWindowPos(Win32State.Window, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
     }
 
+    // Refresh clip rect
+    SetClipCursorToWindow(Win32State.IsCursorDisabled);
+
+    Win32State.WindowStyle = GetWindowLongA(Win32State.Window, GWL_STYLE);
     Win32State.IsFullscreen = !IsFullscreen;
     return Win32State.IsFullscreen;
 }
@@ -211,8 +252,7 @@ static LRESULT CALLBACK MainWindowProc(HWND Window, UINT Message, WPARAM WParam,
         case WM_ERASEBKGND:
         {
             Result = 1;
-            break;
-        };
+        } break;
         case WM_LBUTTONDOWN:
         case WM_LBUTTONUP:
         case WM_MOUSEMOVE:
@@ -241,21 +281,50 @@ static LRESULT CALLBACK MainWindowProc(HWND Window, UINT Message, WPARAM WParam,
 
 static bool win32_ProcessInput(game_input* Input)
 {
+    // Clear non-sticky input
     Input->MouseDelta = {};
-    MSG Message = {};
+    Input->EscapePressed = false;
 
     // NOTE(boti): Don't use multiple loops to remove only a certain range of messages, 
     //             See: https://docs.microsoft.com/en-us/troubleshoot/windows/win32/application-using-message-filters-unresponsive-win10
+    MSG Message = {};
     while (PeekMessageA(&Message, nullptr, 0, 0, PM_REMOVE))
     {
         switch (Message.message)
         {
+            case WM_INPUT:
+            {
+                if (Message.wParam == RIM_INPUT)
+                {
+                    HRAWINPUT Handle = (HRAWINPUT)Message.lParam;
+
+                    RAWINPUT RawInput = {};
+
+                    UINT Size = sizeof(RawInput);
+                    if (GetRawInputData(Handle, RID_INPUT, &RawInput, &Size, sizeof(RawInput.header)) <= sizeof(RawInput))
+                    {
+                        if (RawInput.header.dwType == RIM_TYPEMOUSE)
+                        {
+                            const RAWMOUSE* Mouse = &RawInput.data.mouse;
+                            vec2 Delta = { (f32)Mouse->lLastX, (f32)Mouse->lLastY };
+                            Input->MouseDelta += Delta;
+                        }
+                    }
+                    else
+                    {
+                        // TODO
+                    }
+
+                    DefWindowProcA(Message.hwnd, Message.message, Message.wParam, Message.lParam);
+                }
+            } break; 
             case WM_SYSKEYDOWN:
             case WM_SYSKEYUP:
             case WM_KEYDOWN:
             case WM_KEYUP:
             {
                 bool IsDown = (Message.lParam & (1 << 31)) == 0;
+                bool WasDown = (Message.lParam & (1 << 30)) != 0;
                 switch (Message.wParam)
                 {
                     case 'W': Input->Forward = IsDown; break;
@@ -269,11 +338,17 @@ static bool win32_ProcessInput(game_input* Input)
                     case VK_LCONTROL: Input->LeftControl = IsDown; break;
                     case VK_MENU:
                     case VK_LMENU: Input->LeftAlt = IsDown; break;
+                    case VK_ESCAPE:
+                    {
+                        if (IsDown && !WasDown)
+                        {
+                            Input->EscapePressed = true;
+                        }
+                    } break;
                 }
             } break;
             case WM_LBUTTONDOWN:
             {
-                Win32State.MouseLDownP = { GET_X_LPARAM(Message.lParam), GET_Y_LPARAM(Message.lParam) };
                 SetCapture(Win32State.Window);
             } break;
             case WM_LBUTTONUP:
@@ -283,14 +358,7 @@ static bool win32_ProcessInput(game_input* Input)
             case WM_MOUSEMOVE:
             {
                 vec2i P = { GET_X_LPARAM(Message.lParam), GET_Y_LPARAM(Message.lParam) };
-                bool IsLButtonDown = (Message.wParam & MK_LBUTTON) != 0;
-                if (IsLButtonDown)
-                {
-                    Input->MouseDelta.x += (f32)(P.x - Win32State.MouseLDownP.x);
-                    Input->MouseDelta.y += (f32)(P.y - Win32State.MouseLDownP.y);
-
-                    Win32State.MouseLDownP = P;
-                }
+                Input->MouseP = (vec2)P;
             } break;
 
             case WM_QUIT: return true;
@@ -336,7 +404,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     }
 #endif
     
-    
     WNDCLASSA WindowClass = 
     {
         .style = CS_HREDRAW | CS_VREDRAW,
@@ -351,9 +418,9 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         return -1;
     }
     
-    DWORD WindowStyle = WS_OVERLAPPEDWINDOW;
+    Win32State.WindowStyle = WS_OVERLAPPEDWINDOW;
     Win32State.Window = CreateWindowA(Win32_ClassName, Win32_WindowTitle,
-                                      WindowStyle,
+                                      Win32State.WindowStyle,
                                       CW_USEDEFAULT, CW_USEDEFAULT,
                                       CW_USEDEFAULT, CW_USEDEFAULT,
                                       nullptr, nullptr, Win32State.Instance, nullptr);
@@ -365,6 +432,27 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     
     ShowWindow(Win32State.Window, SW_SHOW);
     
+    // Init raw input
+    {
+        RAWINPUTDEVICE Devices[] = 
+        {
+            // Mouse
+            {
+                .usUsagePage = HID_USAGE_PAGE_GENERIC,
+                .usUsage = HID_USAGE_GENERIC_MOUSE,
+                .dwFlags = RIDEV_INPUTSINK,
+                .hwndTarget = Win32State.Window,
+            },
+        };
+        constexpr u32 DeviceCount = CountOf(Devices);
+
+        BOOL Result = RegisterRawInputDevices(Devices, DeviceCount, sizeof(RAWINPUTDEVICE));
+        if (!Result)
+        {
+            return -1;
+        }
+    }
+
     GameState.Renderer = &Renderer;
 
     // Allocate memory
@@ -373,6 +461,8 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         GameState.Chunks = (chunk*)VirtualAlloc(nullptr, ChunkHeadersSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
         if (!GameState.Chunks)
         {
+            DWORD ErrorCode = GetLastError();
+            DebugPrint("Memory allocation failed: %x\n", ErrorCode);
             return -1;
         }
 
@@ -406,6 +496,12 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         s64 StartTime;
         QueryPerformanceCounter((LARGE_INTEGER*)&StartTime);
 
+#if DEVELOPER
+        if (IsHungAppWindow(Win32State.Window))
+        {
+            assert(!"App hung");
+        }
+#endif
         // Show frame time in window title
         {
             constexpr size_t BuffSize = 256;
@@ -430,6 +526,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
             GameState.NeedRendererResize = true;
             Win32State.WasWindowResized = FALSE;
         }
+        Input.IsCursorEnabled = !Win32State.IsCursorDisabled;
         GameState.IsMinimized = Win32State.IsMinimized;
 
         Game_UpdateAndRender(&GameState, &Input, DeltaTime);
@@ -451,5 +548,11 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         FrameCount++;
     }
     
+    if (Win32State.IsCursorDisabled)
+    {
+        ClipCursor(nullptr);
+        ShowCursor(TRUE);
+    }
+
     return 0;
 }
