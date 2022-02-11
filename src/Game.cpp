@@ -173,6 +173,7 @@ static void Game_LoadChunks(game_state* GameState)
         if (PlayerChunk)
         {
             Stack[StackAt++] = PlayerChunk;
+            PlayerChunk->P = PlayerChunkP;
         }
         else
         {
@@ -482,7 +483,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     Player->Velocity += Acceleration * dt;
 
     vec3 dP = (Player->Velocity + 0.5f * Acceleration * dt) * dt;
-    Player->P += dP;
+    //Player->P += dP;
     Player->WasGroundedLastFrame = false;
 
     //DebugPrint("Pv: { %.2f, %.2f, %.2f }\n", Player->Velocity.x, Player->Velocity.y, Player->Velocity.z);
@@ -499,94 +500,120 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
             PlayerChunk->Neighbors[West] &&
             PlayerChunk->Neighbors[South]);
 
-        constexpr f32 PlayerHeight = 1.8f;
-        constexpr f32 PlayerEyeHeight = 1.75f;
-        constexpr f32 PlayerLegHeight = 0.51f;
-        constexpr f32 PlayerWidth = 0.6f;
-
-        aabb PlayerAABBAbsolute = Player_GetAABB(Player);
-        
-        vec3i ChunkP = (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
-
-        // Relative coordinates 
-        aabb PlayerAABB = 
+        auto ResolveCollisions = [&PlayerChunk, &Player](vec3 dP) -> vec3
         {
-            PlayerAABBAbsolute.Min - (vec3)ChunkP,
-            PlayerAABBAbsolute.Max - (vec3)ChunkP,
-        };
+            Player->P += dP;
 
-        vec3i MinPi = (vec3i)Floor(PlayerAABB.Min);
-        vec3i MaxPi = (vec3i)Ceil(PlayerAABB.Max);
+            aabb PlayerAABBAbsolute = Player_GetAABB(Player);
+            vec3i ChunkP = (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
 
-        vec3 Displacement = {};
-        vec3 PenetrationSigns = {};
-        bool SkipCoords[3] = { false, false, false };
-
-        bool IsCollision = false;
-        for (s32 z = MinPi.z; z <= MaxPi.z; z++)
-        {
-            for (s32 y = MinPi.y; y <= MaxPi.y; y++)
+            // Relative coordinates 
+            aabb PlayerAABB = 
             {
-                for (s32 x = MinPi.x; x <= MaxPi.x; x++)
+                PlayerAABBAbsolute.Min - (vec3)ChunkP,
+                PlayerAABBAbsolute.Max - (vec3)ChunkP,
+            };
+
+            vec3i MinPi = (vec3i)Floor(PlayerAABB.Min);
+            vec3i MaxPi = (vec3i)Ceil(PlayerAABB.Max);
+
+            vec3 Displacement = {};
+            bool SkipCoords[3] = { false, false, false };
+
+            constexpr u32 AABBStackSize = 16;
+            u32 AABBAt = 0;
+            aabb AABBStack[AABBStackSize];
+
+            for (s32 z = MinPi.z; z <= MaxPi.z; z++)
+            {
+                for (s32 y = MinPi.y; y <= MaxPi.y; y++)
                 {
-                    u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, x, y, z);
-                    if (VoxelType != VOXEL_AIR)
+                    for (s32 x = MinPi.x; x <= MaxPi.x; x++)
                     {
-                        aabb VoxelAABB = 
+                        u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, x, y, z);
+                        if (VoxelType != VOXEL_AIR)
                         {
-                            .Min = { (f32)x, (f32)y, (f32)z },
-                            .Max = { (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) },
-                        };
-
-                        vec3 Overlap;
-                        int MinCoord;
-
-                        if (AABB_Intersect(PlayerAABB, VoxelAABB, Overlap, MinCoord))
-                        {
-                            IsCollision = true;
-
-                            if ((Displacement[MinCoord] != 0.0f) && (ExtractSign(Displacement[MinCoord]) != ExtractSign(Overlap[MinCoord])))
+                            assert(AABBAt < AABBStackSize);
+                            aabb VoxelAABB = 
                             {
-                                SkipCoords[MinCoord] = true;
-                            }
-                            else
-                            {
-                                if (Abs(Displacement[MinCoord]) < Abs(Overlap[MinCoord]))
-                                {
-                                    Displacement[MinCoord] = Overlap[MinCoord];
-                                }
-                            }
+                                .Min = { (f32)x, (f32)y, (f32)z },
+                                .Max = { (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) },
+                            };
+                            AABBStack[AABBAt++] = VoxelAABB;
                         }
                     }
                 }
             }
-        }
 
-        if (IsCollision)
-        {
-            Player->P += Displacement;
-#if 0
-            constexpr f32 Epsilon = 1e-7f;
-            vec3 Adjustment = { Signum(Displacement.x) * Epsilon, Signum(Displacement.y) * Epsilon, Signum(Displacement.z) * Epsilon };
-            Player->Camera.P += Adjustment;
-#endif
-            
-            // Clear velocities in the directions we collided
-            for (s32 i = 0; i < 3; i++)
+            // Merge AABBs
+            bool MergedLastPass = true;
+            while (MergedLastPass)
             {
-                if (!SkipCoords[i])
+                MergedLastPass = false;
+
+                for (u32 i = 0; i < AABBAt; i++)
                 {
-                    if (Displacement[i] != 0.0f)
+
+                }
+            }
+
+            bool IsCollision = false;
+            for (u32 i = 0; i < AABBAt; i++)
+            {
+                vec3 Overlap;
+                int MinCoord;
+                if (AABB_Intersect(PlayerAABB, AABBStack[i], Overlap, MinCoord))
+                {
+                    IsCollision = true;
+
+                    if ((Displacement[MinCoord] != 0.0f) && (ExtractSign(Displacement[MinCoord]) != ExtractSign(Overlap[MinCoord])))
                     {
-                        Player->Velocity[i] = 0.0f;
+                        SkipCoords[MinCoord] = true;
+                    }
+                    else
+                    {
+                        if (Abs(Displacement[MinCoord]) < Abs(Overlap[MinCoord]))
+                        {
+                            Displacement[MinCoord] = Overlap[MinCoord];
+                        }
                     }
                 }
             }
 
-            if (Displacement.z > 0.0f)
+            if (IsCollision)
             {
-                Player->WasGroundedLastFrame = true;
+                Player->P += Displacement;
+
+                // Clear velocities in the directions we collided
+                for (s32 i = 0; i < 3; i++)
+                {
+                    if (!SkipCoords[i])
+                    {
+                        if (Displacement[i] != 0.0f)
+                        {
+                            Player->Velocity[i] = 0.0f;
+                        }
+                    }
+                }
             }
+            return Displacement;
+        };
+
+        // Apply movement and resolve collisions separately on the axes
+        vec3 Displacement = ResolveCollisions(vec3{0.0f, 0.0f, dP.z});
+        if (Displacement.z > 0.0f)
+        {
+            Player->WasGroundedLastFrame = true;
+        }
+        if (Abs(dP.x) > Abs(dP.y))
+        {
+            ResolveCollisions(vec3{dP.x, 0.0f, 0.0f});
+            ResolveCollisions(vec3{0.0f, dP.y, 0.0f});
+        }
+        else
+        {
+            ResolveCollisions(vec3{0.0f, dP.y, 0.0f});
+            ResolveCollisions(vec3{dP.x, 0.0f, 0.0f});
         }
     }
 }
@@ -647,7 +674,7 @@ bool Game_Initialize(game_state* GameState)
     }
     
     // Place the player in the middle of the starting chunk
-    GameState->Player.P = { 0.5f * CHUNK_DIM_X + 0.5f, 0.5f * CHUNK_DIM_Y + 0.5f, 100.0f };
+    GameState->Player.P = { (0.5f * CHUNK_DIM_X + 0.5f), 0.5f * CHUNK_DIM_Y + 0.5f, 100.0f };
 
     Perlin2_Init(&GameState->Perlin, 0);
 
