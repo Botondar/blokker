@@ -14,6 +14,65 @@
 #include "Chunk.cpp"
 #include "Profiler.cpp"
 
+static bool AABB_Intersect(const aabb& A, const aabb& B, vec3& Overlap, int& MinCoord)
+{
+    vec3 Overlap_ = {};
+    f32 MinOverlap = F32_MAX_NORMAL;
+    int MinCoord_ = -1;
+
+    bool IsCollision = true;
+    for (int i = 0; i < 3; i++)
+    {
+        if ((A.Min[i] <= B.Max[i]) && (B.Min[i] < A.Max[i]))
+        {
+            Overlap_[i] = (A.Max[i] < B.Max[i]) ? B.Min[i] - A.Max[i] : B.Max[i] - A.Min[i];
+            if (Abs(Overlap_[i]) < MinOverlap)
+            {
+                MinOverlap = Abs(Overlap_[i]);
+                MinCoord_ = i;
+            }
+        }
+        else
+        {
+            IsCollision = false;
+            break;
+        }
+    }
+
+    if (IsCollision)
+    {
+        Overlap = Overlap_;
+        MinCoord = MinCoord_;
+    }
+
+    return IsCollision;
+}
+
+static aabb Player_GetAABB(const player* Player)
+{
+    constexpr f32 PlayerHeight = 1.8f;
+    constexpr f32 PlayerEyeHeight = 1.75f;
+    constexpr f32 PlayerLegHeight = 0.51f;
+    constexpr f32 PlayerWidth = 0.6f;
+
+    aabb Result = 
+    {
+        .Min = 
+        {
+            Player->P.x - 0.5f * PlayerWidth, 
+            Player->P.y - 0.5f * PlayerWidth, 
+            Player->P.z - PlayerEyeHeight 
+        },
+        .Max = 
+        {
+            Player->P.x + 0.5f * PlayerWidth, 
+            Player->P.y + 0.5f * PlayerWidth, 
+            Player->P.z + (PlayerHeight - PlayerEyeHeight) 
+        },
+    };
+    return Result;
+}
+
 static void Player_GetHorizontalAxes(const player* Player, vec3& Forward, vec3& Right)
 {
     assert(Player);
@@ -358,17 +417,6 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     constexpr f32 CameraClamp = 0.5f * PI - 1e-3f;
     Player->Pitch = Clamp(Player->Pitch, -CameraClamp, CameraClamp);
 
-    // Camera axes in world space
-#if 0
-    mat4 Transform = Player->Camera.GetTransform();
-    vec3 Forward = TransformDirection(Transform, { 0.0f, 0.0f, 1.0f });
-    vec3 Right   = TransformDirection(Transform, { 1.0f, 0.0f, 0.0f });
-    vec3 Up      = TransformDirection(Transform, { 0.0f, -1.0f, 0.0f });
-#endif
-
-    // Project directions to the XY plane for movement
-    //Forward = Normalize(vec3{ Forward.x, Forward.y, 0.0f });
-    //Right = Normalize(vec3{ Right.x, Right.y, 0.0f });
     vec3 Forward, Right;
     Player_GetHorizontalAxes(Player, Forward, Right);
     vec3 Up = { 0.0f, 0.0f, 1.0f };
@@ -433,7 +481,8 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     Acceleration += vec3{ 0.0f, 0.0f, -Gravity };
     Player->Velocity += Acceleration * dt;
 
-    Player->P += (Player->Velocity + 0.5f * Acceleration * dt) * dt;
+    vec3 dP = (Player->Velocity + 0.5f * Acceleration * dt) * dt;
+    Player->P += dP;
     Player->WasGroundedLastFrame = false;
 
     //DebugPrint("Pv: { %.2f, %.2f, %.2f }\n", Player->Velocity.x, Player->Velocity.y, Player->Velocity.z);
@@ -455,27 +504,19 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         constexpr f32 PlayerLegHeight = 0.51f;
         constexpr f32 PlayerWidth = 0.6f;
 
-        vec3 PlayerAABBMin = 
-        { 
-            Player->P.x - 0.5f * PlayerWidth, 
-            Player->P.y - 0.5f * PlayerWidth, 
-            Player->P.z - PlayerEyeHeight 
-        };
-        vec3 PlayerAABBMax = 
-        { 
-            Player->P.x + 0.5f * PlayerWidth, 
-            Player->P.y + 0.5f * PlayerWidth, 
-            Player->P.z + (PlayerHeight - PlayerEyeHeight) 
-        };
-
+        aabb PlayerAABBAbsolute = Player_GetAABB(Player);
+        
         vec3i ChunkP = (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
 
         // Relative coordinates 
-        vec3 MinP = PlayerAABBMin - (vec3)ChunkP;
-        vec3 MaxP = PlayerAABBMax - (vec3)ChunkP;
+        aabb PlayerAABB = 
+        {
+            PlayerAABBAbsolute.Min - (vec3)ChunkP,
+            PlayerAABBAbsolute.Max - (vec3)ChunkP,
+        };
 
-        vec3i MinPi = (vec3i)Floor(MinP);
-        vec3i MaxPi = (vec3i)Ceil(MaxP);
+        vec3i MinPi = (vec3i)Floor(PlayerAABB.Min);
+        vec3i MaxPi = (vec3i)Ceil(PlayerAABB.Max);
 
         vec3 Displacement = {};
         vec3 PenetrationSigns = {};
@@ -489,42 +530,30 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
                 for (s32 x = MinPi.x; x <= MaxPi.x; x++)
                 {
                     u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, x, y, z);
-                    if (VoxelType == VOXEL_GROUND)
+                    if (VoxelType != VOXEL_AIR)
                     {
-                        vec3 VoxelMinP = { (f32)x, (f32)y, (f32)z };
-                        vec3 VoxelMaxP = { (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) };
+                        aabb VoxelAABB = 
+                        {
+                            .Min = { (f32)x, (f32)y, (f32)z },
+                            .Max = { (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) },
+                        };
 
-                        if ((MinP.x <= VoxelMaxP.x) && (VoxelMinP.x < MaxP.x) &&
-                            (MinP.y <= VoxelMaxP.y) && (VoxelMinP.y < MaxP.y) &&
-                            (MinP.z <= VoxelMaxP.z) && (VoxelMinP.z < MaxP.z))
+                        vec3 Overlap;
+                        int MinCoord;
+
+                        if (AABB_Intersect(PlayerAABB, VoxelAABB, Overlap, MinCoord))
                         {
                             IsCollision = true;
-                            vec3 Penetration = {};
 
-                            f32 MinPenetration = F32_MAX_NORMAL;
-                            s32 MinCoord = -1;
-                            for (s32 i = 0; i < 3; i++)
-                            {
-                                f32 AxisPenetration = (MaxP[i] < VoxelMaxP[i]) ? VoxelMinP[i] - MaxP[i] : VoxelMaxP[i] - MinP[i];
-
-                                if (Abs(AxisPenetration) < Abs(MinPenetration))
-                                {
-                                    MinPenetration = AxisPenetration;
-                                    MinCoord = i;
-                                }
-                                Penetration[i] = AxisPenetration;
-                            }
-                            assert(MinCoord != -1);
-
-                            if ((Displacement[MinCoord] != 0.0f) && (ExtractSign(Displacement[MinCoord]) != ExtractSign(Penetration[MinCoord])))
+                            if ((Displacement[MinCoord] != 0.0f) && (ExtractSign(Displacement[MinCoord]) != ExtractSign(Overlap[MinCoord])))
                             {
                                 SkipCoords[MinCoord] = true;
                             }
                             else
                             {
-                                if (Abs(Displacement[MinCoord]) < Abs(Penetration[MinCoord]))
+                                if (Abs(Displacement[MinCoord]) < Abs(Overlap[MinCoord]))
                                 {
-                                    Displacement[MinCoord] = Penetration[MinCoord];
+                                    Displacement[MinCoord] = Overlap[MinCoord];
                                 }
                             }
                         }
