@@ -9,10 +9,13 @@
 
 struct player
 {
-    camera Camera;
+    vec3 P;
     vec3 Velocity;
+    f32 Yaw, Pitch;
     bool WasGroundedLastFrame;
 };
+
+static void Player_GetHorizontalAxes(const player* Player, vec3& Forward, vec3& Right);
 
 struct game_input
 {

@@ -14,6 +14,16 @@
 #include "Chunk.cpp"
 #include "Profiler.cpp"
 
+static void Player_GetHorizontalAxes(const player* Player, vec3& Forward, vec3& Right)
+{
+    assert(Player);
+    
+    f32 SinYaw = Sin(Player->Yaw);
+    f32 CosYaw = Cos(Player->Yaw);
+    Right = { CosYaw, SinYaw, 0.0f };
+    Forward = { -SinYaw, CosYaw, 0.0f };
+}
+
 static chunk* Game_ReserveChunk(game_state* GameState);
 static void Game_FindChunkNeighbors(game_state* GameState, chunk* Chunk);
 static chunk* Game_FindPlayerChunk(game_state* GameState);
@@ -64,7 +74,7 @@ static chunk* Game_FindPlayerChunk(game_state* GameState)
 {
     TIMED_FUNCTION();
     chunk* Result = nullptr;
-    vec2i PlayerChunkP = (vec2i)Floor(vec2{ GameState->Player.Camera.P.x / CHUNK_DIM_X, GameState->Player.Camera.P.y / CHUNK_DIM_Y });
+    vec2i PlayerChunkP = (vec2i)Floor(vec2{ GameState->Player.P.x / CHUNK_DIM_X, GameState->Player.P.y / CHUNK_DIM_Y });
 
     for (u32 i = 0; i < GameState->ChunkCount; i++)
     {
@@ -84,7 +94,7 @@ static void Game_LoadChunks(game_state* GameState)
 {
     TIMED_FUNCTION();
 
-    vec2 PlayerP = (vec2)GameState->Player.Camera.P;
+    vec2 PlayerP = (vec2)GameState->Player.P;
     vec2i PlayerChunkP = (vec2i)Floor(PlayerP / vec2{ (f32)CHUNK_DIM_X, (f32)CHUNK_DIM_Y });
 
     constexpr u32 ImmediateMeshDistance = 1;
@@ -342,22 +352,26 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
 
     if (!Input->IsCursorEnabled)
     {
-        Player->Camera.Yaw -= Input->MouseDelta.x * MouseTurnSpeed;
-        Player->Camera.Pitch -= Input->MouseDelta.y * MouseTurnSpeed;
+        Player->Yaw -= Input->MouseDelta.x * MouseTurnSpeed;
+        Player->Pitch -= Input->MouseDelta.y * MouseTurnSpeed;
     }
     constexpr f32 CameraClamp = 0.5f * PI - 1e-3f;
-    Player->Camera.Pitch = Clamp(Player->Camera.Pitch, -CameraClamp, CameraClamp);
+    Player->Pitch = Clamp(Player->Pitch, -CameraClamp, CameraClamp);
 
     // Camera axes in world space
+#if 0
     mat4 Transform = Player->Camera.GetTransform();
     vec3 Forward = TransformDirection(Transform, { 0.0f, 0.0f, 1.0f });
     vec3 Right   = TransformDirection(Transform, { 1.0f, 0.0f, 0.0f });
     vec3 Up      = TransformDirection(Transform, { 0.0f, -1.0f, 0.0f });
+#endif
 
     // Project directions to the XY plane for movement
-    Forward = Normalize(vec3{ Forward.x, Forward.y, 0.0f });
-    Right = Normalize(vec3{ Right.x, Right.y, 0.0f });
-    Up = { 0.0f, 0.0f, 1.0f };
+    //Forward = Normalize(vec3{ Forward.x, Forward.y, 0.0f });
+    //Right = Normalize(vec3{ Right.x, Right.y, 0.0f });
+    vec3 Forward, Right;
+    Player_GetHorizontalAxes(Player, Forward, Right);
+    vec3 Up = { 0.0f, 0.0f, 1.0f };
 
     vec3 DesiredMoveDirection = {};
     if (Input->Forward)
@@ -419,10 +433,10 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     Acceleration += vec3{ 0.0f, 0.0f, -Gravity };
     Player->Velocity += Acceleration * dt;
 
-    Player->Camera.P += (Player->Velocity + 0.5f * Acceleration * dt) * dt;
+    Player->P += (Player->Velocity + 0.5f * Acceleration * dt) * dt;
     Player->WasGroundedLastFrame = false;
 
-    DebugPrint("Pv: { %.2f, %.2f, %.2f }\n", Player->Velocity.x, Player->Velocity.y, Player->Velocity.z);
+    //DebugPrint("Pv: { %.2f, %.2f, %.2f }\n", Player->Velocity.x, Player->Velocity.y, Player->Velocity.z);
 
     // Collision
     {
@@ -443,15 +457,15 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
 
         vec3 PlayerAABBMin = 
         { 
-            Player->Camera.P.x - 0.5f * PlayerWidth, 
-            Player->Camera.P.y - 0.5f * PlayerWidth, 
-            Player->Camera.P.z - PlayerEyeHeight 
+            Player->P.x - 0.5f * PlayerWidth, 
+            Player->P.y - 0.5f * PlayerWidth, 
+            Player->P.z - PlayerEyeHeight 
         };
         vec3 PlayerAABBMax = 
         { 
-            Player->Camera.P.x + 0.5f * PlayerWidth, 
-            Player->Camera.P.y + 0.5f * PlayerWidth, 
-            Player->Camera.P.z + (PlayerHeight - PlayerEyeHeight) 
+            Player->P.x + 0.5f * PlayerWidth, 
+            Player->P.y + 0.5f * PlayerWidth, 
+            Player->P.z + (PlayerHeight - PlayerEyeHeight) 
         };
 
         vec3i ChunkP = (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
@@ -508,8 +522,6 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
                             }
                             else
                             {
-                                //vec3 Displacement = {};
-                                //Displacement[MinCoord] = Penetration[MinCoord];
                                 if (Abs(Displacement[MinCoord]) < Abs(Penetration[MinCoord]))
                                 {
                                     Displacement[MinCoord] = Penetration[MinCoord];
@@ -523,7 +535,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
 
         if (IsCollision)
         {
-            Player->Camera.P += Displacement;
+            Player->P += Displacement;
 #if 0
             constexpr f32 Epsilon = 1e-7f;
             vec3 Adjustment = { Signum(Displacement.x) * Epsilon, Signum(Displacement.y) * Epsilon, Signum(Displacement.z) * Epsilon };
@@ -583,7 +595,13 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
 #endif
     
     renderer_frame_params* FrameParams = Renderer_NewFrame(Renderer);
-    FrameParams->Camera = GameState->Player.Camera;
+    
+    FrameParams->Camera = camera
+    {
+        .P = GameState->Player.P,
+        .Yaw = GameState->Player.Yaw,
+        .Pitch = GameState->Player.Pitch,
+    };
 
     Renderer_BeginRendering(FrameParams);
     Renderer_RenderChunks(FrameParams, GameState->ChunkCount, GameState->Chunks);
@@ -599,9 +617,8 @@ bool Game_Initialize(game_state* GameState)
         return false;
     }
     
-    GameState->Player.Camera = {};
     // Place the player in the middle of the starting chunk
-    GameState->Player.Camera.P = { 0.5f * CHUNK_DIM_X + 0.5f, 0.5f * CHUNK_DIM_Y + 0.5f, 100.0f };
+    GameState->Player.P = { 0.5f * CHUNK_DIM_X + 0.5f, 0.5f * CHUNK_DIM_Y + 0.5f, 100.0f };
 
     Perlin2_Init(&GameState->Perlin, 0);
 
