@@ -14,6 +14,7 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_xlib.h>
 
+#include "Math.hpp"
 #include "Platform.hpp"
 
 #include "Common.hpp"
@@ -208,15 +209,15 @@ int main(int argc, char* argv[])
         720,
         0,
         CopyFromParent,
+        InputOutput,
         CopyFromParent,
-        CopyFromParent,
-        0,
-        nullptr); // TODO(mark): Kill constants
+        CWBorderPixel | CWColormap | CWEventMask,
+        &setWinAttr); // TODO(mark): Kill constants
     // TODO(mark): wnd EH
 
     XMapWindow(X11State.Display, X11State.Window);
 
-    XSelectInput(X11State.Display, X11State.Window, ExposureMask | AllEventMask | ResizeRedirectMask); // NOTE(mark): What is ExposureMask?
+    XSelectInput(X11State.Display, X11State.Window, ExposureMask | AllEventMask | PointerMotionMask | ResizeRedirectMask); // NOTE(mark): What is ExposureMask?
 
     GameState.Renderer = &Renderer;
     {
@@ -242,6 +243,8 @@ int main(int argc, char* argv[])
     u64 FrameCount = 0;
     bool IsRunning = true;
 
+    vec2i prevMousePos = { 0, 0 };
+
     while (IsRunning)
     {
         Time += DeltaTime;
@@ -266,12 +269,26 @@ int main(int argc, char* argv[])
         Input.MouseDelta = {};
         Input.EscapePressed = false;
 
+        {
+            vec2i wndMousePos;
+            vec2i rootMousePos;
+            Window rootWnd, childWnd;
+            u32 mask;
+            Input.IsCursorEnabled = false;
+            XQueryPointer(X11State.Display, X11State.Window, &rootWnd, &childWnd, &rootMousePos.x, &rootMousePos.y, &wndMousePos.x, &wndMousePos.y, &mask);
+
+            vec2i deltaMouse = wndMousePos - prevMousePos;
+            DebugPrint("x: %d | y: %d\n", deltaMouse.x, deltaMouse.y);
+            Input.MouseDelta = (vec2)deltaMouse;
+            prevMousePos = wndMousePos;
+        }
+
         while (XPending(X11State.Display))
         {
             XEvent event;
             XNextEvent(X11State.Display, &event);
             // TODO(mark): Full screen
-            DebugPrint("%x\n", event.xkey.keycode);
+            // TODO(mark): Handle exit event
             switch (event.type)
             {
                 case KeyPress:
@@ -375,7 +392,7 @@ int main(int argc, char* argv[])
                     // TODO(mark): Other stuff from Win32_Main.cppL257 (win32_ProcessInput)
             }
         }
-        Input.IsCursorEnabled = !X11State.IsCursorDisabled;
+        Input.IsCursorEnabled = false; // !X11State.IsCursorDisabled;
         Game_UpdateAndRender(&GameState, &Input, DeltaTime);
         GameState.NeedRendererResize = false;
 
