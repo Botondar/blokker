@@ -54,7 +54,7 @@ struct game_state
     bool NeedRendererResize;
     bool IsMinimized;
 
-    //camera Camera;
+    u64 FrameIndex;
     player Player;
 
     perlin2 Perlin;

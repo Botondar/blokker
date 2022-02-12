@@ -547,6 +547,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         Input.IsCursorEnabled = !Win32State.IsCursorDisabled;
         GameState.IsMinimized = Win32State.IsMinimized;
 
+        GameState.FrameIndex = FrameCount;
         Game_UpdateAndRender(&GameState, &Input, DeltaTime);
 
         // Since there's no rendering when we're minimzed we don't want to be burning the CPU
@@ -555,7 +556,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
             Sleep(20);
         }
 
-        GlobalProfiler.Print(12.0e-3f);
+        GlobalProfiler.Print(33.0e-3f);
         GlobalProfiler.Reset();
 
         s64 EndTime;

@@ -551,6 +551,12 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
                 if (AABB_Intersect(PlayerAABB, AABBStack[i], Overlap, MinCoord))
                 {
                     IsCollision = true;
+#if 1
+                    if (Abs(Displacement) < Abs(Overlap[Direction]))
+                    {
+                        Displacement = Overlap[Direction];
+                    }
+#else
                     if ((Displacement != 0.0f) && (ExtractSign(Displacement) != ExtractSign(Overlap[Direction])))
                     {
                         Displacement = 0.0f;
@@ -563,11 +569,14 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
                             Displacement = Overlap[Direction];
                         }
                     }
+#endif
                 }
             }
 
             if (IsCollision)
             {
+                constexpr f32 Epsilon = 1e-6f;
+                Displacement += Signum(Displacement) * Epsilon;
                 Player->P[Direction] += Displacement;
                 if (Displacement != 0.0f)
                 {
@@ -578,21 +587,31 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         };
 
         // Apply movement and resolve collisions separately on the axes
-        f32 Displacement = ApplyMovement(dP, 2);
-        if (Displacement > 0.0f)
+        vec3 Displacement = {};
+        Displacement.z = ApplyMovement(dP, 2);
+        
+        if (Abs(dP.x) > Abs(dP.y))
+        {
+            Displacement.x = ApplyMovement(dP, 0);
+            Displacement.y = ApplyMovement(dP, 1);
+        }
+        else
+        {
+            Displacement.y = ApplyMovement(dP, 1);
+            Displacement.x = ApplyMovement(dP, 0);
+        }
+
+        if (Displacement.z > 0.0f)
         {
             Player->WasGroundedLastFrame = true;
         }
 
-        if (Abs(dP.x) > Abs(dP.y))
         {
-            ApplyMovement(dP, 0);
-            ApplyMovement(dP, 1);
-        }
-        else
-        {
-            ApplyMovement(dP, 1);
-            ApplyMovement(dP, 0);
+            if (Length(Displacement) >= 0.1f)
+            {
+                DebugPrint("%llu: Large displacement: { %.3f, %.3f, %.3f }\n", 
+                    GameState->FrameIndex, Displacement.x, Displacement.y, Displacement.z);
+            }
         }
     }
 }
