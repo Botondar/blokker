@@ -50,24 +50,39 @@ static bool AABB_Intersect(const aabb& A, const aabb& B, vec3& Overlap, int& Min
 
 static aabb Player_GetAABB(const player* Player)
 {
-    constexpr f32 PlayerHeight = 1.8f;
-    constexpr f32 PlayerEyeHeight = 1.75f;
-    constexpr f32 PlayerLegHeight = 0.51f;
-    constexpr f32 PlayerWidth = 0.6f;
-
     aabb Result = 
     {
         .Min = 
         {
-            Player->P.x - 0.5f * PlayerWidth, 
-            Player->P.y - 0.5f * PlayerWidth, 
-            Player->P.z - PlayerEyeHeight 
+            Player->P.x - 0.5f * Player->Width, 
+            Player->P.y - 0.5f * Player->Width, 
+            Player->P.z - Player->EyeHeight 
         },
         .Max = 
         {
-            Player->P.x + 0.5f * PlayerWidth, 
-            Player->P.y + 0.5f * PlayerWidth, 
-            Player->P.z + (PlayerHeight - PlayerEyeHeight) 
+            Player->P.x + 0.5f * Player->Width, 
+            Player->P.y + 0.5f * Player->Width, 
+            Player->P.z + (Player->Height - Player->EyeHeight) 
+        },
+    };
+    return Result;
+}
+
+static aabb Player_GetVerticalAABB(const player* Player)
+{
+    aabb Result = 
+    {
+        .Min = 
+        {
+            Player->P.x - 0.5f * Player->Width, 
+            Player->P.y - 0.5f * Player->Width, 
+            Player->P.z - Player->EyeHeight + Player->LegHeight,
+        },
+        .Max = 
+        {
+            Player->P.x + 0.5f * Player->Width, 
+            Player->P.y + 0.5f * Player->Width, 
+            Player->P.z + (Player->Height - Player->EyeHeight) 
         },
     };
     return Result;
@@ -515,11 +530,19 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
             PlayerChunk->Neighbors[West] &&
             PlayerChunk->Neighbors[South]);
 
-        auto ApplyMovement = [&PlayerChunk, &Player](vec3 dP, int Direction) -> f32
+        constexpr u32 AXIS_X = 0;
+        constexpr u32 AXIS_Y = 1;
+        constexpr u32 AXIS_Z = 2;
+
+        auto ApplyMovement = [&PlayerChunk, &Player](vec3 dP, u32 Direction) -> f32
         {
             Player->P[Direction] += dP[Direction];
 
+#if 1
             aabb PlayerAABBAbsolute = Player_GetAABB(Player);
+#else
+            aabb PlayerAABBAbsolute = (Direction == AXIS_Z) ? Player_GetAABB(Player) : Player_GetVerticalAABB(Player);
+#endif
             vec3i ChunkP = (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
 
             // Relative coordinates 
@@ -588,17 +611,17 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
 
         // Apply movement and resolve collisions separately on the axes
         vec3 Displacement = {};
-        Displacement.z = ApplyMovement(dP, 2);
+        Displacement.z = ApplyMovement(dP, AXIS_Z);
         
         if (Abs(dP.x) > Abs(dP.y))
         {
-            Displacement.x = ApplyMovement(dP, 0);
-            Displacement.y = ApplyMovement(dP, 1);
+            Displacement.x = ApplyMovement(dP, AXIS_X);
+            Displacement.y = ApplyMovement(dP, AXIS_Y);
         }
         else
         {
-            Displacement.y = ApplyMovement(dP, 1);
-            Displacement.x = ApplyMovement(dP, 0);
+            Displacement.y = ApplyMovement(dP, AXIS_Y);
+            Displacement.x = ApplyMovement(dP, AXIS_X);
         }
 
         if (Displacement.z > 0.0f)

@@ -22,6 +22,11 @@ struct player
     vec3 Velocity;
     f32 Yaw, Pitch;
     bool WasGroundedLastFrame;
+
+    static constexpr f32 Height = 1.8f;
+    static constexpr f32 EyeHeight = 1.75f;
+    static constexpr f32 LegHeight = 0.51f;
+    static constexpr f32 Width = 0.6f;
 };
 
 static aabb Player_GetAABB(const player* Player);
