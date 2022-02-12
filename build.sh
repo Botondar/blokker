@@ -5,7 +5,7 @@ mkdir -p shader
 mkdir -p $BuildPath/obj
 
 Warnings=""
-CommonOptions="-Isrc/ -std=c++20 -march=x86-64-v3 -Oi -O2 -g -lX11 -lvulkan"
+CommonOptions="-Isrc/ -std=c++20 -march=x86-64-v3 -Oi -O2 -g -lX11 -lXfixes -lvulkan"
 CommonDefines="-DDEVELOPER=1 -DPLATFORM_LINUX=1"
 CompilerOptions="$CommonOptions $CommonDefines -o build/build"
 ClangArgs="$CompilerOptions $Warnings"

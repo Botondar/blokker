@@ -2,6 +2,7 @@
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/cursorfont.h>
+#include <X11/extensions/Xfixes.h>
 #include <X11/keysym.h>
 #include <fcntl.h>
 
@@ -59,11 +60,15 @@ static bool SetClipCursorToWindow(bool Clip)
 
 int ShowCursor(bool show)
 {
-    if (show) {
-        XDefineCursor(X11State.Display, X11State.Window, XC_arrow);
-    } else {
-        XUndefineCursor(X11State.Display, X11State.Window);
+    if (show)
+    {
+        XFixesShowCursor(X11State.Display, X11State.Window);
     }
+    else
+    {
+        XFixesHideCursor(X11State.Display, X11State.Window);
+    }
+    XFlush(X11State.Display);
     return 0;
 }
 
@@ -277,10 +282,14 @@ int main(int argc, char* argv[])
             Input.IsCursorEnabled = false;
             XQueryPointer(X11State.Display, X11State.Window, &rootWnd, &childWnd, &rootMousePos.x, &rootMousePos.y, &wndMousePos.x, &wndMousePos.y, &mask);
 
-            vec2i deltaMouse = wndMousePos - prevMousePos;
+            vec2i deltaMouse = wndMousePos - vec2i { 1280 / 2, 720 / 2 }; // TODO(mark): kill constants
             DebugPrint("x: %d | y: %d\n", deltaMouse.x, deltaMouse.y);
             Input.MouseDelta = (vec2)deltaMouse;
             prevMousePos = wndMousePos;
+            if (X11State.IsCursorDisabled)
+            {
+                XWarpPointer(X11State.Display, None, X11State.Window, 0, 0, 0, 0, 1280 / 2, 720 / 2); // TODO(mark): kill constants
+            }
         }
 
         while (XPending(X11State.Display))
@@ -329,6 +338,17 @@ int main(int argc, char* argv[])
                         case XK_Shift_L:
                         {
                             Input.LeftShift = true;
+                            break;
+                        }
+
+                        case XK_c:
+                        {
+                            ToggleCursor();
+                            break;
+                        }
+                        case XK_v:
+                        {
+                            ToggleCursor();
                             break;
                         }
                     }
@@ -392,7 +412,7 @@ int main(int argc, char* argv[])
                     // TODO(mark): Other stuff from Win32_Main.cppL257 (win32_ProcessInput)
             }
         }
-        Input.IsCursorEnabled = false; // !X11State.IsCursorDisabled;
+        Input.IsCursorEnabled = !X11State.IsCursorDisabled;
         Game_UpdateAndRender(&GameState, &Input, DeltaTime);
         GameState.NeedRendererResize = false;
 
