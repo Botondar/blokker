@@ -89,6 +89,7 @@ static chunk* Game_FindPlayerChunk(game_state* GameState);
 
 static void Game_LoadChunks(game_state* GameState);
 
+static void Game_PreUpdatePlayer(game_state* GameState, game_input* Input);
 static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 DeltaTime);
 static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime);
 
@@ -400,12 +401,21 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
         Input->IsCursorEnabled = ToggleCursor();
     }
 
-    Game_UpdatePlayer(GameState, Input, DeltaTime);
+    Game_PreUpdatePlayer(GameState, Input);
+
+    constexpr f32 MinPhysicsResolution = 16.6667e-3f;
+
+    f32 RemainingTime = DeltaTime;
+    while (RemainingTime > 0.0f)
+    {
+        f32 dt = Min(RemainingTime, MinPhysicsResolution);
+        Game_UpdatePlayer(GameState, Input, dt);
+        RemainingTime -= dt;
+    }
 }
 
-static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
+static void Game_PreUpdatePlayer(game_state* GameState, game_input* Input)
 {
-    TIMED_FUNCTION();
     constexpr f32 MouseTurnSpeed = 2.5e-3f;
 
     player* Player = &GameState->Player;
@@ -417,6 +427,13 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     }
     constexpr f32 CameraClamp = 0.5f * PI - 1e-3f;
     Player->Pitch = Clamp(Player->Pitch, -CameraClamp, CameraClamp);
+}
+
+static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
+{
+    TIMED_FUNCTION();
+    
+    player* Player = &GameState->Player;
 
     vec3 Forward, Right;
     Player_GetHorizontalAxes(Player, Forward, Right);
@@ -483,14 +500,12 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     Player->Velocity += Acceleration * dt;
 
     vec3 dP = (Player->Velocity + 0.5f * Acceleration * dt) * dt;
-    //Player->P += dP;
-    Player->WasGroundedLastFrame = false;
-
-    //DebugPrint("Pv: { %.2f, %.2f, %.2f }\n", Player->Velocity.x, Player->Velocity.y, Player->Velocity.z);
 
     // Collision
     {
         TIMED_BLOCK("Collision");
+
+        Player->WasGroundedLastFrame = false;
 
         chunk* PlayerChunk = Game_FindPlayerChunk(GameState);
         assert(PlayerChunk);
@@ -551,25 +566,10 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
                 if (AABB_Intersect(PlayerAABB, AABBStack[i], Overlap, MinCoord))
                 {
                     IsCollision = true;
-#if 1
                     if (Abs(Displacement) < Abs(Overlap[Direction]))
                     {
                         Displacement = Overlap[Direction];
                     }
-#else
-                    if ((Displacement != 0.0f) && (ExtractSign(Displacement) != ExtractSign(Overlap[Direction])))
-                    {
-                        Displacement = 0.0f;
-                        break;
-                    }
-                    else
-                    {
-                        if (Abs(Displacement) < Abs(Overlap[Direction]))
-                        {
-                            Displacement = Overlap[Direction];
-                        }
-                    }
-#endif
                 }
             }
 
@@ -604,14 +604,6 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         if (Displacement.z > 0.0f)
         {
             Player->WasGroundedLastFrame = true;
-        }
-
-        {
-            if (Length(Displacement) >= 0.1f)
-            {
-                DebugPrint("%llu: Large displacement: { %.3f, %.3f, %.3f }\n", 
-                    GameState->FrameIndex, Displacement.x, Displacement.y, Displacement.z);
-            }
         }
     }
 }
