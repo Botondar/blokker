@@ -500,9 +500,9 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
             PlayerChunk->Neighbors[West] &&
             PlayerChunk->Neighbors[South]);
 
-        auto ResolveCollisions = [&PlayerChunk, &Player](vec3 dP) -> vec3
+        auto ApplyMovement = [&PlayerChunk, &Player](vec3 dP, int Direction) -> f32
         {
-            Player->P += dP;
+            Player->P[Direction] += dP[Direction];
 
             aabb PlayerAABBAbsolute = Player_GetAABB(Player);
             vec3i ChunkP = (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
@@ -517,10 +517,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
             vec3i MinPi = (vec3i)Floor(PlayerAABB.Min);
             vec3i MaxPi = (vec3i)Ceil(PlayerAABB.Max);
 
-            vec3 Displacement = {};
-            bool SkipCoords[3] = { false, false, false };
-
-            constexpr u32 AABBStackSize = 16;
+            constexpr u32 AABBStackSize = 64;
             u32 AABBAt = 0;
             aabb AABBStack[AABBStackSize];
 
@@ -544,19 +541,8 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
                     }
                 }
             }
-
-            // Merge AABBs
-            bool MergedLastPass = true;
-            while (MergedLastPass)
-            {
-                MergedLastPass = false;
-
-                for (u32 i = 0; i < AABBAt; i++)
-                {
-
-                }
-            }
-
+            
+            f32 Displacement = 0.0f;
             bool IsCollision = false;
             for (u32 i = 0; i < AABBAt; i++)
             {
@@ -565,16 +551,16 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
                 if (AABB_Intersect(PlayerAABB, AABBStack[i], Overlap, MinCoord))
                 {
                     IsCollision = true;
-
-                    if ((Displacement[MinCoord] != 0.0f) && (ExtractSign(Displacement[MinCoord]) != ExtractSign(Overlap[MinCoord])))
+                    if ((Displacement != 0.0f) && (ExtractSign(Displacement) != ExtractSign(Overlap[Direction])))
                     {
-                        SkipCoords[MinCoord] = true;
+                        Displacement = 0.0f;
+                        break;
                     }
                     else
                     {
-                        if (Abs(Displacement[MinCoord]) < Abs(Overlap[MinCoord]))
+                        if (Abs(Displacement) < Abs(Overlap[Direction]))
                         {
-                            Displacement[MinCoord] = Overlap[MinCoord];
+                            Displacement = Overlap[Direction];
                         }
                     }
                 }
@@ -582,38 +568,31 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
 
             if (IsCollision)
             {
-                Player->P += Displacement;
-
-                // Clear velocities in the directions we collided
-                for (s32 i = 0; i < 3; i++)
+                Player->P[Direction] += Displacement;
+                if (Displacement != 0.0f)
                 {
-                    if (!SkipCoords[i])
-                    {
-                        if (Displacement[i] != 0.0f)
-                        {
-                            Player->Velocity[i] = 0.0f;
-                        }
-                    }
+                    Player->Velocity[Direction] = 0.0f;
                 }
             }
             return Displacement;
         };
 
         // Apply movement and resolve collisions separately on the axes
-        vec3 Displacement = ResolveCollisions(vec3{0.0f, 0.0f, dP.z});
-        if (Displacement.z > 0.0f)
+        f32 Displacement = ApplyMovement(dP, 2);
+        if (Displacement > 0.0f)
         {
             Player->WasGroundedLastFrame = true;
         }
+
         if (Abs(dP.x) > Abs(dP.y))
         {
-            ResolveCollisions(vec3{dP.x, 0.0f, 0.0f});
-            ResolveCollisions(vec3{0.0f, dP.y, 0.0f});
+            ApplyMovement(dP, 0);
+            ApplyMovement(dP, 1);
         }
         else
         {
-            ResolveCollisions(vec3{0.0f, dP.y, 0.0f});
-            ResolveCollisions(vec3{dP.x, 0.0f, 0.0f});
+            ApplyMovement(dP, 1);
+            ApplyMovement(dP, 0);
         }
     }
 }
