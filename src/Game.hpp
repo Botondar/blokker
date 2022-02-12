@@ -1,5 +1,10 @@
 #pragma once
 
+#ifdef PLATFORM_LINUX
+#include <cstring> // NOTE(mark): For memset and memcpy
+#endif
+
+
 #include <Common.hpp>
 #include <Math.hpp>
 #include <Random.hpp>
