@@ -35,8 +35,6 @@ struct win32_state
     s64 PerformanceFrequency;
 
     BOOL HasDebugger;
-
-    vec2i MouseLDownP;
     bool IsCursorDisabled;
 };
 static win32_state Win32State;
@@ -246,6 +244,26 @@ static LRESULT CALLBACK MainWindowProc(HWND Window, UINT Message, WPARAM WParam,
                 else 
                 {
                     Win32State.IsMinimized = FALSE;
+                }
+            }
+        } break;
+        case WM_KILLFOCUS:
+        {
+            if (Window == Win32State.Window)
+            {
+                if (Win32State.IsCursorDisabled)
+                {
+                    ToggleCursor();
+                }
+            }
+        } break;
+        case WM_ACTIVATE:
+        {
+            if ((Window == Win32State.Window) && (WParam == WA_INACTIVE))
+            {
+                if (Win32State.IsCursorDisabled)
+                {
+                    ToggleCursor();
                 }
             }
         } break;
