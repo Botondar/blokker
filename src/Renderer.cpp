@@ -913,28 +913,32 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
 
     static const char* RequiredInstanceLayers[] = 
     {
-        "VK_LAYER_KHRONOS_synchronization2",
         "VK_LAYER_KHRONOS_validation",
+        //"VK_LAYER_KHRONOS_synchronization2",
     };
     static const char* RequiredInstanceExtensions[] = 
     {
         "VK_KHR_surface",
-        "VK_KHR_win32_surface",
         "VK_KHR_get_physical_device_properties2",
         "VK_EXT_debug_report",
         "VK_EXT_debug_utils",
         "VK_EXT_validation_features",
+#if defined(PLATFORM_WIN32)
+        "VK_KHR_win32_surface",
+#elif defined(PLATFORM_LINUX)
+        "VK_KHR_xlib_surface",
+#endif
     };
     static const char* RequiredDeviceLayers[] = 
     {
-        "VK_LAYER_KHRONOS_synchronization2",
         "VK_LAYER_KHRONOS_validation",
+        //"VK_LAYER_KHRONOS_synchronization2",
     };
     static const char* RequiredDeviceExtensions[] = 
     {
         "VK_KHR_swapchain",
-        "VK_KHR_synchronization2",
         "VK_KHR_dynamic_rendering",
+        //"VK_KHR_synchronization2",
     };
 
     constexpr u32 RequiredInstanceLayerCount     = CountOf(RequiredInstanceLayers);
@@ -2037,8 +2041,26 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .depthCompareOp = VK_COMPARE_OP_LESS,
             .depthBoundsTestEnable = VK_FALSE,
             .stencilTestEnable = VK_FALSE,
-            .front = VK_STENCIL_OP_KEEP,
-            .back = VK_STENCIL_OP_KEEP,
+            .front = 
+            { 
+                .failOp = VK_STENCIL_OP_KEEP,
+                .passOp = VK_STENCIL_OP_KEEP,
+                .depthFailOp = VK_STENCIL_OP_KEEP,
+                .compareOp = VK_COMPARE_OP_ALWAYS,
+                .compareMask = 0,
+                .writeMask = 0,
+                .reference = 0,
+            },
+            .back = 
+            {
+                .failOp = VK_STENCIL_OP_KEEP,
+                .passOp = VK_STENCIL_OP_KEEP,
+                .depthFailOp = VK_STENCIL_OP_KEEP,
+                .compareOp = VK_COMPARE_OP_ALWAYS,
+                .compareMask = 0,
+                .writeMask = 0,
+                .reference = 0,
+            },
             .minDepthBounds = 0.0f,
             .maxDepthBounds = 1.0f,
         };

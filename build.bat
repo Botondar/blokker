@@ -1,10 +1,9 @@
 @echo off
 
 IF NOT EXIST build mkdir build
-pushd build
-
+cd build
 del /q *
-popd
+cd ..
 
 set Warnings=-W4 -WX -wd4201 -wd4100 -wd4189 -wd4200 -wd4505
 set CommonOptions=-MT -Zi -EHsc -fp:fast -GT -Isrc/ -I%VULKAN_SDK%/Include/ -std:c++20 -arch:AVX2 -Oi -O2
@@ -17,13 +16,11 @@ cl -nologo %CompilerOptions% %Warnings% "src/Game.cpp" /Fobuild/game.obj /Fdbuil
 link -nologo %LinkerOptions% /OUT:build/blokker.exe build/win32_platform.obj build/game.obj
 
 IF NOT EXIST shader mkdir shader
-pushd shader
-
+cd shader
 del /q *
+cd ..
 
-set ShaderCompilerOptions=--target-env=vulkan1.2 -std=450core -I "../src/shader/" -O 
+set ShaderCompilerOptions=--target-env=vulkan1.2 -std=450core -I "/src/shader/" -O 
 
-glslc %ShaderCompilerOptions% -fshader-stage=vert -o shader.vs -DVERTEX_SHADER=1 ../src/shader/shader.glsl
-glslc %ShaderCompilerOptions% -fshader-stage=frag -o shader.fs -DFRAGMENT_SHADER=1 ../src/shader/shader.glsl
-
-popd
+glslc %ShaderCompilerOptions% -fshader-stage=vert -o shader/shader.vs -DVERTEX_SHADER=1 "src/shader/shader.glsl"
+glslc %ShaderCompilerOptions% -fshader-stage=frag -o shader/shader.fs -DFRAGMENT_SHADER=1 "src/shader/shader.glsl"

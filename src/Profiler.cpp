@@ -16,7 +16,7 @@ void profiler::Reset()
     CurrentFrameIndex++;
 }
 
-void profiler::Begin(const char* Name)
+void profiler::Begin(const char* Name, const char* Extra)
 {
     assert(Name);
     frame_statistics* Stats = StatsBuffer + StatsBufferAt;
@@ -29,6 +29,7 @@ void profiler::Begin(const char* Name)
         u32 Index = Stats->EntryPoolAt++;
         profiler_entry* Entry = &Stats->EntryPool[Index];
         Entry->Name = Name;
+        Entry->Extra = Extra;
         Entry->CallCount++;
 
         Stats->EntryStack[Stats->StackAt++] = Index;
@@ -38,14 +39,14 @@ void profiler::Begin(const char* Name)
         u32 CurrentEntryIndex = Stats->EntryStack[Stats->StackAt - 1];
         profiler_entry* CurrentEntry = Stats->EntryPool + CurrentEntryIndex;
 
-        // Try and find if the entry being added already is a child of an existing entry
+        // Try and find if the entry being added is already a child of an existing entry
         u32 ChildIndex = INVALID_INDEX_U32;
         profiler_entry* ChildEntry = nullptr;
         for (u32 i = 0; i < CurrentEntry->ChildrenCount; i++)
         {
             u32 Index = CurrentEntry->Children[i];
             profiler_entry* Entry = Stats->EntryPool + Index;
-            if (Entry->Name == Name)
+            if (Entry->Name == Name && Entry->Extra == Extra)
             {
                 ChildIndex = Index;
                 ChildEntry = Entry;
@@ -58,6 +59,7 @@ void profiler::Begin(const char* Name)
             u32 Index = Stats->EntryPoolAt++;
             profiler_entry* Entry = &Stats->EntryPool[Index];
             Entry->Name = Name;
+            Entry->Extra = Extra;
             Entry->CallCount++;
 
             assert(CurrentEntry->ChildrenCount < CurrentEntry->MaxChildrenCount);
@@ -73,7 +75,7 @@ void profiler::Begin(const char* Name)
     }
 }
 
-void profiler::End(const char* Name, s64 Time)
+void profiler::End(const char* Name, const char* Extra, s64 Time)
 {
     assert(Name);
     frame_statistics* Stats = StatsBuffer + StatsBufferAt;
@@ -86,6 +88,7 @@ void profiler::End(const char* Name, s64 Time)
     profiler_entry* Entry = &Stats->EntryPool[EntryIndex];
     // NOTE: pointer comparison!
     assert(Entry->Name == Name);
+    assert(Entry->Extra == Extra);
 
     Entry->CounterSum += Time;
 }
@@ -105,8 +108,11 @@ void profiler::PrintFrom(const frame_statistics* Stats, const profiler_entry* En
     constexpr size_t PaddingMax = 64;
 
     f32 Time = GetTimeFromCounter(Entry->CounterSum);
-    DebugPrint("%.*s%s: || %.2fms (%.1f%%) || x%lli\n",
-        PaddingAt, Padding, Entry->Name, 1000.0f * Time, 100.0f * Time / ParentTime, Entry->CallCount);
+    u64 ExtraLength = Entry->Extra ? strlen(Entry->Extra) : 0;
+    DebugPrint("%.*s%s%.*s: || %.2fms (%.1f%%) || x%lli\n",
+        PaddingAt, Padding, 
+        Entry->Name, ExtraLength, Entry->Extra,
+        1000.0f * Time, 100.0f * Time / ParentTime, Entry->CallCount);
 
     assert(PaddingAt < PaddingMax);
     Padding[PaddingAt++] = '-';
@@ -147,14 +153,14 @@ void profiler::Print(f32 MinTime) const
     }
 }
 
-timed_block::timed_block(const char* Name) : Name(Name)
+timed_block::timed_block(const char* Name, const char* Extra) : Name(Name), Extra(Extra)
 {
     StartCounter = GetPerformanceCounter();
-    GlobalProfiler.Begin(Name);
+    GlobalProfiler.Begin(Name, Extra);
 }
 
 timed_block::~timed_block()
 {
     EndCounter = GetPerformanceCounter();
-    GlobalProfiler.End(Name, EndCounter - StartCounter);
+    GlobalProfiler.End(Name, Extra, EndCounter - StartCounter);
 }

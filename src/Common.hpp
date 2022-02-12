@@ -42,15 +42,32 @@ inline u64 AlignToPow2(u64 Value, u64 Alignment)
 
 inline u32 BitScanForward(u32* ScanResult, u32 Value)
 {
-    // TODO: this is MSVC only on x64
+#if defined(_MSC_VER) && !defined(__clang__)
     u32 Result = _BitScanForward((unsigned long*)ScanResult, Value);
+#elif defined(__clang__)
+    u32 Result = 0;
+    if (Value != 0)
+    {
+        *ScanResult = __builtin_ctz(Value);
+        Result = 1;
+    }
+#endif
     return Result;
 }
 
+
 inline u32 BitScanReverse(u32* ScanResult, u32 Value)
 {
-    // TODO: this is MSVC only on x64
+#if defined(_MSC_VER) && !defined(__clang__)
     u32 Result = _BitScanReverse((unsigned long*)ScanResult, Value);
+#elif defined(__clang__)
+    u32 Result = 0;
+    if (Value != 0)
+    {
+        *ScanResult = __builtin_clz(Value);
+        Result = 1;
+    }
+#endif
     return Result;
 }
 

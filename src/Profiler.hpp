@@ -7,15 +7,16 @@
 
 #define LINE_STR_(line) STRINGIFY(line)
 #define LINE_STR LINE_STR_(__LINE__)
-#define TIMED_BLOCK_(line, ...) timed_block CONCAT(Timed_Block, line)(__FUNCTION__ ":" __VA_ARGS__ ":" LINE_STR)
+#define TIMED_BLOCK_(line, ...) timed_block CONCAT(Timed_Block, line)(__FUNCTION__, ":" __VA_ARGS__ ":" LINE_STR)
 // ==== END HELPERS====
 
-#define TIMED_FUNCTION() timed_block Timed_Function(__FUNCTION__)
+#define TIMED_FUNCTION() timed_block Timed_Function(__FUNCTION__, nullptr)
 #define TIMED_BLOCK(...) TIMED_BLOCK_(__LINE__, __VA_ARGS__)
 
 struct profiler_entry
 {
     const char* Name;
+    const char* Extra;
     s64 CounterSum;
     s64 CallCount;
 
@@ -43,8 +44,8 @@ struct profiler
     frame_statistics StatsBuffer[MaxStatBufferCount];
 
     void Reset();
-    void Begin(const char* Name);
-    void End(const char* Name, s64 Time);
+    void Begin(const char* Name, const char* Extra);
+    void End(const char* Name, const char* Extra, s64 Time);
 
     const frame_statistics* GetPrevFrameStats() const;
 
@@ -64,10 +65,11 @@ private:
 struct timed_block
 {
     const char* Name;
+    const char* Extra;
     s64 StartCounter;
     s64 EndCounter;
 
-    timed_block(const char* Name);
+    timed_block(const char* Name, const char* Extra);
     ~timed_block();
 };
 

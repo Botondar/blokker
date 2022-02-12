@@ -387,7 +387,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     Win32State.Instance = Instance;
     Win32State.HasDebugger = IsDebuggerPresent();
     QueryPerformanceFrequency((LARGE_INTEGER*)&Win32State.PerformanceFrequency);
-
+    
 #if DEVELOPER
     // Init debug cmd prompt
     if (!Win32State.HasDebugger)
