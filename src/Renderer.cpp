@@ -22,7 +22,7 @@ static VkBool32 VKAPI_PTR VulkanDebugCallback(
 }
 
 bool RTHeap_Create(
-    vulkan_rt_heap* Heap, 
+    vulkan_rt_heap* Heap,
     u64 Size, u32 MemoryTypeBase,
     u32 MemoryRequirementCount,
     const VkMemoryRequirements* MemoryRequirements,
@@ -32,7 +32,7 @@ bool RTHeap_Create(
 
     bool Result = false;
     memset(Heap, 0, sizeof(vulkan_rt_heap));
-    
+
     u32 SuitableMemoryTypes = MemoryTypeBase;
     for (u32 i = 0; i < MemoryRequirementCount; i++)
     {
@@ -101,7 +101,7 @@ bool StagingHeap_Create(
     *Heap = {};
     bool Result = false;
 
-    VkBufferCreateInfo BufferInfo = 
+    VkBufferCreateInfo BufferInfo =
     {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .pNext = nullptr,
@@ -123,7 +123,7 @@ bool StagingHeap_Create(
         u32 MemoryTypeIndex;
         if (BitScanForward(&MemoryTypeIndex, MemoryTypes) != 0)
         {
-            VkMemoryAllocateInfo AllocInfo = 
+            VkMemoryAllocateInfo AllocInfo =
             {
                 .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                 .pNext = nullptr,
@@ -140,7 +140,7 @@ bool StagingHeap_Create(
                     bool SemaphoreCreationFailed = false;
                     for (u32 i = 0; i < 64; i++)
                     {
-                        VkSemaphoreCreateInfo SemaphoreInfo = 
+                        VkSemaphoreCreateInfo SemaphoreInfo =
                         {
                             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
                             .pNext = nullptr,
@@ -161,7 +161,7 @@ bool StagingHeap_Create(
                     if (!SemaphoreCreationFailed)
                     {
                         Heap->Device = Renderer->Device;
-                        
+
                         Heap->HeapSize = Size;
                         Heap->HeapOffset = 0;
                         Heap->Granularity = Renderer->NonCoherentAtomSize;
@@ -175,7 +175,7 @@ bool StagingHeap_Create(
                         }
                         Result = true;
                     }
-                    else 
+                    else
                     {
                         vkFreeMemory(Renderer->Device, Memory, nullptr);
                         vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
@@ -187,12 +187,12 @@ bool StagingHeap_Create(
                     vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
                 }
             }
-            else 
+            else
             {
                 vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
             }
         }
-        else 
+        else
         {
             vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
         }
@@ -209,7 +209,7 @@ bool StagingHeap_Copy(
     u64 SrcSize, const void* Src)
 {
     assert(Heap);
-    
+
     bool Result = false;
 
     // TODO: For now there's only one copy in-flight at maximum,
@@ -218,7 +218,7 @@ bool StagingHeap_Copy(
     u64 Offset = Heap->HeapOffset; // For now this is always 0
     u64 MapSize = AlignToPow2(SrcSize, Heap->Granularity);
 
-    VkMappedMemoryRange Range = 
+    VkMappedMemoryRange Range =
     {
         .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
         .pNext = nullptr,
@@ -226,7 +226,7 @@ bool StagingHeap_Copy(
         .offset = Offset,
         .size = MapSize,
     };
-    
+
     if (SrcSize <= Heap->HeapSize)
     {
         void* MappedData = nullptr;
@@ -237,7 +237,7 @@ bool StagingHeap_Copy(
             vkFlushMappedMemoryRanges(Heap->Device, 1, &Range);
             vkUnmapMemory(Heap->Device, Range.memory);
 
-            VkCommandBufferBeginInfo BeginInfo = 
+            VkCommandBufferBeginInfo BeginInfo =
             {
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                 .pNext = nullptr,
@@ -245,7 +245,7 @@ bool StagingHeap_Copy(
                 .pInheritanceInfo = nullptr,
             };
             vkBeginCommandBuffer(CmdBuffer, &BeginInfo);
-            VkBufferCopy CopyDesc = 
+            VkBufferCopy CopyDesc =
             {
                 .srcOffset = Offset,
                 .dstOffset = DestOffset,
@@ -254,7 +254,7 @@ bool StagingHeap_Copy(
             vkCmdCopyBuffer(CmdBuffer, Heap->Buffer, Dest, 1, &CopyDesc);
             vkEndCommandBuffer(CmdBuffer);
 
-            VkSubmitInfo SubmitInfo = 
+            VkSubmitInfo SubmitInfo =
             {
                 .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                 .pNext = nullptr,
@@ -264,7 +264,7 @@ bool StagingHeap_Copy(
                 .commandBufferCount = 1,
                 .pCommandBuffers = &CmdBuffer,
                 .signalSemaphoreCount = 0,// TODO
-                .pSignalSemaphores = nullptr, 
+                .pSignalSemaphores = nullptr,
             };
 
             vkQueueSubmit(Queue, 1, &SubmitInfo, nullptr);
@@ -314,7 +314,7 @@ bool StagingHeap_CopyImage(
 #endif
         u64 MapSize = AlignToPow2(SrcSize, Heap->Granularity);
 
-        VkMappedMemoryRange Range = 
+        VkMappedMemoryRange Range =
         {
             .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
             .pNext = nullptr,
@@ -331,7 +331,7 @@ bool StagingHeap_CopyImage(
             vkFlushMappedMemoryRanges(Heap->Device, 1, &Range);
             vkUnmapMemory(Heap->Device, Heap->Heap);
 
-            VkCommandBufferBeginInfo BeginInfo = 
+            VkCommandBufferBeginInfo BeginInfo =
             {
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                 .pNext = nullptr,
@@ -340,7 +340,7 @@ bool StagingHeap_CopyImage(
             };
             vkBeginCommandBuffer(CmdBuffer, &BeginInfo);
 
-            VkImageMemoryBarrier BeginBarrier = 
+            VkImageMemoryBarrier BeginBarrier =
             {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                 .pNext = nullptr,
@@ -351,7 +351,7 @@ bool StagingHeap_CopyImage(
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .image = Image,
-                .subresourceRange = 
+                .subresourceRange =
                 {
                     .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                     .baseMipLevel = 0,
@@ -362,7 +362,7 @@ bool StagingHeap_CopyImage(
             };
 
             vkCmdPipelineBarrier(
-                CmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 
+                CmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
                 0, nullptr,
                 0, nullptr,
                 1, &BeginBarrier);
@@ -374,12 +374,12 @@ bool StagingHeap_CopyImage(
                 u32 CurrentHeight = Height;
                 for (u32 MipLevel = 0; MipLevel < MipCount; MipLevel++)
                 {
-                    VkBufferImageCopy CopyDesc = 
+                    VkBufferImageCopy CopyDesc =
                     {
                         .bufferOffset = Offset,
                         .bufferRowLength = 0, // Tightly packed
                         .bufferImageHeight = 0,
-                        .imageSubresource = 
+                        .imageSubresource =
                         {
                             .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                             .mipLevel = MipLevel,
@@ -396,7 +396,7 @@ bool StagingHeap_CopyImage(
                     CurrentHeight /= 2;
                 }
             }
-            VkImageMemoryBarrier EndBarrier = 
+            VkImageMemoryBarrier EndBarrier =
             {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                 .pNext = nullptr,
@@ -407,7 +407,7 @@ bool StagingHeap_CopyImage(
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .image = Image,
-                .subresourceRange = 
+                .subresourceRange =
                 {
                     .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                     .baseMipLevel = 0,
@@ -417,14 +417,14 @@ bool StagingHeap_CopyImage(
                 },
             };
             vkCmdPipelineBarrier(
-                CmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 
+                CmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
                 0, nullptr,
                 0, nullptr,
                 1, &EndBarrier);
 
             vkEndCommandBuffer(CmdBuffer);
 
-             VkSubmitInfo SubmitInfo = 
+             VkSubmitInfo SubmitInfo =
             {
                 .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                 .pNext = nullptr,
@@ -434,7 +434,7 @@ bool StagingHeap_CopyImage(
                 .commandBufferCount = 1,
                 .pCommandBuffers = &CmdBuffer,
                 .signalSemaphoreCount = 0,// TODO
-                .pSignalSemaphores = nullptr, 
+                .pSignalSemaphores = nullptr,
             };
 
             vkQueueSubmit(Queue, 1, &SubmitInfo, nullptr);
@@ -463,7 +463,7 @@ bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Dev
 
     u32 VertexCount = (u32)VertexCount64;
 
-    VkBufferCreateInfo BufferInfo = 
+    VkBufferCreateInfo BufferInfo =
     {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .pNext = nullptr,
@@ -490,7 +490,7 @@ bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Dev
         if (BitScanForward(&MemoryType, MemoryTypes) != 0)
         {
 
-            VkMemoryAllocateInfo AllocInfo = 
+            VkMemoryAllocateInfo AllocInfo =
             {
                 .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                 .pNext = nullptr,
@@ -507,11 +507,11 @@ bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Dev
                     VB->Memory = Memory;
                     VB->Buffer = Buffer;
                     VB->MaxVertexCount = VertexCount;
-                    
+
                     // Init memory blocks
                     {
                         VB->BlockCount = 1;
-                        VB->Blocks[0] = 
+                        VB->Blocks[0] =
                         {
                             .VertexCount = VB->MaxVertexCount,
                             .VertexOffset = 0,
@@ -549,7 +549,7 @@ bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Dev
 u32 VB_Allocate(vulkan_vertex_buffer* VB, u32 VertexCount)
 {
     assert(VB);
-    
+
     u32 Result = INVALID_INDEX_U32;
     if (VB->FreeAllocationCount)
     {
@@ -627,11 +627,11 @@ u32 VB_Allocate(vulkan_vertex_buffer* VB, u32 VertexCount)
 void VB_Free(vulkan_vertex_buffer* VB, u32 AllocationIndex)
 {
     assert(VB);
-    
+
     if (AllocationIndex != INVALID_INDEX_U32)
     {
         assert(AllocationIndex < vulkan_vertex_buffer::MaxAllocationCount);
-        
+
         vulkan_vertex_buffer_block* Block = VB->Blocks + VB->Allocations[AllocationIndex].BlockIndex;
 
         Block->Flags &= ~VBBLOCK_ALLOCATED_BIT;
@@ -702,7 +702,7 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
         }
 
         VkSwapchainKHR OldSwapchain = Renderer->Swapchain;
-        VkSwapchainCreateInfoKHR SwapchainInfo = 
+        VkSwapchainCreateInfoKHR SwapchainInfo =
         {
             .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
             .pNext = nullptr,
@@ -719,7 +719,8 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
             .pQueueFamilyIndices = nullptr,
             .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
             .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-            .presentMode = 
+
+            .presentMode =
 #if 1
                 VK_PRESENT_MODE_FIFO_KHR,
 #else
@@ -735,28 +736,28 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
             Renderer->SwapchainSize = CurrentExtent;
 
             vkGetSwapchainImagesKHR(
-                Renderer->Device, 
-                Renderer->Swapchain, 
-                &Renderer->SwapchainImageCount, 
+                Renderer->Device,
+                Renderer->Swapchain,
+                &Renderer->SwapchainImageCount,
                 nullptr);
             assert(Renderer->SwapchainImageCount <= 16);
 
             vkGetSwapchainImagesKHR(
-                Renderer->Device, 
-                Renderer->Swapchain, 
+                Renderer->Device,
+                Renderer->Swapchain,
                 &Renderer->SwapchainImageCount,
                 Renderer->SwapchainImages);
 
             bool ImageViewCreationFailed = false;
             for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
             {
-                if (Renderer->SwapchainImageViews[i]) 
+                if (Renderer->SwapchainImageViews[i])
                 {
                     vkDestroyImageView(Renderer->Device, Renderer->SwapchainImageViews[i], nullptr);
                     Renderer->SwapchainImageViews[i] = VK_NULL_HANDLE;
                 }
 
-                VkImageViewCreateInfo ImageViewInfo = 
+                VkImageViewCreateInfo ImageViewInfo =
                 {
                     .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                     .pNext = nullptr,
@@ -765,7 +766,7 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
                     .viewType = VK_IMAGE_VIEW_TYPE_2D,
                     .format = Renderer->SurfaceFormat.format,
                     .components = {},
-                    .subresourceRange = 
+                    .subresourceRange =
                     {
                         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                         .baseMipLevel = 0,
@@ -790,16 +791,16 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
             {
                 // Create rendertarget images
                 bool ImageCreationFailed = false;
-                
+
                 constexpr u32 RTMemoryRequirementsMaxCount = 32;
                 u32 RTMemoryRequirementCount = 0;
                 VkMemoryRequirements RTMemoryRequirements[RTMemoryRequirementsMaxCount];
-                
+
                 u32 RenderTargetSuitableMemoryTypes = Renderer->DeviceLocalMemoryTypes;
                 // Depth buffers
                 for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
                 {
-                    VkImageCreateInfo Info = 
+                    VkImageCreateInfo Info =
                     {
                         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                         .pNext = nullptr,
@@ -827,7 +828,7 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
                         // TODO: cleanup
                         break;
                     }
-                    
+
                     assert(RTMemoryRequirementCount < 32);
                     vkGetImageMemoryRequirements(Renderer->Device, Renderer->DepthBuffers[i], &RTMemoryRequirements[RTMemoryRequirementCount++]);
                 }
@@ -852,14 +853,14 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
                                 // TODO: cleanup
                                 break;
                             }
-                            
+
                             if (Renderer->DepthBufferViews[i] != VK_NULL_HANDLE)
                             {
                                 vkDestroyImageView(Renderer->Device, Renderer->DepthBufferViews[i], nullptr);
                                 Renderer->DepthBufferViews[i] = VK_NULL_HANDLE;
                             }
 
-                            VkImageViewCreateInfo ViewInfo = 
+                            VkImageViewCreateInfo ViewInfo =
                             {
                                 .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                                 .pNext = nullptr,
@@ -868,7 +869,7 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
                                 .viewType = VK_IMAGE_VIEW_TYPE_2D,
                                 .format = VK_FORMAT_D32_SFLOAT,
                                 .components = {},
-                                .subresourceRange = 
+                                .subresourceRange =
                                 {
                                     .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
                                     .baseMipLevel = 0,
@@ -888,7 +889,7 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
                                 break;
                             }
                         }
-                        
+
                         if (!MemoryAllocationFailed)
                         {
                             Result = true;
@@ -912,12 +913,12 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
     // Length for temporary buffers (enumeration results, etc.)
     constexpr size_t CommonBufferLength = 256;
 
-    static const char* RequiredInstanceLayers[] = 
+    static const char* RequiredInstanceLayers[] =
     {
         "VK_LAYER_KHRONOS_validation",
         //"VK_LAYER_KHRONOS_synchronization2",
     };
-    static const char* RequiredInstanceExtensions[] = 
+    static const char* RequiredInstanceExtensions[] =
     {
         "VK_KHR_surface",
         "VK_KHR_get_physical_device_properties2",
@@ -930,12 +931,12 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         "VK_KHR_xlib_surface",
 #endif
     };
-    static const char* RequiredDeviceLayers[] = 
+    static const char* RequiredDeviceLayers[] =
     {
         "VK_LAYER_KHRONOS_validation",
         //"VK_LAYER_KHRONOS_synchronization2",
     };
-    static const char* RequiredDeviceExtensions[] = 
+    static const char* RequiredDeviceExtensions[] =
     {
         "VK_KHR_swapchain",
         "VK_KHR_dynamic_rendering",
@@ -996,12 +997,12 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             layer_extensions* LayerExtensions = InstanceLayerExtensions + i;
 
             vkEnumerateInstanceExtensionProperties(RequiredInstanceLayers[i], &LayerExtensions->Count, nullptr);
-            if (LayerExtensions->Count > CommonBufferLength) 
+            if (LayerExtensions->Count > CommonBufferLength)
             {
                 return false;
             }
-            vkEnumerateInstanceExtensionProperties(RequiredInstanceLayers[i], 
-                                                   &LayerExtensions->Count, 
+            vkEnumerateInstanceExtensionProperties(RequiredInstanceLayers[i],
+                                                   &LayerExtensions->Count,
                                                    LayerExtensions->Extensions);
         }
     }
@@ -1010,7 +1011,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
 
     // Create instance
     {
-        VkApplicationInfo AppInfo = 
+        VkApplicationInfo AppInfo =
         {
             .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
             .pNext = nullptr,
@@ -1021,7 +1022,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .apiVersion = Version,
         };
 
-        VkInstanceCreateInfo CreateInfo = 
+        VkInstanceCreateInfo CreateInfo =
         {
             .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
             .pNext = nullptr,
@@ -1034,7 +1035,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         };
 
         Result = vkCreateInstance(&CreateInfo, nullptr, &Renderer->Instance);
-        if (Result != VK_SUCCESS) 
+        if (Result != VK_SUCCESS)
         {
             return false;
         }
@@ -1048,15 +1049,15 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             return false;
         }
 
-        VkDebugUtilsMessengerCreateInfoEXT Info = 
+        VkDebugUtilsMessengerCreateInfoEXT Info =
         {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
             .pNext = nullptr,
             .flags = 0,
-            .messageSeverity = 
+            .messageSeverity =
                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT|
                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-            .messageType = 
+            .messageType =
                 VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT|
                 VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT|
                 VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
@@ -1080,7 +1081,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         vulkan_physical_device_desc PhysicalDeviceDescs[MaxPhysicalDeviceCount];
 
         vkEnumeratePhysicalDevices(Renderer->Instance, &PhysicalDeviceCount, nullptr);
-        if (PhysicalDeviceCount > MaxPhysicalDeviceCount) 
+        if (PhysicalDeviceCount > MaxPhysicalDeviceCount)
         {
             return false;
         }
@@ -1152,13 +1153,13 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         u32 DeviceExtensionCount;
         VkExtensionProperties DeviceExtensions[CommonBufferLength];
         {
-            vkEnumerateDeviceExtensionProperties(Renderer->PhysicalDevice, nullptr, 
+            vkEnumerateDeviceExtensionProperties(Renderer->PhysicalDevice, nullptr,
                                                  &DeviceExtensionCount, nullptr);
             if (DeviceExtensionCount > CommonBufferLength)
             {
                 return false;
             }
-            vkEnumerateDeviceExtensionProperties(Renderer->PhysicalDevice, nullptr, 
+            vkEnumerateDeviceExtensionProperties(Renderer->PhysicalDevice, nullptr,
                                                  &DeviceExtensionCount, DeviceExtensions);
         }
 
@@ -1175,28 +1176,27 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                                                  &DeviceLayerExtensions[i].Count, DeviceLayerExtensions[i].Extensions);
         }
 
-
-        
-        VkPhysicalDeviceDynamicRenderingFeaturesKHR DynamicRenderingFeatures = 
+        VkPhysicalDeviceDynamicRenderingFeaturesKHR DynamicRenderingFeatures =
         {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
             .pNext = nullptr,
             .dynamicRendering = VK_FALSE,
         };
 
-        VkPhysicalDeviceExtendedDynamicState2FeaturesEXT DynamicStateFeatures2 = 
+        VkPhysicalDeviceExtendedDynamicState2FeaturesEXT DynamicStateFeatures2 =
         {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_2_FEATURES_EXT,
             .pNext = &DynamicRenderingFeatures,
         };
 
-        VkPhysicalDeviceExtendedDynamicStateFeaturesEXT DynamicStateFeatures = 
+        VkPhysicalDeviceExtendedDynamicStateFeaturesEXT DynamicStateFeatures =
         {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,
             .pNext = &DynamicStateFeatures2,
         };
 
-        VkPhysicalDeviceFeatures2 DeviceFeatures = 
+        VkPhysicalDeviceFeatures2 DeviceFeatures =
+
         {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
             .pNext = &DynamicStateFeatures,
@@ -1213,7 +1213,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         for (u32 i = 0; i < Renderer->DeviceDesc.QueueFamilyCount; i++)
         {
             VkQueueFlags Flags = Renderer->DeviceDesc.QueueFamilyProps[i].queueFlags;
-            
+
             if ((Flags & VK_QUEUE_TRANSFER_BIT) &&
                 (Flags & VK_QUEUE_COMPUTE_BIT) &&
                 (Flags & VK_QUEUE_SPARSE_BINDING_BIT))\
@@ -1236,7 +1236,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         }
 
         const f32 MaxPriority = 1.0f;
-        VkDeviceQueueCreateInfo QueueCreateInfos[] = 
+        VkDeviceQueueCreateInfo QueueCreateInfos[] =
         {
             {
                 .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -1257,7 +1257,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         };
         constexpr u32 QueueCreateInfoCount = CountOf(QueueCreateInfos);
 
-        VkDeviceCreateInfo DeviceCreateInfo = 
+        VkDeviceCreateInfo DeviceCreateInfo =
         {
             .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
             .pNext = &DeviceFeatures,
@@ -1324,9 +1324,9 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             }
             vkGetPhysicalDeviceSurfaceFormatsKHR(Renderer->PhysicalDevice, Renderer->Surface, &SurfaceFormatCount, SurfaceFormats);
         }
-        
+
         // NOTE: the order of this array defines which formats are preferred over others
-        const VkFormat Formats[] = 
+        const VkFormat Formats[] =
         {
             VK_FORMAT_R8G8B8A8_SRGB,
             VK_FORMAT_B8G8R8A8_SRGB,
@@ -1368,7 +1368,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             return false;
         }
 
-        VkCommandBufferAllocateInfo AllocInfo = 
+        VkCommandBufferAllocateInfo AllocInfo =
         {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
             .pNext = nullptr,
@@ -1386,23 +1386,23 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
     for (u32 i = 0; i < Renderer->SwapchainImageCount;i ++)
     {
         {
-            VkCommandPoolCreateInfo Info = 
+            VkCommandPoolCreateInfo Info =
             {
                 .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
                 .pNext = nullptr,
                 .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
                 .queueFamilyIndex = Renderer->GraphicsFamilyIndex,
             };
-        
+
             Result = vkCreateCommandPool(Renderer->Device, &Info, nullptr, &Renderer->FrameParams[i].CmdPool);
             if (Result != VK_SUCCESS)
             {
                 return false;
             }
         }
-        
+
         {
-            VkCommandBufferAllocateInfo Info = 
+            VkCommandBufferAllocateInfo Info =
             {
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
                 .pNext = nullptr,
@@ -1418,7 +1418,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         }
 
         {
-            VkFenceCreateInfo Info = 
+            VkFenceCreateInfo Info =
             {
                 .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
                 .pNext = nullptr,
@@ -1432,7 +1432,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             }
         }
         {
-            VkSemaphoreCreateInfo Info = 
+            VkSemaphoreCreateInfo Info =
             {
                 .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
                 .pNext = nullptr,
@@ -1448,7 +1448,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         }
     }
 
-    
+
     if (!StagingHeap_Create(&Renderer->StagingHeap, 256*1024*1024, Renderer))
     {
         return false;
@@ -1466,7 +1466,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         constexpr u64 VertexStackSize = 32*1024*1024;
         renderer_frame_params* Frame = Renderer->FrameParams + i;
 
-        VkBufferCreateInfo BufferInfo = 
+        VkBufferCreateInfo BufferInfo =
         {
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .pNext = nullptr,
@@ -1489,7 +1489,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             u32 MemoryType = 0;
             if (BitScanForward(&MemoryType, MemoryTypes) != 0)
             {
-                VkMemoryAllocateInfo AllocInfo = 
+                VkMemoryAllocateInfo AllocInfo =
                 {
                     .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                     .pNext = nullptr,
@@ -1548,7 +1548,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
     {
         // Static sampler
         {
-            VkSamplerCreateInfo SamplerInfo = 
+            VkSamplerCreateInfo SamplerInfo =
             {
                 .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
                 .pNext = nullptr,
@@ -1582,7 +1582,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
 
         // Set layout
         {
-            VkDescriptorSetLayoutBinding Bindings[] = 
+            VkDescriptorSetLayoutBinding Bindings[] =
             {
                 {
                     .binding = 0,
@@ -1601,7 +1601,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             };
             constexpr u32 BindingCount = CountOf(Bindings);
 
-            VkDescriptorSetLayoutCreateInfo CreateInfo = 
+            VkDescriptorSetLayoutCreateInfo CreateInfo =
             {
                 .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
                 .pNext = nullptr,
@@ -1622,14 +1622,14 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
 
         // Descriptor pool + set
         {
-            VkDescriptorPoolSize PoolSizes[] = 
+            VkDescriptorPoolSize PoolSizes[] =
             {
                 { .type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount = 1, },
                 { .type = VK_DESCRIPTOR_TYPE_SAMPLER, .descriptorCount = 1, },
             };
             constexpr u32 PoolSizeCount = CountOf(PoolSizes);
 
-            VkDescriptorPoolCreateInfo PoolInfo = 
+            VkDescriptorPoolCreateInfo PoolInfo =
             {
                 .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
                 .pNext = nullptr,
@@ -1676,7 +1676,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         constexpr u32 TexHeight = 16;
         constexpr u32 TexMaxArrayCount = 64;
         constexpr u32 TexMipCount = 4;
-        
+
         // Pixel count for all mip levels
         u32 TexturePixelCount = 0;
         {
@@ -1741,7 +1741,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                             // Generate mips
                             {
                                 u32* PrevMipLevel = Image->Pixels;
-                                
+
                                 u32 PrevWidth = TexWidth;
                                 u32 PrevHeight = TexHeight;
                                 u32 CurrentWidth = TexWidth / 2;
@@ -1751,7 +1751,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                                     u32 MipSize = CurrentWidth*CurrentHeight;
                                     u32* CurrentMipLevel = PixelBufferAt;
                                     PixelBufferAt += MipSize;
-                                    
+
                                     for (u32 y = 0; y < CurrentHeight; y++)
                                     {
                                         for (u32 x = 0; x < CurrentWidth; x++)
@@ -1797,7 +1797,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             return Result;
         };
 
-        static const char* TexturePaths[] = 
+        static const char* TexturePaths[] =
         {
             "texture/ground_side.bmp",
             "texture/ground_top.bmp",
@@ -1817,7 +1817,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         u32 TotalTexMemorySize = (u32)(PixelBufferAt - PixelBuffer) * sizeof(u32);
 
         {
-            VkImageCreateInfo CreateInfo = 
+            VkImageCreateInfo CreateInfo =
             {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 .pNext = nullptr,
@@ -1845,7 +1845,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 u32 MemoryType = 0;
                 if (BitScanForward(&MemoryType, MemoryRequirements.memoryTypeBits & Renderer->DeviceLocalMemoryTypes))
                 {
-                    VkMemoryAllocateInfo AllocInfo = 
+                    VkMemoryAllocateInfo AllocInfo =
                     {
                         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                         .pNext = nullptr,
@@ -1858,15 +1858,15 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                     {
                         if (vkBindImageMemory(Renderer->Device, Image, Memory, 0) == VK_SUCCESS)
                         {
-                            if (StagingHeap_CopyImage(&Renderer->StagingHeap, 
+                            if (StagingHeap_CopyImage(&Renderer->StagingHeap,
                                 Renderer->TransferQueue,
                                 Renderer->TransferCmdBuffer,
-                                Image, 
+                                Image,
                                 TexWidth, TexHeight, TexMipCount, TextureCount,
                                 VK_FORMAT_R8G8B8A8_SRGB,
                                 PixelBuffer))
                             {
-                                VkImageViewCreateInfo ViewInfo = 
+                                VkImageViewCreateInfo ViewInfo =
                                 {
                                     .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                                     .pNext = nullptr,
@@ -1875,7 +1875,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                                     .viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
                                     .format = VK_FORMAT_R8G8B8A8_SRGB,
                                     .components = {},
-                                    .subresourceRange = 
+                                    .subresourceRange =
                                     {
                                         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                                         .baseMipLevel = 0,
@@ -1888,13 +1888,13 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                                 VkImageView ImageView = VK_NULL_HANDLE;
                                 if (vkCreateImageView(Renderer->Device, &ViewInfo, nullptr, &ImageView) == VK_SUCCESS)
                                 {
-                                    VkDescriptorImageInfo ImageInfo = 
+                                    VkDescriptorImageInfo ImageInfo =
                                     {
                                         .sampler = VK_NULL_HANDLE,
                                         .imageView = ImageView,
                                         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                                     };
-                                    VkWriteDescriptorSet DescriptorWrite = 
+                                    VkWriteDescriptorSet DescriptorWrite =
                                     {
                                         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                                         .pNext = nullptr,
@@ -1960,13 +1960,13 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
     {
         // Create pipeline layout
         {
-            VkPushConstantRange PushConstants = 
+            VkPushConstantRange PushConstants =
             {
                 .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
                 .offset = 0,
                 .size = sizeof(mat4),
             };
-            VkPipelineLayoutCreateInfo Info = 
+            VkPipelineLayoutCreateInfo Info =
             {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                 .pNext = nullptr,
@@ -1976,23 +1976,23 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .pushConstantRangeCount = 1,
                 .pPushConstantRanges = &PushConstants,
             };
-            
+
             Result = vkCreatePipelineLayout(Renderer->Device, &Info, nullptr, &Renderer->PipelineLayout);
             if (Result != VK_SUCCESS)
             {
                 return false;
             }
         }
-        
+
         //  Create shaders
         VkShaderModule VSModule, FSModule;
         {
             CBuffer VSBin = LoadEntireFile("shader/shader.vs");
             CBuffer FSBin = LoadEntireFile("shader/shader.fs");
-            
+
             assert((VSBin.Size > 0) && (FSBin.Size > 0));
-            
-            VkShaderModuleCreateInfo VSInfo = 
+
+            VkShaderModuleCreateInfo VSInfo =
             {
                 .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
                 .pNext = nullptr,
@@ -2008,7 +2008,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .codeSize = FSBin.Size,
                 .pCode = (u32*)FSBin.Data,
             };
-            
+
             Result = vkCreateShaderModule(Renderer->Device, &VSInfo, nullptr, &VSModule);
             if (Result != VK_SUCCESS)
             {
@@ -2020,8 +2020,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 return false;
             }
         }
-        
-        VkPipelineShaderStageCreateInfo ShaderStages[] = 
+
+        VkPipelineShaderStageCreateInfo ShaderStages[] =
         {
             {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -2043,15 +2043,15 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             },
         };
         constexpr u32 ShaderStageCount = CountOf(ShaderStages);
-        
-        VkVertexInputBindingDescription VertexBinding = 
+
+        VkVertexInputBindingDescription VertexBinding =
         {
             .binding = 0,
             .stride = sizeof(vertex),
             .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
         };
-        
-        VkVertexInputAttributeDescription VertexAttribs[] = 
+
+        VkVertexInputAttributeDescription VertexAttribs[] =
         {
             // Pos
             {
@@ -2076,8 +2076,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             },
         };
         constexpr u32 VertexAttribCount = CountOf(VertexAttribs);
-        
-        VkPipelineVertexInputStateCreateInfo VertexInputState = 
+
+        VkPipelineVertexInputStateCreateInfo VertexInputState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2087,8 +2087,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .vertexAttributeDescriptionCount = VertexAttribCount,
             .pVertexAttributeDescriptions = VertexAttribs,
         };
-        
-        VkPipelineInputAssemblyStateCreateInfo InputAssemblyState = 
+
+        VkPipelineInputAssemblyStateCreateInfo InputAssemblyState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2096,11 +2096,11 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
             .primitiveRestartEnable = VK_FALSE,
         };
-        
+
         VkViewport Viewport = {};
         VkRect2D Scissor = {};
-        
-        VkPipelineViewportStateCreateInfo ViewportState = 
+
+        VkPipelineViewportStateCreateInfo ViewportState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2110,8 +2110,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .scissorCount = 1,
             .pScissors = &Scissor,
         };
-        
-        VkPipelineRasterizationStateCreateInfo RasterizationState = 
+
+        VkPipelineRasterizationStateCreateInfo RasterizationState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2127,8 +2127,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .depthBiasSlopeFactor = 0.0f,
             .lineWidth = 1.0f,
         };
-        
-        VkPipelineMultisampleStateCreateInfo MultisampleState = 
+
+        VkPipelineMultisampleStateCreateInfo MultisampleState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2140,8 +2140,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .alphaToCoverageEnable = VK_FALSE,
             .alphaToOneEnable = VK_FALSE,
         };
-        
-        VkPipelineDepthStencilStateCreateInfo DepthStencilState = 
+
+        VkPipelineDepthStencilStateCreateInfo DepthStencilState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2151,8 +2151,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .depthCompareOp = VK_COMPARE_OP_LESS,
             .depthBoundsTestEnable = VK_FALSE,
             .stencilTestEnable = VK_FALSE,
-            .front = 
-            { 
+            .front =
+            {
                 .failOp = VK_STENCIL_OP_KEEP,
                 .passOp = VK_STENCIL_OP_KEEP,
                 .depthFailOp = VK_STENCIL_OP_KEEP,
@@ -2161,7 +2161,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .writeMask = 0,
                 .reference = 0,
             },
-            .back = 
+            .back =
             {
                 .failOp = VK_STENCIL_OP_KEEP,
                 .passOp = VK_STENCIL_OP_KEEP,
@@ -2174,8 +2174,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .minDepthBounds = 0.0f,
             .maxDepthBounds = 1.0f,
         };
-        
-        VkPipelineColorBlendAttachmentState Attachment = 
+
+        VkPipelineColorBlendAttachmentState Attachment =
         {
             .blendEnable = VK_FALSE,
             .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
@@ -2184,14 +2184,14 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
             .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
             .alphaBlendOp = VK_BLEND_OP_ADD,
-            .colorWriteMask = 
+            .colorWriteMask =
                 VK_COLOR_COMPONENT_R_BIT|
                 VK_COLOR_COMPONENT_G_BIT|
                 VK_COLOR_COMPONENT_B_BIT|
                 VK_COLOR_COMPONENT_A_BIT,
         };
-        
-        VkPipelineColorBlendStateCreateInfo ColorBlendState = 
+
+        VkPipelineColorBlendStateCreateInfo ColorBlendState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2202,15 +2202,15 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .pAttachments = &Attachment,
             .blendConstants = { 1.0f, 1.0f, 1.0f, 1.0f },
         };
-        
-        VkDynamicState DynamicStates[] = 
+
+        VkDynamicState DynamicStates[] =
         {
             VK_DYNAMIC_STATE_VIEWPORT,
             VK_DYNAMIC_STATE_SCISSOR,
         };
         constexpr u32 DynamicStateCount = CountOf(DynamicStates);
-        
-        VkPipelineDynamicStateCreateInfo DynamicState = 
+
+        VkPipelineDynamicStateCreateInfo DynamicState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2218,14 +2218,14 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .dynamicStateCount = DynamicStateCount,
             .pDynamicStates = DynamicStates,
         };
-        
-        VkFormat Formats[] = 
+
+        VkFormat Formats[] =
         {
             Renderer->SurfaceFormat.format,
         };
         constexpr u32 FormatCount = CountOf(Formats);
-        
-        VkPipelineRenderingCreateInfoKHR DynamicRendering = 
+
+        VkPipelineRenderingCreateInfoKHR DynamicRendering =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
             .pNext = nullptr,
@@ -2235,8 +2235,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
             .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
         };
-        
-        VkGraphicsPipelineCreateInfo Info = 
+
+        VkGraphicsPipelineCreateInfo Info =
         {
             .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
             .pNext = &DynamicRendering,
@@ -2258,7 +2258,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .basePipelineHandle = VK_NULL_HANDLE,
             .basePipelineIndex = 0,
         };
-        
+
         Result = vkCreateGraphicsPipelines(Renderer->Device, VK_NULL_HANDLE, 1, &Info, nullptr, &Renderer->Pipeline);
         if (Result != VK_SUCCESS)
         {
@@ -2273,13 +2273,13 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
     {
         // Create pipeline layout
         {
-            VkPushConstantRange PushConstants = 
+            VkPushConstantRange PushConstants =
             {
                 .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
                 .offset = 0,
                 .size = sizeof(mat4),
             };
-            VkPipelineLayoutCreateInfo Info = 
+            VkPipelineLayoutCreateInfo Info =
             {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                 .pNext = nullptr,
@@ -2289,23 +2289,23 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .pushConstantRangeCount = 1,
                 .pPushConstantRanges = &PushConstants,
             };
-            
+
             Result = vkCreatePipelineLayout(Renderer->Device, &Info, nullptr, &Renderer->ImPipelineLayout);
             if (Result != VK_SUCCESS)
             {
                 return false;
             }
         }
-        
+
         //  Create shaders
         VkShaderModule VSModule, FSModule;
         {
             CBuffer VSBin = LoadEntireFile("shader/imshader.vs");
             CBuffer FSBin = LoadEntireFile("shader/imshader.fs");
-            
+
             assert((VSBin.Size > 0) && (FSBin.Size > 0));
-            
-            VkShaderModuleCreateInfo VSInfo = 
+
+            VkShaderModuleCreateInfo VSInfo =
             {
                 .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
                 .pNext = nullptr,
@@ -2321,7 +2321,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .codeSize = FSBin.Size,
                 .pCode = (u32*)FSBin.Data,
             };
-            
+
             Result = vkCreateShaderModule(Renderer->Device, &VSInfo, nullptr, &VSModule);
             if (Result != VK_SUCCESS)
             {
@@ -2333,8 +2333,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 return false;
             }
         }
-        
-        VkPipelineShaderStageCreateInfo ShaderStages[] = 
+
+        VkPipelineShaderStageCreateInfo ShaderStages[] =
         {
             {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -2356,15 +2356,15 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             },
         };
         constexpr u32 ShaderStageCount = CountOf(ShaderStages);
-        
-        VkVertexInputBindingDescription VertexBinding = 
+
+        VkVertexInputBindingDescription VertexBinding =
         {
             .binding = 0,
             .stride = sizeof(vertex),
             .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
         };
-        
-        VkVertexInputAttributeDescription VertexAttribs[] = 
+
+        VkVertexInputAttributeDescription VertexAttribs[] =
         {
             // Pos
             {
@@ -2391,8 +2391,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             },
         };
         constexpr u32 VertexAttribCount = CountOf(VertexAttribs);
-        
-        VkPipelineVertexInputStateCreateInfo VertexInputState = 
+
+        VkPipelineVertexInputStateCreateInfo VertexInputState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2402,8 +2402,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .vertexAttributeDescriptionCount = VertexAttribCount,
             .pVertexAttributeDescriptions = VertexAttribs,
         };
-        
-        VkPipelineInputAssemblyStateCreateInfo InputAssemblyState = 
+
+        VkPipelineInputAssemblyStateCreateInfo InputAssemblyState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2411,11 +2411,11 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST,
             .primitiveRestartEnable = VK_FALSE,
         };
-        
+
         VkViewport Viewport = {};
         VkRect2D Scissor = {};
-        
-        VkPipelineViewportStateCreateInfo ViewportState = 
+
+        VkPipelineViewportStateCreateInfo ViewportState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2425,8 +2425,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .scissorCount = 1,
             .pScissors = &Scissor,
         };
-        
-        VkPipelineRasterizationStateCreateInfo RasterizationState = 
+
+        VkPipelineRasterizationStateCreateInfo RasterizationState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2442,8 +2442,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .depthBiasSlopeFactor = 0.0f,
             .lineWidth = 1.0f,
         };
-        
-        VkPipelineMultisampleStateCreateInfo MultisampleState = 
+
+        VkPipelineMultisampleStateCreateInfo MultisampleState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2455,8 +2455,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .alphaToCoverageEnable = VK_FALSE,
             .alphaToOneEnable = VK_FALSE,
         };
-        
-        VkPipelineDepthStencilStateCreateInfo DepthStencilState = 
+
+        VkPipelineDepthStencilStateCreateInfo DepthStencilState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2466,8 +2466,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .depthCompareOp = VK_COMPARE_OP_LESS,
             .depthBoundsTestEnable = VK_FALSE,
             .stencilTestEnable = VK_FALSE,
-            .front = 
-            { 
+            .front =
+            {
                 .failOp = VK_STENCIL_OP_KEEP,
                 .passOp = VK_STENCIL_OP_KEEP,
                 .depthFailOp = VK_STENCIL_OP_KEEP,
@@ -2476,7 +2476,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .writeMask = 0,
                 .reference = 0,
             },
-            .back = 
+            .back =
             {
                 .failOp = VK_STENCIL_OP_KEEP,
                 .passOp = VK_STENCIL_OP_KEEP,
@@ -2489,8 +2489,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .minDepthBounds = 0.0f,
             .maxDepthBounds = 1.0f,
         };
-        
-        VkPipelineColorBlendAttachmentState Attachment = 
+
+        VkPipelineColorBlendAttachmentState Attachment =
         {
             .blendEnable = VK_FALSE,
             .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
@@ -2499,14 +2499,14 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
             .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
             .alphaBlendOp = VK_BLEND_OP_ADD,
-            .colorWriteMask = 
+            .colorWriteMask =
                 VK_COLOR_COMPONENT_R_BIT|
                 VK_COLOR_COMPONENT_G_BIT|
                 VK_COLOR_COMPONENT_B_BIT|
                 VK_COLOR_COMPONENT_A_BIT,
         };
-        
-        VkPipelineColorBlendStateCreateInfo ColorBlendState = 
+
+        VkPipelineColorBlendStateCreateInfo ColorBlendState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2517,8 +2517,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .pAttachments = &Attachment,
             .blendConstants = { 1.0f, 1.0f, 1.0f, 1.0f },
         };
-        
-        VkDynamicState DynamicStates[] = 
+
+        VkDynamicState DynamicStates[] =
         {
             VK_DYNAMIC_STATE_VIEWPORT,
             VK_DYNAMIC_STATE_SCISSOR,
@@ -2526,8 +2526,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY_EXT,
         };
         constexpr u32 DynamicStateCount = CountOf(DynamicStates);
-        
-        VkPipelineDynamicStateCreateInfo DynamicState = 
+
+        VkPipelineDynamicStateCreateInfo DynamicState =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
             .pNext = nullptr,
@@ -2535,14 +2535,14 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .dynamicStateCount = DynamicStateCount,
             .pDynamicStates = DynamicStates,
         };
-        
-        VkFormat Formats[] = 
+
+        VkFormat Formats[] =
         {
             Renderer->SurfaceFormat.format,
         };
         constexpr u32 FormatCount = CountOf(Formats);
-        
-        VkPipelineRenderingCreateInfoKHR DynamicRendering = 
+
+        VkPipelineRenderingCreateInfoKHR DynamicRendering =
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
             .pNext = nullptr,
@@ -2552,8 +2552,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
             .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
         };
-        
-        VkGraphicsPipelineCreateInfo Info = 
+
+        VkGraphicsPipelineCreateInfo Info =
         {
             .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
             .pNext = &DynamicRendering,
@@ -2575,7 +2575,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .basePipelineHandle = VK_NULL_HANDLE,
             .basePipelineIndex = 0,
         };
-        
+
         Result = vkCreateGraphicsPipelines(Renderer->Device, VK_NULL_HANDLE, 1, &Info, nullptr, &Renderer->ImPipeline);
         if (Result != VK_SUCCESS)
         {
@@ -2604,16 +2604,16 @@ renderer_frame_params* Renderer_NewFrame(vulkan_renderer* Renderer)
 
     {
         TIMED_BLOCK("WaitForPreviousFrames");
-        
+
         vkWaitForFences(Renderer->Device, 1, &Frame->RenderFinishedFence, VK_TRUE, UINT64_MAX);
         vkResetFences(Renderer->Device, 1, &Frame->RenderFinishedFence);
     }
 
     VkResult Result = vkAcquireNextImageKHR(
-        Renderer->Device, Renderer->Swapchain, 
-        0, 
+        Renderer->Device, Renderer->Swapchain,
+        0,
         Frame->ImageAcquiredSemaphore,
-        nullptr, 
+        nullptr,
         &Frame->SwapchainImageIndex);
     if (Result != VK_SUCCESS)
     {
@@ -2633,7 +2633,7 @@ void Renderer_SubmitFrame(vulkan_renderer* Renderer, renderer_frame_params* Fram
     TIMED_FUNCTION();
 
     VkPipelineStageFlags WaitStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-    VkSubmitInfo SubmitInfo = 
+    VkSubmitInfo SubmitInfo =
     {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .pNext = nullptr,
@@ -2647,7 +2647,7 @@ void Renderer_SubmitFrame(vulkan_renderer* Renderer, renderer_frame_params* Fram
     };
     vkQueueSubmit(Renderer->GraphicsQueue, 1, &SubmitInfo, Frame->RenderFinishedFence);
 
-    VkPresentInfoKHR PresentInfo = 
+    VkPresentInfoKHR PresentInfo =
     {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .pNext = nullptr,
@@ -2666,7 +2666,7 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
 {
     TIMED_FUNCTION();
 
-    VkCommandBufferBeginInfo BeginInfo = 
+    VkCommandBufferBeginInfo BeginInfo =
     {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .pNext = nullptr,
@@ -2675,7 +2675,7 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
     };
     vkBeginCommandBuffer(Frame->CmdBuffer, &BeginInfo);
 
-    VkImageMemoryBarrier BeginBarriers[] = 
+    VkImageMemoryBarrier BeginBarriers[] =
     {
         {
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -2687,7 +2687,7 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .image = Frame->SwapchainImage,
-            .subresourceRange = 
+            .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel = 0,
@@ -2706,7 +2706,7 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .image = Frame->DepthBuffer,
-            .subresourceRange = 
+            .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
                 .baseMipLevel = 0,
@@ -2717,15 +2717,15 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
         },
     };
     constexpr u32 BeginBarrierCount = CountOf(BeginBarriers);
-    
+
     vkCmdPipelineBarrier(Frame->CmdBuffer,
         VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
         0,
         0, nullptr,
         0, nullptr,
         BeginBarrierCount, BeginBarriers);
-    
-    VkRenderingAttachmentInfoKHR ColorAttachment = 
+
+    VkRenderingAttachmentInfoKHR ColorAttachment =
     {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
         .pNext = nullptr,
@@ -2738,7 +2738,7 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
         .clearValue =  { .color = { 0.0f, 1.0f, 1.0f, 0.0f, }, },
     };
-    VkRenderingAttachmentInfoKHR DepthAttachment = 
+    VkRenderingAttachmentInfoKHR DepthAttachment =
     {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
         .pNext = nullptr,
@@ -2751,7 +2751,7 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
         .clearValue =  { .depthStencil = { 1.0f, 0 }, },
     };
-    VkRenderingAttachmentInfoKHR StencilAttachment = 
+    VkRenderingAttachmentInfoKHR StencilAttachment =
     {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
         .pNext = nullptr,
@@ -2764,8 +2764,8 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
         .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
         .clearValue = { .depthStencil = { 1.0f, 0 }, },
     };
-    
-    VkRenderingInfoKHR RenderingInfo = 
+
+    VkRenderingInfoKHR RenderingInfo =
     {
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
         .pNext = nullptr,
@@ -2778,10 +2778,10 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
         .pDepthAttachment = &DepthAttachment,
         .pStencilAttachment = &StencilAttachment,
     };
-    
+
     vkCmdBeginRenderingKHR(Frame->CmdBuffer, &RenderingInfo);
-    
-    VkViewport Viewport = 
+
+    VkViewport Viewport =
     {
         .x = 0.0f,
         .y = 0.0f,
@@ -2790,13 +2790,13 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
         .minDepth = 0.0f,
         .maxDepth = 1.0f,
     };
-    
-    VkRect2D Scissor = 
+
+    VkRect2D Scissor =
     {
         .offset = { 0, 0 },
         .extent = Frame->Renderer->SwapchainSize,
     };
-    
+
     vkCmdSetViewport(Frame->CmdBuffer, 0, 1, &Viewport);
     vkCmdSetScissor(Frame->CmdBuffer, 0, 1, &Scissor);
 
@@ -2807,7 +2807,7 @@ void Renderer_EndRendering(renderer_frame_params* Frame)
 
     vkCmdEndRenderingKHR(Frame->CmdBuffer);
 
-    VkImageMemoryBarrier EndBarriers[] = 
+    VkImageMemoryBarrier EndBarriers[] =
     {
         {
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -2819,7 +2819,7 @@ void Renderer_EndRendering(renderer_frame_params* Frame)
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .image = Frame->SwapchainImage,
-            .subresourceRange = 
+            .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel = 0,
@@ -2838,7 +2838,7 @@ void Renderer_EndRendering(renderer_frame_params* Frame)
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .image = Frame->DepthBuffer,
-            .subresourceRange = 
+            .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
                 .baseMipLevel = 0,
@@ -2850,7 +2850,7 @@ void Renderer_EndRendering(renderer_frame_params* Frame)
     };
     constexpr u32 EndBarrierCount = CountOf(EndBarriers);
 
-    vkCmdPipelineBarrier(Frame->CmdBuffer, 
+    vkCmdPipelineBarrier(Frame->CmdBuffer,
         VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
         0,
         0, nullptr,
@@ -2865,7 +2865,7 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, const chunk*
     TIMED_FUNCTION();
 
     vkCmdBindPipeline(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->Pipeline);
-    vkCmdBindDescriptorSets(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->PipelineLayout, 
+    vkCmdBindDescriptorSets(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->PipelineLayout,
         0, 1, &Frame->Renderer->DescriptorSet, 0, nullptr);
 
     VkDeviceSize Offset = 0;
@@ -2895,17 +2895,18 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, const chunk*
             0.0f, 0.0f, 1.0f, 0.0f,
             0.0f, 0.0f, 0.0f, 1.0f);
         mat4 Transform = VP * WorldTransform;
-        
+
         vkCmdPushConstants(
             Frame->CmdBuffer,
             Frame->Renderer->PipelineLayout,
             VK_SHADER_STAGE_VERTEX_BIT, 0,
             sizeof(mat4), &Transform);
-        
+
         vulkan_vertex_buffer_block Block = Frame->Renderer->VB.Blocks[Allocation.BlockIndex];
         vkCmdDraw(Frame->CmdBuffer, Block.VertexCount, 1, Block.VertexOffset, 0);
     }
 }
+
 
 u64 Frame_PushToStack(renderer_frame_params* Frame, const void* Data, u64 Size)
 {
@@ -2940,7 +2941,7 @@ void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, aabb Box, u32 Co
     TIMED_FUNCTION();
 
     static constexpr u32 VertexCount = 2*8 + 8;
-    vertex VertexData[VertexCount] = 
+    vertex VertexData[VertexCount] =
     {
         // Bottom
         { { Box.Min.x, Box.Min.y, Box.Min.z }, { }, Color },
