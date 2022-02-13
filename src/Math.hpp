@@ -12,6 +12,8 @@ inline s32 Abs(s32 x) { return abs(x); }
 inline s32 Min(s32 a, s32 b) { return (a < b) ? a : b; }
 inline s32 Max(s32 a, s32 b) { return (a < b) ? b : a; }
 
+inline u64 Max(u64 a, u64 b) { return (a < b) ? a : b; }
+
 inline f32 Signum(f32 x) 
 {  
     if (x < 0.0f) return -1.0f;
