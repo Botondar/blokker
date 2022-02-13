@@ -514,7 +514,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         s64 StartTime;
         QueryPerformanceCounter((LARGE_INTEGER*)&StartTime);
 
-#if DEVELOPER
+#if DEVELOPER && 0
         if (IsHungAppWindow(Win32State.Window))
         {
             assert(!"App hung");

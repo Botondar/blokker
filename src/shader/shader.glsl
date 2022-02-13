@@ -1,36 +1,28 @@
-#version 450 core
-
-#if defined(VERTEX_SHADER)
-#define vs_out out
-#elif defined(FRAGMENT_SHADER)
-#define vs_out in
-#endif
+#include <common.glsl>
 
 // SHARED
 layout(location = 0) vs_out vec3 TexCoord;
 layout(location = 1) vs_out vec4 Color;
-
 
 layout(push_constant) uniform PushConstants
 {
     mat4 Transform;
 };
 
-#ifdef VERTEX_SHADER
+#if defined(VERTEX_SHADER)
 
-layout(location = 0) in vec3 v_Position;
-layout(location = 1) in vec3 v_UVW;
-layout(location = 2) in vec3 v_Color;
+layout(location = ATTRIB_POS) in vec3 v_Position;
+layout(location = ATTRIB_TEXCOORD) in vec3 v_UVW;
+layout(location = ATTRIB_COLOR) in vec4 v_Color;
 
 void main()
 {
     gl_Position = Transform * vec4(v_Position, 1);
     TexCoord = v_UVW;
-    Color = vec4(v_Color, 1);
+    Color = vec4(v_Color.rgb, 1);
 }
-#endif
 
-#ifdef FRAGMENT_SHADER
+#elif defined(FRAGMENT_SHADER)
 
 layout(set = 0, binding = 0) uniform texture2DArray Texture;
 layout(set = 0, binding = 1) uniform sampler Sampler;

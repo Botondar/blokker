@@ -12,41 +12,8 @@
 #include "Common.cpp"
 #include "Camera.cpp"
 #include "Chunk.cpp"
+#include "Shapes.cpp"
 #include "Profiler.cpp"
-
-static bool AABB_Intersect(const aabb& A, const aabb& B, vec3& Overlap, int& MinCoord)
-{
-    vec3 Overlap_ = {};
-    f32 MinOverlap = F32_MAX_NORMAL;
-    int MinCoord_ = -1;
-
-    bool IsCollision = true;
-    for (int i = 0; i < 3; i++)
-    {
-        if ((A.Min[i] <= B.Max[i]) && (B.Min[i] < A.Max[i]))
-        {
-            Overlap_[i] = (A.Max[i] < B.Max[i]) ? B.Min[i] - A.Max[i] : B.Max[i] - A.Min[i];
-            if (Abs(Overlap_[i]) < MinOverlap)
-            {
-                MinOverlap = Abs(Overlap_[i]);
-                MinCoord_ = i;
-            }
-        }
-        else
-        {
-            IsCollision = false;
-            break;
-        }
-    }
-
-    if (IsCollision)
-    {
-        Overlap = Overlap_;
-        MinCoord = MinCoord_;
-    }
-
-    return IsCollision;
-}
 
 static aabb Player_GetAABB(const player* Player)
 {
@@ -536,6 +503,8 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
 
         auto ApplyMovement = [&PlayerChunk, &Player](vec3 dP, u32 Direction) -> f32
         {
+            TIMED_FUNCTION();
+
             Player->P[Direction] += dP[Direction];
 
 #if 1
@@ -672,8 +641,17 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
         .Pitch = GameState->Player.Pitch,
     };
 
+    FrameParams->ViewTransform = FrameParams->Camera.GetInverseTransform();
+
+    const f32 AspectRatio = (f32)FrameParams->Renderer->SwapchainSize.width / (f32)FrameParams->Renderer->SwapchainSize.height;
+    FrameParams->ProjectionTransform = PerspectiveMat4(ToRadians(90.0f), AspectRatio, 0.045f, 8000.0f);
+
     Renderer_BeginRendering(FrameParams);
+
     Renderer_RenderChunks(FrameParams, GameState->ChunkCount, GameState->Chunks);
+    Renderer_BeginImmediate(FrameParams);
+    Renderer_ImmediateBoxOutline(FrameParams, Player_GetAABB(&GameState->Player), PackColor(0xFF, 0xFF, 0x00));
+
     Renderer_EndRendering(FrameParams);
 
     Renderer_SubmitFrame(Renderer, FrameParams);

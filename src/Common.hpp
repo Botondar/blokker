@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cassert>
 #include <cstdlib>
+#include <cstring>
 #include <immintrin.h>
 
 typedef uint8_t  u8;
@@ -26,6 +27,12 @@ static_assert(sizeof(f64) == 8);
 
 constexpr u32 INVALID_INDEX_U32 = 0xFFFFFFFFu;
 constexpr u64 INVALID_INDEX_U64 = 0xFFFFFFFFFFFFFFFFu;
+
+inline u32 SafeU64ToU32(u64 Value)
+{
+    assert(Value <= 0xFFFFFFFFu);
+    return (u32)Value;
+}
 
 inline u64 AlignTo(u64 Value, u64 Alignment)
 {

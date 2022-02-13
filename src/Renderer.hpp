@@ -5,16 +5,18 @@
 #include <Common.hpp>
 #include <Math.hpp>
 #include <RendererCommon.hpp>
+#include <Shapes.hpp>
 
 #include <Chunk.hpp>
 #include <Camera.hpp>
 
-
 extern PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR_;
 extern PFN_vkCmdEndRenderingKHR   vkCmdEndRenderingKHR_;
+extern PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT_;
 
 #define vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR_
 #define vkCmdEndRenderingKHR vkCmdEndRenderingKHR_
+#define vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT_
 
 struct vulkan_renderer;
 
@@ -37,7 +39,6 @@ struct vulkan_rt_heap
     u32 MemoryTypeIndex;
 };
 
-
 bool RTHeap_Create(
     vulkan_rt_heap* Heap, 
     u64 Size, u32 MemoryTypeBase, 
@@ -48,7 +49,6 @@ bool RTHeap_Create(
 bool RTHeap_PushImage(
     vulkan_rt_heap* Heap,
     VkImage Image);
-
 
 enum class vulkan_resource_type : u32
 {
@@ -162,6 +162,8 @@ struct renderer_frame_params
     u64 FrameIndex;
 
     camera Camera;
+    mat4 ProjectionTransform;
+    mat4 ViewTransform;
 
     VkCommandPool CmdPool;
     VkCommandBuffer CmdBuffer;
@@ -178,8 +180,21 @@ struct renderer_frame_params
     VkImageView SwapchainImageView;
     u32 SwapchainImageIndex;
 
+    struct 
+    {
+        VkDeviceMemory Memory;
+        VkBuffer Buffer;
+
+        u64 Size;
+        u64 At;
+
+        void* Mapping;
+    } VertexStack;
+
     vulkan_renderer* Renderer;
 };
+
+u64 Frame_PushToStack(renderer_frame_params* Frame, const void* Data, u64 Size);
 
 struct vulkan_renderer 
 {
@@ -231,6 +246,9 @@ struct vulkan_renderer
     VkPipelineLayout PipelineLayout;
     VkPipeline Pipeline;
 
+    VkPipelineLayout ImPipelineLayout;
+    VkPipeline ImPipeline;
+
     VkSampler Sampler;
 
     VkDescriptorSetLayout DescriptorSetLayout;
@@ -252,3 +270,6 @@ void Renderer_BeginRendering(renderer_frame_params* Frame);
 void Renderer_EndRendering(renderer_frame_params* Frame);
 
 void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, const chunk* Chunks);
+
+void Renderer_BeginImmediate(renderer_frame_params* Frame);
+void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, aabb Box, u32 Color);

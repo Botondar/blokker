@@ -6,6 +6,7 @@
 
 PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR_ = nullptr;
 PFN_vkCmdEndRenderingKHR   vkCmdEndRenderingKHR_   = nullptr;
+PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT_ = nullptr;
 
 static PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT_ = nullptr;
 #define vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT_
@@ -938,6 +939,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
     {
         "VK_KHR_swapchain",
         "VK_KHR_dynamic_rendering",
+        "VK_EXT_extended_dynamic_state",
+        "VK_EXT_extended_dynamic_state2",
         //"VK_KHR_synchronization2",
     };
 
@@ -1116,15 +1119,15 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 {
                     Renderer->DeviceLocalMemoryTypes |= (1 << i);
                 }
-                else if (!IsDeviceLocal && IsHostVisible)
+                if (!IsDeviceLocal && IsHostVisible)
                 {
                     Renderer->HostVisibleMemoryTypes |= (1 << i);
                 }
-                else if (!IsDeviceLocal && IsHostVisible && IsHostCoherent)
+                if (!IsDeviceLocal && IsHostVisible && IsHostCoherent)
                 {
                     Renderer->HostVisibleCoherentMemoryTypes |= (1 << i);
                 }
-                else if (IsDeviceLocal && IsHostVisible)
+                if (IsDeviceLocal && IsHostVisible)
                 {
                     Renderer->DeviceLocalAndHostVisibleMemoryTypes |= (1 << i);
                 }
@@ -1172,21 +1175,37 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                                                  &DeviceLayerExtensions[i].Count, DeviceLayerExtensions[i].Extensions);
         }
 
-        VkPhysicalDeviceDynamicRenderingFeaturesKHR DynamicRenderingFeature = 
+
+        
+        VkPhysicalDeviceDynamicRenderingFeaturesKHR DynamicRenderingFeatures = 
         {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
             .pNext = nullptr,
             .dynamicRendering = VK_FALSE,
         };
 
+        VkPhysicalDeviceExtendedDynamicState2FeaturesEXT DynamicStateFeatures2 = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_2_FEATURES_EXT,
+            .pNext = &DynamicRenderingFeatures,
+        };
+
+        VkPhysicalDeviceExtendedDynamicStateFeaturesEXT DynamicStateFeatures = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,
+            .pNext = &DynamicStateFeatures2,
+        };
+
         VkPhysicalDeviceFeatures2 DeviceFeatures = 
         {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-            .pNext = &DynamicRenderingFeature,
+            .pNext = &DynamicStateFeatures,
         };
 
         vkGetPhysicalDeviceFeatures2(Renderer->PhysicalDevice, &DeviceFeatures);
-        if (DynamicRenderingFeature.dynamicRendering == VK_FALSE)
+        if (!(DynamicRenderingFeatures.dynamicRendering) ||
+            !(DynamicStateFeatures.extendedDynamicState) ||
+            !(DynamicStateFeatures2.extendedDynamicState2))
         {
             return false;
         }
@@ -1241,7 +1260,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         VkDeviceCreateInfo DeviceCreateInfo = 
         {
             .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-            .pNext = &DynamicRenderingFeature,
+            .pNext = &DeviceFeatures,
             .flags = 0,
             .queueCreateInfoCount = QueueCreateInfoCount,
             .pQueueCreateInfos = QueueCreateInfos,
@@ -1249,7 +1268,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .ppEnabledLayerNames = RequiredDeviceLayers,
             .enabledExtensionCount = RequiredDeviceExtensionCount,
             .ppEnabledExtensionNames = RequiredDeviceExtensions,
-            .pEnabledFeatures = &DeviceFeatures.features,
+            .pEnabledFeatures = nullptr,
         };
 
         Result = vkCreateDevice(Renderer->PhysicalDevice, &DeviceCreateInfo, nullptr, &Renderer->Device);
@@ -1265,6 +1284,12 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
     vkCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR)vkGetInstanceProcAddr(Renderer->Instance, "vkCmdBeginRenderingKHR");
     vkCmdEndRenderingKHR   = (PFN_vkCmdEndRenderingKHR  )vkGetInstanceProcAddr(Renderer->Instance, "vkCmdEndRenderingKHR");
     if (!vkCmdBeginRenderingKHR || !vkCmdEndRenderingKHR)
+    {
+        return false;
+    }
+
+    vkCmdSetPrimitiveTopologyEXT = (PFN_vkCmdSetPrimitiveTopologyEXT)vkGetInstanceProcAddr(Renderer->Instance, "vkCmdSetPrimitiveTopologyEXT");
+    if (!vkCmdSetPrimitiveTopologyEXT)
     {
         return false;
     }
@@ -1433,6 +1458,90 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
     if (!VB_Create(&Renderer->VB, Renderer->DeviceLocalMemoryTypes, 1024*1024*1024, Renderer->Device))
     {
         return false;
+    }
+
+    // Create per frame vertex stack
+    for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
+    {
+        constexpr u64 VertexStackSize = 32*1024*1024;
+        renderer_frame_params* Frame = Renderer->FrameParams + i;
+
+        VkBufferCreateInfo BufferInfo = 
+        {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .size = VertexStackSize,
+            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            .queueFamilyIndexCount = 0,
+            .pQueueFamilyIndices = nullptr,
+        };
+        VkBuffer Buffer;
+        if (vkCreateBuffer(Renderer->Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
+        {
+            VkMemoryRequirements MemoryRequirements = {};
+            vkGetBufferMemoryRequirements(Renderer->Device, Buffer, &MemoryRequirements);
+
+            assert(MemoryRequirements.size == VertexStackSize);
+
+            u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->HostVisibleCoherentMemoryTypes;
+            u32 MemoryType = 0;
+            if (BitScanForward(&MemoryType, MemoryTypes) != 0)
+            {
+                VkMemoryAllocateInfo AllocInfo = 
+                {
+                    .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                    .pNext = nullptr,
+                    .allocationSize = VertexStackSize,
+                    .memoryTypeIndex = MemoryType,
+                };
+
+                VkDeviceMemory Memory;
+                if (vkAllocateMemory(Renderer->Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+                {
+                    if (vkBindBufferMemory(Renderer->Device, Buffer, Memory, 0) == VK_SUCCESS)
+                    {
+                        // NOTE(boti): persistent mapping
+                        void* Mapping = nullptr;
+                        if (vkMapMemory(Renderer->Device, Memory, 0, VK_WHOLE_SIZE, 0, &Mapping) == VK_SUCCESS)
+                        {
+                            Frame->VertexStack.Memory = Memory;
+                            Frame->VertexStack.Buffer = Buffer;
+                            Frame->VertexStack.Size = VertexStackSize;
+                            Frame->VertexStack.At = 0;
+                            Frame->VertexStack.Mapping = Mapping;
+                        }
+                        else
+                        {
+                            vkFreeMemory(Renderer->Device, Memory, nullptr);
+                            vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        vkFreeMemory(Renderer->Device, Memory, nullptr);
+                        vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
+                        return false;
+                    }
+                }
+                else
+                {
+                    vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
+                    return false;
+                }
+            }
+            else
+            {
+                vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
+                return false;
+            }
+        }
+        else
+        {
+            return false;
+        }
     }
 
     // Descriptors
@@ -1847,6 +1956,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         delete[] PixelBuffer;
     }
 
+    // Main pipeline
     {
         // Create pipeline layout
         {
@@ -1945,24 +2055,24 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         {
             // Pos
             {
-                .location = 0,
-                    .binding = 0,
-                    .format = VK_FORMAT_R32G32B32_SFLOAT,
-                    .offset = offsetof(vertex, P),
+                .location = ATTRIB_POS,
+                .binding = 0,
+                .format = VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = offsetof(vertex, P),
             },
             // UVW
             {
-                .location = 1,
-                    .binding = 0,
-                    .format = VK_FORMAT_R32G32B32_SFLOAT,
-                    .offset = offsetof(vertex, UVW),
+                .location = ATTRIB_TEXCOORD,
+                .binding = 0,
+                .format = VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = offsetof(vertex, UVW),
             },
             // Color
             {
-                .location = 2,
-                    .binding = 0,
-                    .format = VK_FORMAT_R8G8B8A8_UNORM,
-                    .offset = offsetof(vertex, Color),
+                .location = ATTRIB_COLOR,
+                .binding = 0,
+                .format = VK_FORMAT_R8G8B8A8_UNORM,
+                .offset = offsetof(vertex, Color),
             },
         };
         constexpr u32 VertexAttribCount = CountOf(VertexAttribs);
@@ -2159,6 +2269,323 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         vkDestroyShaderModule(Renderer->Device, FSModule, nullptr);
     }
 
+    // ImPipeline
+    {
+        // Create pipeline layout
+        {
+            VkPushConstantRange PushConstants = 
+            {
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                .offset = 0,
+                .size = sizeof(mat4),
+            };
+            VkPipelineLayoutCreateInfo Info = 
+            {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .setLayoutCount = 0,
+                .pSetLayouts = nullptr,
+                .pushConstantRangeCount = 1,
+                .pPushConstantRanges = &PushConstants,
+            };
+            
+            Result = vkCreatePipelineLayout(Renderer->Device, &Info, nullptr, &Renderer->ImPipelineLayout);
+            if (Result != VK_SUCCESS)
+            {
+                return false;
+            }
+        }
+        
+        //  Create shaders
+        VkShaderModule VSModule, FSModule;
+        {
+            CBuffer VSBin = LoadEntireFile("shader/imshader.vs");
+            CBuffer FSBin = LoadEntireFile("shader/imshader.fs");
+            
+            assert((VSBin.Size > 0) && (FSBin.Size > 0));
+            
+            VkShaderModuleCreateInfo VSInfo = 
+            {
+                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .codeSize = VSBin.Size,
+                .pCode = (u32*)VSBin.Data,
+            };
+            VkShaderModuleCreateInfo FSInfo =
+            {
+                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .codeSize = FSBin.Size,
+                .pCode = (u32*)FSBin.Data,
+            };
+            
+            Result = vkCreateShaderModule(Renderer->Device, &VSInfo, nullptr, &VSModule);
+            if (Result != VK_SUCCESS)
+            {
+                return false;
+            }
+            Result = vkCreateShaderModule(Renderer->Device, &FSInfo, nullptr, &FSModule);
+            if (Result != VK_SUCCESS)
+            {
+                return false;
+            }
+        }
+        
+        VkPipelineShaderStageCreateInfo ShaderStages[] = 
+        {
+            {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                .module = VSModule,
+                .pName = "main",
+                .pSpecializationInfo = nullptr,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .module = FSModule,
+                .pName = "main",
+                .pSpecializationInfo = nullptr,
+            },
+        };
+        constexpr u32 ShaderStageCount = CountOf(ShaderStages);
+        
+        VkVertexInputBindingDescription VertexBinding = 
+        {
+            .binding = 0,
+            .stride = sizeof(vertex),
+            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+        };
+        
+        VkVertexInputAttributeDescription VertexAttribs[] = 
+        {
+            // Pos
+            {
+                .location = ATTRIB_POS,
+                .binding = 0,
+                .format = VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = offsetof(vertex, P),
+            },
+#if 0
+            // UVW
+            {
+                .location = ATTRIB_TEXCOORD,
+                .binding = 0,
+                .format = VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = offsetof(vertex, UVW),
+            },
+#endif
+            // Color
+            {
+                .location = ATTRIB_COLOR,
+                .binding = 0,
+                .format = VK_FORMAT_R8G8B8A8_UNORM,
+                .offset = offsetof(vertex, Color),
+            },
+        };
+        constexpr u32 VertexAttribCount = CountOf(VertexAttribs);
+        
+        VkPipelineVertexInputStateCreateInfo VertexInputState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .vertexBindingDescriptionCount = 1,
+            .pVertexBindingDescriptions = &VertexBinding,
+            .vertexAttributeDescriptionCount = VertexAttribCount,
+            .pVertexAttributeDescriptions = VertexAttribs,
+        };
+        
+        VkPipelineInputAssemblyStateCreateInfo InputAssemblyState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST,
+            .primitiveRestartEnable = VK_FALSE,
+        };
+        
+        VkViewport Viewport = {};
+        VkRect2D Scissor = {};
+        
+        VkPipelineViewportStateCreateInfo ViewportState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .viewportCount = 1,
+            .pViewports = &Viewport,
+            .scissorCount = 1,
+            .pScissors = &Scissor,
+        };
+        
+        VkPipelineRasterizationStateCreateInfo RasterizationState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .depthClampEnable = VK_FALSE,
+            .rasterizerDiscardEnable = VK_FALSE,
+            .polygonMode = VK_POLYGON_MODE_FILL,
+            .cullMode = VK_CULL_MODE_BACK_BIT,
+            .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+            .depthBiasEnable = VK_TRUE,
+            .depthBiasConstantFactor = 0.0f,
+            .depthBiasClamp = 0.0f,
+            .depthBiasSlopeFactor = 0.0f,
+            .lineWidth = 1.0f,
+        };
+        
+        VkPipelineMultisampleStateCreateInfo MultisampleState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+            .sampleShadingEnable = VK_FALSE,
+            .minSampleShading = 1.0f,
+            .pSampleMask = nullptr,
+            .alphaToCoverageEnable = VK_FALSE,
+            .alphaToOneEnable = VK_FALSE,
+        };
+        
+        VkPipelineDepthStencilStateCreateInfo DepthStencilState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .depthTestEnable = VK_TRUE,
+            .depthWriteEnable = VK_TRUE,
+            .depthCompareOp = VK_COMPARE_OP_LESS,
+            .depthBoundsTestEnable = VK_FALSE,
+            .stencilTestEnable = VK_FALSE,
+            .front = 
+            { 
+                .failOp = VK_STENCIL_OP_KEEP,
+                .passOp = VK_STENCIL_OP_KEEP,
+                .depthFailOp = VK_STENCIL_OP_KEEP,
+                .compareOp = VK_COMPARE_OP_ALWAYS,
+                .compareMask = 0,
+                .writeMask = 0,
+                .reference = 0,
+            },
+            .back = 
+            {
+                .failOp = VK_STENCIL_OP_KEEP,
+                .passOp = VK_STENCIL_OP_KEEP,
+                .depthFailOp = VK_STENCIL_OP_KEEP,
+                .compareOp = VK_COMPARE_OP_ALWAYS,
+                .compareMask = 0,
+                .writeMask = 0,
+                .reference = 0,
+            },
+            .minDepthBounds = 0.0f,
+            .maxDepthBounds = 1.0f,
+        };
+        
+        VkPipelineColorBlendAttachmentState Attachment = 
+        {
+            .blendEnable = VK_FALSE,
+            .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
+            .colorBlendOp = VK_BLEND_OP_ADD,
+            .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+            .alphaBlendOp = VK_BLEND_OP_ADD,
+            .colorWriteMask = 
+                VK_COLOR_COMPONENT_R_BIT|
+                VK_COLOR_COMPONENT_G_BIT|
+                VK_COLOR_COMPONENT_B_BIT|
+                VK_COLOR_COMPONENT_A_BIT,
+        };
+        
+        VkPipelineColorBlendStateCreateInfo ColorBlendState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .logicOpEnable = VK_FALSE,
+            .logicOp = VK_LOGIC_OP_CLEAR,
+            .attachmentCount = 1,
+            .pAttachments = &Attachment,
+            .blendConstants = { 1.0f, 1.0f, 1.0f, 1.0f },
+        };
+        
+        VkDynamicState DynamicStates[] = 
+        {
+            VK_DYNAMIC_STATE_VIEWPORT,
+            VK_DYNAMIC_STATE_SCISSOR,
+            VK_DYNAMIC_STATE_DEPTH_BIAS,
+            VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY_EXT,
+        };
+        constexpr u32 DynamicStateCount = CountOf(DynamicStates);
+        
+        VkPipelineDynamicStateCreateInfo DynamicState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .dynamicStateCount = DynamicStateCount,
+            .pDynamicStates = DynamicStates,
+        };
+        
+        VkFormat Formats[] = 
+        {
+            Renderer->SurfaceFormat.format,
+        };
+        constexpr u32 FormatCount = CountOf(Formats);
+        
+        VkPipelineRenderingCreateInfoKHR DynamicRendering = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+            .pNext = nullptr,
+            .viewMask = 0,
+            .colorAttachmentCount = FormatCount,
+            .pColorAttachmentFormats = Formats,
+            .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
+            .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
+        };
+        
+        VkGraphicsPipelineCreateInfo Info = 
+        {
+            .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+            .pNext = &DynamicRendering,
+            .flags = 0,
+            .stageCount = ShaderStageCount,
+            .pStages = ShaderStages,
+            .pVertexInputState = &VertexInputState,
+            .pInputAssemblyState = &InputAssemblyState,
+            .pTessellationState = nullptr,
+            .pViewportState = &ViewportState,
+            .pRasterizationState = &RasterizationState,
+            .pMultisampleState = &MultisampleState,
+            .pDepthStencilState = &DepthStencilState,
+            .pColorBlendState = &ColorBlendState,
+            .pDynamicState = &DynamicState,
+            .layout = Renderer->PipelineLayout,
+            .renderPass = nullptr,
+            .subpass = 0,
+            .basePipelineHandle = VK_NULL_HANDLE,
+            .basePipelineIndex = 0,
+        };
+        
+        Result = vkCreateGraphicsPipelines(Renderer->Device, VK_NULL_HANDLE, 1, &Info, nullptr, &Renderer->ImPipeline);
+        if (Result != VK_SUCCESS)
+        {
+            return false;
+        }
+
+        vkDestroyShaderModule(Renderer->Device, VSModule, nullptr);
+        vkDestroyShaderModule(Renderer->Device, FSModule, nullptr);
+    }
+
     return true;
 }
 
@@ -2173,6 +2600,7 @@ renderer_frame_params* Renderer_NewFrame(vulkan_renderer* Renderer)
     Frame->FrameIndex = FrameIndex;
     Frame->Renderer = Renderer;
     Frame->SwapchainImageIndex = INVALID_INDEX_U32;
+    Frame->VertexStack.At = 0;
 
     {
         TIMED_BLOCK("WaitForPreviousFrames");
@@ -2443,12 +2871,7 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, const chunk*
     VkDeviceSize Offset = 0;
     vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->Renderer->VB.Buffer, &Offset);
 
-    const camera* Camera = &Frame->Camera;
-    mat4 ViewTransform = Camera->GetInverseTransform();
-
-    const f32 AspectRatio = (f32)Frame->Renderer->SwapchainSize.width / (f32)Frame->Renderer->SwapchainSize.height;
-    mat4 Projection = PerspectiveMat4(ToRadians(90.0f), AspectRatio, 0.045f, 8000.0f);
-    mat4 VP = Projection * ViewTransform;
+    mat4 VP = Frame->ProjectionTransform * Frame->ViewTransform;
 
     for (u32 i = 0; i < Count; i++)
     {
@@ -2474,12 +2897,96 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, const chunk*
         mat4 Transform = VP * WorldTransform;
         
         vkCmdPushConstants(
-            Frame->CmdBuffer, 
-            Frame->Renderer->PipelineLayout, 
-            VK_SHADER_STAGE_VERTEX_BIT, 0, 
+            Frame->CmdBuffer,
+            Frame->Renderer->PipelineLayout,
+            VK_SHADER_STAGE_VERTEX_BIT, 0,
             sizeof(mat4), &Transform);
         
         vulkan_vertex_buffer_block Block = Frame->Renderer->VB.Blocks[Allocation.BlockIndex];
         vkCmdDraw(Frame->CmdBuffer, Block.VertexCount, 1, Block.VertexOffset, 0);
+    }
+}
+
+u64 Frame_PushToStack(renderer_frame_params* Frame, const void* Data, u64 Size)
+{
+    assert(Frame);
+    u64 Result = INVALID_INDEX_U64;
+
+    if ((Frame->VertexStack.At + Size) <= Frame->VertexStack.Size)
+    {
+        u8* Dest = (u8*)Frame->VertexStack.Mapping + Frame->VertexStack.At;
+        memcpy(Dest, Data, Size);
+        Result = Frame->VertexStack.At;
+        Frame->VertexStack.At += Size;
+    }
+
+    return Result;
+}
+
+void Renderer_BeginImmediate(renderer_frame_params* Frame)
+{
+    TIMED_FUNCTION();
+
+    // NOTE(boti): Supposedly we don't need to set the viewport/scissor here when all our pipelines have that as dynamic
+    // TODO(boti): ^Verify
+    vkCmdBindPipeline(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImPipeline);
+
+    VkDeviceSize VBOffset = 0;
+    vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &VBOffset);
+}
+
+void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, aabb Box, u32 Color)
+{
+    TIMED_FUNCTION();
+
+    static constexpr u32 VertexCount = 2*8 + 8;
+    vertex VertexData[VertexCount] = 
+    {
+        // Bottom
+        { { Box.Min.x, Box.Min.y, Box.Min.z }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Min.z }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Min.z }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Min.z }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Min.z }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Min.z }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Min.z }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Min.z }, { }, Color },
+
+        // Top
+        { { Box.Min.x, Box.Min.y, Box.Max.z }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Max.z }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Max.z }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Max.z }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Max.z }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Max.z }, { }, Color },
+
+        // Sides
+        { { Box.Min.x, Box.Min.y, Box.Min.z }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Max.z }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Min.z }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Max.z }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Min.z }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Min.z }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Max.z }, { }, Color },
+    };
+
+    u64 Offset = Frame_PushToStack(Frame, VertexData, sizeof(VertexData));
+    if (Offset != INVALID_INDEX_U64)
+    {
+        assert((Offset % sizeof(vertex)) == 0);
+        u32 VertexOffset = SafeU64ToU32(Offset / sizeof(vertex));
+
+        mat4 Transform = Frame->ProjectionTransform * Frame->ViewTransform;
+        vkCmdSetPrimitiveTopologyEXT(Frame->CmdBuffer, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+        vkCmdPushConstants(Frame->CmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &Transform);
+        vkCmdSetDepthBias(Frame->CmdBuffer, 0.0f, 0.0f, 0.0f);
+        vkCmdDraw(Frame->CmdBuffer, VertexCount, 1, VertexOffset, 0);
+    }
+    else
+    {
+        assert(!"Renderer_ImmediateBoxOutline failed");
     }
 }
