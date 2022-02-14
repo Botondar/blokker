@@ -2893,7 +2893,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .pNext = nullptr,
             .flags = 0,
             .depthTestEnable = VK_TRUE,
-            .depthWriteEnable = VK_TRUE,
+            .depthWriteEnable = VK_FALSE,
             .depthCompareOp = VK_COMPARE_OP_LESS,
             .depthBoundsTestEnable = VK_FALSE,
             .stencilTestEnable = VK_FALSE,
@@ -3562,11 +3562,113 @@ void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, aabb Box, u32 Co
         mat4 Transform = Frame->ProjectionTransform * Frame->ViewTransform;
         vkCmdSetPrimitiveTopologyEXT(Frame->CmdBuffer, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
         vkCmdPushConstants(Frame->CmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &Transform);
-        vkCmdSetDepthBias(Frame->CmdBuffer, 0.0f, 0.0f, 0.0f);
+        vkCmdSetDepthBias(Frame->CmdBuffer, -0.1f, 0.0f, 0.0f);
         vkCmdDraw(Frame->CmdBuffer, VertexCount, 1, 0, 0);
     }
     else
     {
         assert(!"Renderer_ImmediateBoxOutline failed");
+    }
+}
+
+void Renderer_RenderImGui(renderer_frame_params* Frame)
+{
+    TIMED_FUNCTION();
+
+    ImGui::Render();
+
+    ImDrawData* DrawData = ImGui::GetDrawData();
+    if (DrawData && (DrawData->TotalVtxCount > 0) && (DrawData->TotalIdxCount > 0))
+    {
+        u64 VertexDataOffset = AlignTo(Frame->VertexStack.At, sizeof(ImDrawVert));
+        u64 VertexDataSize = ((u64)DrawData->TotalVtxCount * sizeof(ImDrawVert));
+        u64 VertexDataEnd = VertexDataOffset + VertexDataSize;
+
+        u64 IndexDataOffset = AlignTo(VertexDataEnd, sizeof(ImDrawIdx));
+        u64 IndexDataSize = (u64)DrawData->TotalIdxCount * sizeof(ImDrawIdx);
+        u64 IndexDataEnd = IndexDataOffset + IndexDataSize;
+
+        u64 ImGuiDataSize = VertexDataSize + IndexDataSize;
+        u64 ImGuiDataEnd = IndexDataEnd;
+
+        if (ImGuiDataEnd <= Frame->VertexStack.Size)
+        {
+            Frame->VertexStack.At = ImGuiDataEnd;
+
+            vkCmdBindPipeline(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImGuiPipeline);
+            vkCmdBindDescriptorSets(
+                Frame->CmdBuffer, 
+                VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                Frame->Renderer->ImGuiPipelineLayout,
+                0, 1, &Frame->Renderer->ImGuiDescriptorSet, 0, nullptr);
+
+            mat4 Transform = Mat4(
+                2.0f / Frame->Renderer->SwapchainSize.width, 0.0f, 0.0f, -1.0f,
+                0.0f, 2.0f / Frame->Renderer->SwapchainSize.height, 0.0f, -1.0f,
+                0.0f, 0.0f, 1.0f, 0.0f,
+                0.0f, 0.0f, 0.0f, 1.0f);
+            vkCmdPushConstants(
+                Frame->CmdBuffer, 
+                Frame->Renderer->ImGuiPipelineLayout, 
+                VK_SHADER_STAGE_VERTEX_BIT,
+                0, sizeof(mat4), &Transform);
+
+            vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &VertexDataOffset);
+            VkIndexType IndexType = (sizeof(ImDrawIdx) == 2) ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
+            vkCmdBindIndexBuffer(Frame->CmdBuffer, Frame->VertexStack.Buffer, IndexDataOffset, IndexType);
+
+            ImDrawVert* VertexDataAt = (ImDrawVert*)((u8*)Frame->VertexStack.Mapping + VertexDataOffset);
+            ImDrawIdx* IndexDataAt = (ImDrawIdx*)((u8*)Frame->VertexStack.Mapping + IndexDataOffset);
+
+            u32 VertexOffset = 0;
+            u32 IndexOffset = 0;
+            for (int CmdListIndex = 0; CmdListIndex < DrawData->CmdListsCount; CmdListIndex++)
+            {
+                ImDrawList* CmdList = DrawData->CmdLists[CmdListIndex];
+
+                memcpy(VertexDataAt, CmdList->VtxBuffer.Data, (u64)CmdList->VtxBuffer.Size * sizeof(ImDrawVert));
+                VertexDataAt += CmdList->VtxBuffer.Size;
+
+                memcpy(IndexDataAt, CmdList->IdxBuffer.Data, (u64)CmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
+                IndexDataAt += CmdList->IdxBuffer.Size;
+
+                for (int CmdBufferIndex = 0; CmdBufferIndex < CmdList->CmdBuffer.Size; CmdBufferIndex++)
+                {
+                    ImDrawCmd* Command = &CmdList->CmdBuffer[CmdBufferIndex];
+                    assert((u64)Command->TextureId == Frame->Renderer->ImGuiTextureID);
+
+                    VkRect2D Scissor = 
+                    {
+                        .offset = { (s32)Command->ClipRect.x, (s32)Command->ClipRect.y },
+                        .extent = 
+                        { 
+                            .width = (u32)Command->ClipRect.z,
+                            .height = (u32)Command->ClipRect.w,
+                        },
+                    };
+                    vkCmdSetScissor(Frame->CmdBuffer, 0, 1, &Scissor);
+                    vkCmdDrawIndexed(
+                        Frame->CmdBuffer, Command->ElemCount, 1, 
+                        Command->IdxOffset + IndexOffset, 
+                        Command->VtxOffset + VertexOffset, 
+                        0);
+                }
+
+                VertexOffset += CmdList->VtxBuffer.Size;
+                IndexOffset += CmdList->IdxBuffer.Size;
+            }
+
+            // Reset the scissor in case someone wants to render after us
+            VkRect2D Scissor = 
+            {
+                .offset = { 0, 0 },
+                .extent = Frame->Renderer->SwapchainSize,
+            };
+            vkCmdSetScissor(Frame->CmdBuffer, 0, 1, &Scissor);
+        }
+        else
+        {
+            DebugPrint("WARNING: not enough memory for ImGui\n");
+        }
     }
 }
