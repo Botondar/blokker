@@ -625,24 +625,31 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
             return Displacement;
         };
 
-        // Apply movement and resolve collisions separately on the axes
-        vec3 Displacement = {};
-        Displacement.z = ApplyMovement(dP, AXIS_Z);
-        
-        if (Abs(dP.x) > Abs(dP.y))
+        constexpr f32 MaxStep = 0.5f;
+        f32 dPLength = Length(dP);
+        vec3 dPUnit = SafeNormalize(dP);
+        while (dPLength > 0.0f)
         {
-            Displacement.x = ApplyMovement(dP, AXIS_X);
-            Displacement.y = ApplyMovement(dP, AXIS_Y);
-        }
-        else
-        {
-            Displacement.y = ApplyMovement(dP, AXIS_Y);
-            Displacement.x = ApplyMovement(dP, AXIS_X);
-        }
 
-        if (Displacement.z > 0.0f)
-        {
-            Player->WasGroundedLastFrame = true;
+            // Apply movement and resolve collisions separately on the axes
+            vec3 Displacement = {};
+            Displacement.z = ApplyMovement(dP, AXIS_Z);
+
+            if (Abs(dP.x) > Abs(dP.y))
+            {
+                Displacement.x = ApplyMovement(dP, AXIS_X);
+                Displacement.y = ApplyMovement(dP, AXIS_Y);
+            }
+            else
+            {
+                Displacement.y = ApplyMovement(dP, AXIS_Y);
+                Displacement.x = ApplyMovement(dP, AXIS_X);
+            }
+
+            if (Displacement.z > 0.0f)
+            {
+                Player->WasGroundedLastFrame = true;
+            }
         }
     }
 }
