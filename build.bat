@@ -14,19 +14,3 @@ set LinkerOptions=-LIBPATH:%VULKAN_SDK%/Lib/ -LIBPATH:lib/ kernel32.lib user32.l
 cl -nologo %CompilerOptions% %Warnings% "src/Win32_Main.cpp" /Fobuild/win32_platform.obj /Fdbuild/win32_platform.pdb
 cl -nologo %CompilerOptions% %Warnings% "src/Game.cpp" /Fobuild/game.obj /Fdbuild/game.pdb
 link -nologo %LinkerOptions% /OUT:build/blokker.exe build/win32_platform.obj build/game.obj
-
-IF NOT EXIST shader mkdir shader
-cd shader
-del /q *
-cd ..
-
-set ShaderCompilerOptions=--target-env=vulkan1.2 -std=450core -I "src/shader/" -O 
-
-glslc %ShaderCompilerOptions% -fshader-stage=vert -o shader/shader.vs -DVERTEX_SHADER=1 "src/shader/shader.glsl"
-glslc %ShaderCompilerOptions% -fshader-stage=frag -o shader/shader.fs -DFRAGMENT_SHADER=1 "src/shader/shader.glsl"
-
-glslc %ShaderCompilerOptions% -fshader-stage=vert -o shader/imshader.vs -DVERTEX_SHADER=1 "src/shader/imshader.glsl"
-glslc %ShaderCompilerOptions% -fshader-stage=frag -o shader/imshader.fs -DFRAGMENT_SHADER=1 "src/shader/imshader.glsl"
-
-glslc %ShaderCompilerOptions% -fshader-stage=vert -o shader/imguishader.vs -DVERTEX_SHADER=1 "src/shader/imguishader.glsl"
-glslc %ShaderCompilerOptions% -fshader-stage=frag -o shader/imguishader.fs -DFRAGMENT_SHADER=1 "src/shader/imguishader.glsl"

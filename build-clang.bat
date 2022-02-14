@@ -13,13 +13,3 @@ set LinkerOptions=-L%VULKAN_SDK%/Lib/ -lvulkan-1 -lkernel32 -luser32
 set Options=%CommonOptions% %CommonDefines% %Warnings% %IncludeDirs% %LinkerOptions%
 
 clang %Options% "src/Win32_Main.cpp" "src/Game.cpp" -obuild/blokker.exe 
-
-IF NOT EXIST shader mkdir shader
-cd shader
-del /q *
-cd ..
-
-set ShaderCompilerOptions=--target-env=vulkan1.2 -std=450core -I "src/shader/" -O 
-
-glslc %ShaderCompilerOptions% -fshader-stage=vert -o shader/shader.vs -DVERTEX_SHADER=1 "src/shader/shader.glsl"
-glslc %ShaderCompilerOptions% -fshader-stage=frag -o shader/shader.fs -DFRAGMENT_SHADER=1 "src/shader/shader.glsl"
