@@ -80,26 +80,6 @@ struct game_state
     u32 ChunkCount;
     chunk* Chunks;
     chunk_data* ChunkData;
-
-#if 0
-    // TODO: these will need to be part of the renderer
-    vulkan_staging_heap StagingHeap;
-
-    vulkan_vertex_buffer VB;
-
-    VkPipelineLayout PipelineLayout;
-    VkPipeline Pipeline;
-
-    VkSampler Sampler;
-
-    VkDescriptorSetLayout DescriptorSetLayout;
-    VkDescriptorPool DescriptorPool;
-    VkDescriptorSet DescriptorSet;
-
-    VkImage Tex;
-    VkImageView TexView;
-    VkDeviceMemory TexMemory;
-#endif
 };
 
 bool Game_Initialize(game_state* GameState);
