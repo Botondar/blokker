@@ -249,19 +249,34 @@ struct vulkan_renderer
     VkPipelineLayout ImPipelineLayout;
     VkPipeline ImPipeline;
 
-    VkSampler Sampler;
+    VkPipelineLayout ImGuiPipelineLayout;
+    VkPipeline ImGuiPipeline;
 
+    VkSampler Sampler;
     VkDescriptorSetLayout DescriptorSetLayout;
     VkDescriptorPool DescriptorPool;
     VkDescriptorSet DescriptorSet;
 
+    VkSampler ImGuiSampler;
+    VkDescriptorSetLayout ImGuiSetLayout;
+    VkDescriptorPool ImGuiDescriptorPool;
+    VkDescriptorSet ImGuiDescriptorSet;
+
     VkImage Tex;
     VkImageView TexView;
     VkDeviceMemory TexMemory;
+
+    VkImage ImGuiTex;
+    VkImageView ImGuiTexView;
+    VkDeviceMemory ImGuiTexMemory;
+
+    static constexpr u32 ImGuiTextureID = 1;
 };
 
 bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer);
 bool Renderer_Initialize(vulkan_renderer* Renderer);
+
+bool Renderer_CreateImGuiTexture(vulkan_renderer* Renderer, u32 Width, u32 Height, const u8* Data);
 
 renderer_frame_params* Renderer_NewFrame(vulkan_renderer* Renderer);
 void Renderer_SubmitFrame(vulkan_renderer* Renderer, renderer_frame_params* Frame);

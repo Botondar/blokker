@@ -65,6 +65,8 @@ static void Player_GetHorizontalAxes(const player* Player, vec3& Forward, vec3& 
     Forward = { -SinYaw, CosYaw, 0.0f };
 }
 
+static bool Game_InitImGui(game_state* GameState);
+
 static chunk* Game_ReserveChunk(game_state* GameState);
 static void Game_FindChunkNeighbors(game_state* GameState, chunk* Chunk);
 static chunk* Game_FindPlayerChunk(game_state* GameState);
@@ -376,12 +378,41 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
 {
     TIMED_FUNCTION();
 
-    Game_LoadChunks(GameState);
-
     if (Input->EscapePressed)
     {
         Input->IsCursorEnabled = ToggleCursor();
     }
+
+    // ImGui
+    {
+        // TODO: pass input
+        ImGuiIO& IO = ImGui::GetIO();
+        IO.DisplaySize = { (f32)GameState->Renderer->SwapchainSize.width, (f32)GameState->Renderer->SwapchainSize.height };
+        IO.DeltaTime = (DeltaTime == 0.0f) ? 1000.0f : DeltaTime; // NOTE(boti): ImGui doesn't want 0 dt
+
+        if (Input->IsCursorEnabled)
+        {
+            IO.MousePos = { Input->MouseP.x, Input->MouseP.y };
+            for (u32 i = 0; i < MOUSE_ButtonCount; i++)
+            {
+                IO.MouseDown[i] = Input->MouseButtons[i];
+            }
+        }
+        else
+        {
+            IO.MousePos = { -1.0f, -1.0f };
+            for (u32 i = 0; i < MOUSE_ButtonCount; i++)
+            {
+                IO.MouseDown[i] = false;
+            }
+
+        }
+        ImGui::NewFrame();
+
+        ImGui::Begin("Debug");
+        ImGui::End();
+    }
+    Game_LoadChunks(GameState);
 
     Game_PreUpdatePlayer(GameState, Input);
 
@@ -631,7 +662,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
         GameState->VB.MemorySize >> 20,
         100.0 * GameState->VB.MemoryUsage / GameState->VB.MemorySize);
 #endif
-    
+
     renderer_frame_params* FrameParams = Renderer_NewFrame(Renderer);
     
     FrameParams->Camera = camera
@@ -650,11 +681,131 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
 
     Renderer_RenderChunks(FrameParams, GameState->ChunkCount, GameState->Chunks);
     Renderer_BeginImmediate(FrameParams);
-    Renderer_ImmediateBoxOutline(FrameParams, Player_GetAABB(&GameState->Player), PackColor(0xFF, 0xFF, 0x00));
+    Renderer_ImmediateBoxOutline(FrameParams, Player_GetAABB(&GameState->Player), PackColor(0xFF, 0x00, 0x00));
+    Renderer_ImmediateBoxOutline(FrameParams, Player_GetVerticalAABB(&GameState->Player), PackColor(0xFF, 0xFF, 0x00));
+
+    // Render ImGui
+    // TODO(boti): move to renderer
+    {
+        TIMED_BLOCK("ImGuiRender");
+        ImGui::Render();
+
+        ImDrawData* DrawData = ImGui::GetDrawData();
+        if (DrawData)
+        {
+            u64 VertexDataOffset = FrameParams->VertexStack.At;
+            u64 VertexDataSize = (u64)DrawData->TotalVtxCount * sizeof(ImDrawVert);
+            u64 VertexDataEnd = VertexDataOffset + VertexDataSize;
+
+            u64 IndexDataOffset = VertexDataEnd;
+            u64 IndexDataSize = (u64)DrawData->TotalIdxCount * sizeof(ImDrawIdx);
+            u64 IndexDataEnd = IndexDataOffset + IndexDataSize;
+
+            u64 ImGuiDataSize = VertexDataSize + IndexDataSize;
+            u64 ImGuiDataEnd = IndexDataEnd;
+            if ((ImGuiDataEnd <= FrameParams->VertexStack.Size) &&
+                (DrawData->TotalVtxCount > 0) &&
+                (DrawData->TotalIdxCount > 0))
+            {
+                FrameParams->VertexStack.At += ImGuiDataSize;
+
+                vkCmdBindPipeline(FrameParams->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, FrameParams->Renderer->ImGuiPipeline);
+                vkCmdBindDescriptorSets(
+                    FrameParams->CmdBuffer, 
+                    VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                    FrameParams->Renderer->ImGuiPipelineLayout,
+                    0, 1, &FrameParams->Renderer->ImGuiDescriptorSet, 0, nullptr);
+
+                mat4 Transform = Mat4(
+                    2.0f / FrameParams->Renderer->SwapchainSize.width, 0.0f, 0.0f, -1.0f,
+                    0.0f, 2.0f / FrameParams->Renderer->SwapchainSize.height, 0.0f, -1.0f,
+                    0.0f, 0.0f, 1.0f, 0.0f,
+                    0.0f, 0.0f, 0.0f, 1.0f);
+                vkCmdPushConstants(
+                    FrameParams->CmdBuffer, 
+                    FrameParams->Renderer->ImGuiPipelineLayout, 
+                    VK_SHADER_STAGE_VERTEX_BIT,
+                    0, sizeof(mat4), &Transform);
+
+                vkCmdBindVertexBuffers(FrameParams->CmdBuffer, 0, 1, &FrameParams->VertexStack.Buffer, &VertexDataOffset);
+                VkIndexType IndexType = (sizeof(ImDrawIdx) == 2) ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
+                vkCmdBindIndexBuffer(FrameParams->CmdBuffer, FrameParams->VertexStack.Buffer, IndexDataOffset, IndexType);
+
+                ImDrawVert* VertexDataAt = (ImDrawVert*)((u8*)FrameParams->VertexStack.Mapping + VertexDataOffset);
+                ImDrawIdx* IndexDataAt = (ImDrawIdx*)((u8*)FrameParams->VertexStack.Mapping + IndexDataOffset);
+                for (int CmdListIndex = 0; CmdListIndex < DrawData->CmdListsCount; CmdListIndex++)
+                {
+                    ImDrawList* CmdList = DrawData->CmdLists[CmdListIndex];
+
+                    memcpy(VertexDataAt, CmdList->VtxBuffer.Data, (u64)CmdList->VtxBuffer.Size * sizeof(ImDrawVert));
+                    VertexDataAt += CmdList->VtxBuffer.Size;
+
+                    memcpy(IndexDataAt, CmdList->IdxBuffer.Data, (u64)CmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
+
+                    for (int CmdBufferIndex = 0; CmdBufferIndex < CmdList->CmdBuffer.Size; CmdBufferIndex++)
+                    {
+                        ImDrawCmd* Command = &CmdList->CmdBuffer[CmdBufferIndex];
+                        assert((u64)Command->TextureId == FrameParams->Renderer->ImGuiTextureID);
+
+                        VkRect2D Scissor = 
+                        {
+                            .offset = { (s32)Command->ClipRect.x, (s32)Command->ClipRect.y },
+                            .extent = 
+                            { 
+                                .width = (u32)Command->ClipRect.z/*(u32)(Command->ClipRect.z - Command->ClipRect.x)*/, 
+                                .height = (u32)Command->ClipRect.w/*(u32)(Command->ClipRect.w - Command->ClipRect.y)*/,
+                            },
+                        };
+                        vkCmdSetScissor(FrameParams->CmdBuffer, 0, 1, &Scissor);
+                        vkCmdDrawIndexed(FrameParams->CmdBuffer, Command->ElemCount, 1, Command->IdxOffset, Command->VtxOffset, 0);
+                    }
+                }
+
+                // Reset the scissor in case someone wants to render after us
+                VkRect2D Scissor = 
+                {
+                    .offset = { 0, 0 },
+                    .extent = FrameParams->Renderer->SwapchainSize,
+                };
+                vkCmdSetScissor(FrameParams->CmdBuffer, 0, 1, &Scissor);
+            }
+            else
+            {
+                DebugPrint("WARNING: not enough memory for ImGui\n");
+            }
+        }
+    }
 
     Renderer_EndRendering(FrameParams);
 
     Renderer_SubmitFrame(Renderer, FrameParams);
+}
+
+static bool Game_InitImGui(game_state* GameState)
+{
+    bool Result = false;
+
+    ImGui::CreateContext();
+    ImGui::StyleColorsDark();
+
+    ImGuiIO& IO = ImGui::GetIO();
+    IO.BackendPlatformName = "Blokker";
+
+    IO.ImeWindowHandle = nullptr; // TODO(boti): needed for IME positionion
+
+    // TODO(boti): implement IO.KeyMap here
+
+    s32 TexWidth, TexHeight;
+    u8* TexData;
+    IO.Fonts->GetTexDataAsAlpha8(&TexData, &TexWidth, &TexHeight);
+
+    if (Renderer_CreateImGuiTexture(GameState->Renderer, (u32)TexWidth, (u32)TexHeight, TexData))
+    {
+        IO.Fonts->SetTexID((ImTextureID)(u64)GameState->Renderer->ImGuiTextureID);
+        Result = true;
+    }
+    
+    return Result;
 }
 
 bool Game_Initialize(game_state* GameState)
@@ -664,6 +815,11 @@ bool Game_Initialize(game_state* GameState)
         return false;
     }
     
+    if (!Game_InitImGui(GameState))
+    {
+        return false;
+    }
+
     // Place the player in the middle of the starting chunk
     GameState->Player.P = { (0.5f * CHUNK_DIM_X + 0.5f), 0.5f * CHUNK_DIM_Y + 0.5f, 100.0f };
 

@@ -367,10 +367,32 @@ static bool win32_ProcessInput(game_input* Input)
             } break;
             case WM_LBUTTONDOWN:
             {
+                Input->MouseButtons[MOUSE_LEFT] = true;
                 SetCapture(Win32State.Window);
             } break;
             case WM_LBUTTONUP:
             {
+                Input->MouseButtons[MOUSE_LEFT] = false;
+                ReleaseCapture();
+            } break;
+            case WM_RBUTTONDOWN:
+            {
+                Input->MouseButtons[MOUSE_RIGHT] = true;
+                SetCapture(Win32State.Window);
+            } break;
+            case WM_RBUTTONUP:
+            {
+                Input->MouseButtons[MOUSE_RIGHT] = false;
+                ReleaseCapture();
+            } break;
+            case WM_MBUTTONDOWN:
+            {
+                Input->MouseButtons[MOUSE_MIDDLE] = true;
+                SetCapture(Win32State.Window);
+            } break;
+            case WM_MBUTTONUP:
+            {
+                Input->MouseButtons[MOUSE_MIDDLE] = false;
                 ReleaseCapture();
             } break;
             case WM_MOUSEMOVE:

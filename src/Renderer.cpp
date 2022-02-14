@@ -4,6 +4,8 @@
 #include <Platform.hpp>
 #include <Profiler.hpp>
 
+#include <imgui/imgui.h>
+
 PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR_ = nullptr;
 PFN_vkCmdEndRenderingKHR   vkCmdEndRenderingKHR_   = nullptr;
 PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT_ = nullptr;
@@ -294,7 +296,14 @@ bool StagingHeap_CopyImage(
     //       and check the outstanding copy operations to find where to allocate the memory from
     u64 BaseOffset = Heap->HeapOffset; // For now this is always 0
 
-    if (Format == VK_FORMAT_R8G8B8A8_SRGB)
+    u32 Stride = 0;
+    switch (Format)
+    {
+        case VK_FORMAT_R8G8B8A8_SRGB: Stride = 4; break;
+        case VK_FORMAT_R8_UNORM: Stride = 1; break;
+    }
+
+    if (Stride != 0)
     {
 #if 1
         u64 SrcSize = 0;
@@ -304,10 +313,10 @@ bool StagingHeap_CopyImage(
 
             for (u32 i = 0; i < MipCount; i++)
             {
-                SrcSize += CurrentWidth*CurrentHeight * 4;
+                SrcSize += CurrentWidth*CurrentHeight * Stride;
             }
 
-            SrcSize *= 4;
+            SrcSize *= ArrayCount;
         }
 #else
         u64 SrcSize = (u64)Width * Height * ArrayCount * 4;
@@ -391,7 +400,7 @@ bool StagingHeap_CopyImage(
                     };
                     vkCmdCopyBufferToImage(CmdBuffer, Heap->Buffer, Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &CopyDesc);
 
-                    Offset += CurrentWidth*CurrentHeight * 4;
+                    Offset += CurrentWidth*CurrentHeight * Stride;
                     CurrentWidth /= 2;
                     CurrentHeight /= 2;
                 }
@@ -1472,7 +1481,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .pNext = nullptr,
             .flags = 0,
             .size = VertexStackSize,
-            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
             .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
             .queueFamilyIndexCount = 0,
             .pQueueFamilyIndices = nullptr,
@@ -2269,6 +2278,428 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         vkDestroyShaderModule(Renderer->Device, FSModule, nullptr);
     }
 
+    // ImGui
+    {
+        // Sampler
+        {
+            VkSamplerCreateInfo SamplerInfo = 
+            {
+                .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .magFilter = VK_FILTER_LINEAR,
+                .minFilter = VK_FILTER_LINEAR,
+                .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                .mipLodBias = 0.0f,
+                .anisotropyEnable = VK_FALSE,
+                .maxAnisotropy = 1.0f,
+                .compareEnable = VK_FALSE,
+                .compareOp = VK_COMPARE_OP_ALWAYS,
+                .minLod = 0.0f,
+                .maxLod = 0.0f,
+                .borderColor = {},
+                .unnormalizedCoordinates = VK_FALSE,
+            };
+
+            VkSampler Sampler;
+            if (vkCreateSampler(Renderer->Device, &SamplerInfo, nullptr, &Sampler) == VK_SUCCESS)
+            {
+                Renderer->ImGuiSampler = Sampler;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        // Create descriptor set
+        {
+
+
+            VkDescriptorSetLayoutBinding Binding = 
+            {
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .pImmutableSamplers = &Renderer->ImGuiSampler,
+            };
+
+            VkDescriptorSetLayoutCreateInfo SetLayoutInfo = 
+            {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .bindingCount = 1,
+                .pBindings = &Binding,
+            };
+            VkDescriptorSetLayout SetLayout;
+            if (vkCreateDescriptorSetLayout(Renderer->Device, &SetLayoutInfo, nullptr, &SetLayout) == VK_SUCCESS)
+            {
+                Renderer->ImGuiSetLayout = SetLayout;
+            }
+            else
+            {
+                return false;
+            }
+
+            VkDescriptorPoolSize PoolSize = 
+            {
+                .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+            };
+
+            VkDescriptorPoolCreateInfo PoolInfo = 
+            {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .maxSets = 1,
+                .poolSizeCount = 1,
+                .pPoolSizes = &PoolSize,
+            };
+            VkDescriptorPool Pool;
+            if (vkCreateDescriptorPool(Renderer->Device, &PoolInfo, nullptr, &Pool) == VK_SUCCESS)
+            {
+                VkDescriptorSetAllocateInfo AllocInfo = 
+                {
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                    .pNext = nullptr,
+                    .descriptorPool = Pool,
+                    .descriptorSetCount = 1,
+                    .pSetLayouts = &Renderer->ImGuiSetLayout,
+                };
+                VkDescriptorSet DescriptorSet;
+                if (vkAllocateDescriptorSets(Renderer->Device, &AllocInfo, &DescriptorSet) == VK_SUCCESS)
+                {
+                    Renderer->ImGuiDescriptorPool = Pool;
+                    Renderer->ImGuiDescriptorSet = DescriptorSet;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        // Create pipeline layout
+        {
+            VkPushConstantRange PushConstants = 
+            {
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                .offset = 0,
+                .size = sizeof(mat4),
+            };
+            VkPipelineLayoutCreateInfo Info = 
+            {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .setLayoutCount = 1,
+                .pSetLayouts = &Renderer->ImGuiSetLayout,
+                .pushConstantRangeCount = 1,
+                .pPushConstantRanges = &PushConstants,
+            };
+            
+            Result = vkCreatePipelineLayout(Renderer->Device, &Info, nullptr, &Renderer->ImGuiPipelineLayout);
+            if (Result != VK_SUCCESS)
+            {
+                return false;
+            }
+        }
+        
+        //  Create shaders
+        VkShaderModule VSModule, FSModule;
+        {
+            CBuffer VSBin = LoadEntireFile("shader/imguishader.vs");
+            CBuffer FSBin = LoadEntireFile("shader/imguishader.fs");
+            
+            assert((VSBin.Size > 0) && (FSBin.Size > 0));
+            
+            VkShaderModuleCreateInfo VSInfo = 
+            {
+                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .codeSize = VSBin.Size,
+                .pCode = (u32*)VSBin.Data,
+            };
+            VkShaderModuleCreateInfo FSInfo =
+            {
+                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .codeSize = FSBin.Size,
+                .pCode = (u32*)FSBin.Data,
+            };
+            
+            Result = vkCreateShaderModule(Renderer->Device, &VSInfo, nullptr, &VSModule);
+            if (Result != VK_SUCCESS)
+            {
+                return false;
+            }
+            Result = vkCreateShaderModule(Renderer->Device, &FSInfo, nullptr, &FSModule);
+            if (Result != VK_SUCCESS)
+            {
+                return false;
+            }
+        }
+        
+        VkPipelineShaderStageCreateInfo ShaderStages[] = 
+        {
+            {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                .module = VSModule,
+                .pName = "main",
+                .pSpecializationInfo = nullptr,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .module = FSModule,
+                .pName = "main",
+                .pSpecializationInfo = nullptr,
+            },
+        };
+        constexpr u32 ShaderStageCount = CountOf(ShaderStages);
+        
+        VkVertexInputBindingDescription VertexBinding = 
+        {
+            .binding = 0,
+            .stride = sizeof(ImDrawVert),
+            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+        };
+        
+        VkVertexInputAttributeDescription VertexAttribs[] = 
+        {
+            // Pos
+            {
+                .location = ATTRIB_POS,
+                .binding = 0,
+                .format = VK_FORMAT_R32G32_SFLOAT,
+                .offset = offsetof(ImDrawVert, pos),
+            },
+            // UVW
+            {
+                .location = ATTRIB_TEXCOORD,
+                .binding = 0,
+                .format = VK_FORMAT_R32G32_SFLOAT,
+                .offset = offsetof(ImDrawVert, uv),
+            },
+            // Color
+            {
+                .location = ATTRIB_COLOR,
+                .binding = 0,
+                .format = VK_FORMAT_R8G8B8A8_UNORM,
+                .offset = offsetof(ImDrawVert, col),
+            },
+        };
+        constexpr u32 VertexAttribCount = CountOf(VertexAttribs);
+        
+        VkPipelineVertexInputStateCreateInfo VertexInputState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .vertexBindingDescriptionCount = 1,
+            .pVertexBindingDescriptions = &VertexBinding,
+            .vertexAttributeDescriptionCount = VertexAttribCount,
+            .pVertexAttributeDescriptions = VertexAttribs,
+        };
+        
+        VkPipelineInputAssemblyStateCreateInfo InputAssemblyState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            .primitiveRestartEnable = VK_FALSE,
+        };
+        
+        VkViewport Viewport = {};
+        VkRect2D Scissor = {};
+        
+        VkPipelineViewportStateCreateInfo ViewportState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .viewportCount = 1,
+            .pViewports = &Viewport,
+            .scissorCount = 1,
+            .pScissors = &Scissor,
+        };
+        
+        VkPipelineRasterizationStateCreateInfo RasterizationState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .depthClampEnable = VK_FALSE,
+            .rasterizerDiscardEnable = VK_FALSE,
+            .polygonMode = VK_POLYGON_MODE_FILL,
+            .cullMode = VK_CULL_MODE_NONE,
+            .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+            .depthBiasEnable = VK_FALSE,
+            .depthBiasConstantFactor = 0.0f,
+            .depthBiasClamp = 0.0f,
+            .depthBiasSlopeFactor = 0.0f,
+            .lineWidth = 1.0f,
+        };
+        
+        VkPipelineMultisampleStateCreateInfo MultisampleState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+            .sampleShadingEnable = VK_FALSE,
+            .minSampleShading = 1.0f,
+            .pSampleMask = nullptr,
+            .alphaToCoverageEnable = VK_FALSE,
+            .alphaToOneEnable = VK_FALSE,
+        };
+        
+        VkPipelineDepthStencilStateCreateInfo DepthStencilState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .depthTestEnable = VK_FALSE,
+            .depthWriteEnable = VK_FALSE,
+            .depthCompareOp = VK_COMPARE_OP_LESS,
+            .depthBoundsTestEnable = VK_FALSE,
+            .stencilTestEnable = VK_FALSE,
+            .front = 
+            { 
+                .failOp = VK_STENCIL_OP_KEEP,
+                .passOp = VK_STENCIL_OP_KEEP,
+                .depthFailOp = VK_STENCIL_OP_KEEP,
+                .compareOp = VK_COMPARE_OP_ALWAYS,
+                .compareMask = 0,
+                .writeMask = 0,
+                .reference = 0,
+            },
+            .back = 
+            {
+                .failOp = VK_STENCIL_OP_KEEP,
+                .passOp = VK_STENCIL_OP_KEEP,
+                .depthFailOp = VK_STENCIL_OP_KEEP,
+                .compareOp = VK_COMPARE_OP_ALWAYS,
+                .compareMask = 0,
+                .writeMask = 0,
+                .reference = 0,
+            },
+            .minDepthBounds = 0.0f,
+            .maxDepthBounds = 1.0f,
+        };
+        
+        VkPipelineColorBlendAttachmentState Attachment = 
+        {
+            .blendEnable = VK_TRUE,
+            .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+            .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+            .colorBlendOp = VK_BLEND_OP_ADD,
+            .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+            .alphaBlendOp = VK_BLEND_OP_ADD,
+            .colorWriteMask = 
+                VK_COLOR_COMPONENT_R_BIT|
+                VK_COLOR_COMPONENT_G_BIT|
+                VK_COLOR_COMPONENT_B_BIT|
+                VK_COLOR_COMPONENT_A_BIT,
+        };
+        
+        VkPipelineColorBlendStateCreateInfo ColorBlendState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .logicOpEnable = VK_FALSE,
+            .logicOp = VK_LOGIC_OP_CLEAR,
+            .attachmentCount = 1,
+            .pAttachments = &Attachment,
+            .blendConstants = { 1.0f, 1.0f, 1.0f, 1.0f },
+        };
+        
+        VkDynamicState DynamicStates[] = 
+        {
+            VK_DYNAMIC_STATE_VIEWPORT,
+            VK_DYNAMIC_STATE_SCISSOR,
+        };
+        constexpr u32 DynamicStateCount = CountOf(DynamicStates);
+        
+        VkPipelineDynamicStateCreateInfo DynamicState = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .dynamicStateCount = DynamicStateCount,
+            .pDynamicStates = DynamicStates,
+        };
+        
+        VkFormat Formats[] = 
+        {
+            Renderer->SurfaceFormat.format,
+        };
+        constexpr u32 FormatCount = CountOf(Formats);
+        
+        VkPipelineRenderingCreateInfoKHR DynamicRendering = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+            .pNext = nullptr,
+            .viewMask = 0,
+            .colorAttachmentCount = FormatCount,
+            .pColorAttachmentFormats = Formats,
+            .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
+            .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
+        };
+        
+        VkGraphicsPipelineCreateInfo Info = 
+        {
+            .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+            .pNext = &DynamicRendering,
+            .flags = 0,
+            .stageCount = ShaderStageCount,
+            .pStages = ShaderStages,
+            .pVertexInputState = &VertexInputState,
+            .pInputAssemblyState = &InputAssemblyState,
+            .pTessellationState = nullptr,
+            .pViewportState = &ViewportState,
+            .pRasterizationState = &RasterizationState,
+            .pMultisampleState = &MultisampleState,
+            .pDepthStencilState = &DepthStencilState,
+            .pColorBlendState = &ColorBlendState,
+            .pDynamicState = &DynamicState,
+            .layout = Renderer->ImGuiPipelineLayout,
+            .renderPass = nullptr,
+            .subpass = 0,
+            .basePipelineHandle = VK_NULL_HANDLE,
+            .basePipelineIndex = 0,
+        };
+        
+        Result = vkCreateGraphicsPipelines(Renderer->Device, VK_NULL_HANDLE, 1, &Info, nullptr, &Renderer->ImGuiPipeline);
+        if (Result != VK_SUCCESS)
+        {
+            return false;
+        }
+
+        vkDestroyShaderModule(Renderer->Device, VSModule, nullptr);
+        vkDestroyShaderModule(Renderer->Device, FSModule, nullptr);
+    }
+
     // ImPipeline
     {
         // Create pipeline layout
@@ -2569,7 +3000,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .pDepthStencilState = &DepthStencilState,
             .pColorBlendState = &ColorBlendState,
             .pDynamicState = &DynamicState,
-            .layout = Renderer->PipelineLayout,
+            .layout = Renderer->ImPipelineLayout,
             .renderPass = nullptr,
             .subpass = 0,
             .basePipelineHandle = VK_NULL_HANDLE,
@@ -2587,6 +3018,145 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
     }
 
     return true;
+}
+
+bool Renderer_CreateImGuiTexture(vulkan_renderer* Renderer, u32 Width, u32 Height, const u8* Data)
+{
+    assert(Renderer);
+    bool Result = false;
+
+    VkImageCreateInfo ImageInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = VK_FORMAT_R8_UNORM,
+        .extent = { Width, Height, 1 },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = nullptr,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+    VkImage Image;
+    if (vkCreateImage(Renderer->Device, &ImageInfo, nullptr, &Image) == VK_SUCCESS)
+    {
+        VkMemoryRequirements MemoryRequirements = {};
+        vkGetImageMemoryRequirements(Renderer->Device, Image, &MemoryRequirements);
+
+        u32 MemoryTypes = Renderer->DeviceLocalMemoryTypes & MemoryRequirements.memoryTypeBits;
+        u32 MemoryType = 0;
+        if (BitScanForward(&MemoryType, MemoryTypes) != 0)
+        {
+            VkMemoryAllocateInfo AllocInfo = 
+            {
+                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                .pNext = nullptr,
+                .allocationSize = MemoryRequirements.size,
+                .memoryTypeIndex = MemoryType,
+            };
+            VkDeviceMemory Memory;
+            if (vkAllocateMemory(Renderer->Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+            {
+                if (vkBindImageMemory(Renderer->Device, Image, Memory, 0) == VK_SUCCESS)
+                {
+                    VkImageViewCreateInfo ViewInfo = 
+                    {
+                        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                        .pNext = nullptr,
+                        .flags = 0,
+                        .image = Image,
+                        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                        .format = VK_FORMAT_R8_UNORM,
+                        .components = 
+                        {
+                            .r = VK_COMPONENT_SWIZZLE_ONE,
+                            .g = VK_COMPONENT_SWIZZLE_ONE,
+                            .b = VK_COMPONENT_SWIZZLE_ONE,
+                            .a = VK_COMPONENT_SWIZZLE_R,
+                        },
+                        .subresourceRange = 
+                        {
+                            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                            .baseMipLevel = 0,
+                            .levelCount = 1,
+                            .baseArrayLayer = 0,
+                            .layerCount = 1,
+                        },
+                    };
+
+                    if (StagingHeap_CopyImage(
+                            &Renderer->StagingHeap, 
+                            Renderer->TransferQueue, 
+                            Renderer->TransferCmdBuffer, 
+                            Image,
+                            Width, Height, 1, 1, VK_FORMAT_R8_UNORM,
+                            Data))
+                        {
+                            VkImageView ImageView;
+                            if (vkCreateImageView(Renderer->Device, &ViewInfo, nullptr, &ImageView) == VK_SUCCESS)
+                            {
+                                VkDescriptorImageInfo DescriptorImageInfo = 
+                                {
+                                    .sampler = VK_NULL_HANDLE,
+                                    .imageView = ImageView,
+                                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                };
+                                VkWriteDescriptorSet DescriptorWrite = 
+                                {
+                                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                                    .pNext = nullptr,
+                                    .dstSet = Renderer->ImGuiDescriptorSet,
+                                    .dstBinding = 0,
+                                    .dstArrayElement = 0,
+                                    .descriptorCount = 1,
+                                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                    .pImageInfo = &DescriptorImageInfo,
+                                    .pBufferInfo = nullptr,
+                                    .pTexelBufferView = nullptr,
+                                };
+                                vkUpdateDescriptorSets(Renderer->Device, 1, &DescriptorWrite, 0, nullptr);
+
+                                Renderer->ImGuiTex = Image;
+                                Renderer->ImGuiTexMemory = Memory;
+                                Renderer->ImGuiTexView = ImageView;
+                                Result = true;
+                            }
+                            else
+                            {
+                                vkFreeMemory(Renderer->Device, Memory, nullptr);
+                                vkDestroyImage(Renderer->Device, Image, nullptr);
+                            }
+                        }
+                        else
+                        {
+                            vkFreeMemory(Renderer->Device, Memory, nullptr);
+                            vkDestroyImage(Renderer->Device, Image, nullptr);
+                        }
+                }
+                else
+                {
+                    vkFreeMemory(Renderer->Device, Memory, nullptr);
+                    vkDestroyImage(Renderer->Device, Image, nullptr);
+                }
+            }
+            else
+            {
+                vkDestroyImage(Renderer->Device, Image, nullptr);
+            }
+        }
+        else
+        {
+            vkDestroyImage(Renderer->Device, Image, nullptr);
+        }
+    }
+
+    return Result;
 }
 
 renderer_frame_params* Renderer_NewFrame(vulkan_renderer* Renderer)
@@ -2884,6 +3454,7 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, const chunk*
         {
             continue;
         }
+
         vulkan_vertex_buffer_allocation Allocation = Frame->Renderer->VB.Allocations[Chunk->AllocationIndex];
         if (Allocation.BlockIndex == INVALID_INDEX_U32)
         {

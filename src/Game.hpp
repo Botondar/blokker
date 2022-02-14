@@ -7,6 +7,8 @@
 #include <Camera.hpp>
 #include <Chunk.hpp>
 
+#include <imgui/imgui.h>
+
 struct player
 {
     vec3 P;
@@ -23,11 +25,22 @@ struct player
 static aabb Player_GetAABB(const player* Player);
 static void Player_GetHorizontalAxes(const player* Player, vec3& Forward, vec3& Right);
 
+enum mouse_button : u32
+{
+    MOUSE_LEFT = 0,
+    MOUSE_RIGHT = 1,
+    MOUSE_MIDDLE = 2,
+    MOUSE_EXTRA0 = 3,
+    MOUSE_EXTRA1 = 4,
+    MOUSE_ButtonCount,
+};
+
 struct game_input
 {
     bool IsCursorEnabled;
     vec2 MouseP;
     vec2 MouseDelta;
+    bool MouseButtons[MOUSE_ButtonCount];
 
     bool EscapePressed;
 
