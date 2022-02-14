@@ -410,7 +410,14 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
         ImGui::NewFrame();
 
         ImGui::Begin("Debug");
+        ImGui::Text("FrameTime: %.2fms", 1000.0f*DeltaTime);
+        ImGui::Text("FPS: %.1f", 1.0f / DeltaTime);
         ImGui::End();
+
+        ImGui::Begin("Hello window");
+        ImGui::End();
+
+        GlobalProfiler.DoGUI();
     }
     Game_LoadChunks(GameState);
 
@@ -667,7 +674,8 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
 #endif
 
     renderer_frame_params* FrameParams = Renderer_NewFrame(Renderer);
-    
+    DebugPrint("Frame acquired: %llu\n", GameState->FrameIndex);
+
     FrameParams->Camera = camera
     {
         .P = GameState->Player.P,
@@ -683,9 +691,10 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
     Renderer_BeginRendering(FrameParams);
 
     Renderer_RenderChunks(FrameParams, GameState->ChunkCount, GameState->Chunks);
+
     Renderer_BeginImmediate(FrameParams);
-    Renderer_ImmediateBoxOutline(FrameParams, Player_GetAABB(&GameState->Player), PackColor(0xFF, 0x00, 0x00));
     Renderer_ImmediateBoxOutline(FrameParams, Player_GetVerticalAABB(&GameState->Player), PackColor(0xFF, 0xFF, 0x00));
+    Renderer_ImmediateBoxOutline(FrameParams, Player_GetAABB(&GameState->Player), PackColor(0xFF, 0x00, 0x00));
 
     // Render ImGui
     // TODO(boti): move to renderer
@@ -694,23 +703,23 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
         ImGui::Render();
 
         ImDrawData* DrawData = ImGui::GetDrawData();
-        if (DrawData)
+        if (DrawData && (DrawData->TotalVtxCount > 0) && (DrawData->TotalIdxCount > 0))
         {
-            u64 VertexDataOffset = FrameParams->VertexStack.At;
-            u64 VertexDataSize = (u64)DrawData->TotalVtxCount * sizeof(ImDrawVert);
+
+            u64 VertexDataOffset = AlignTo(FrameParams->VertexStack.At, sizeof(ImDrawVert));
+            u64 VertexDataSize = ((u64)DrawData->TotalVtxCount * sizeof(ImDrawVert));
             u64 VertexDataEnd = VertexDataOffset + VertexDataSize;
 
-            u64 IndexDataOffset = VertexDataEnd;
+            u64 IndexDataOffset = AlignTo(VertexDataEnd, sizeof(ImDrawIdx));
             u64 IndexDataSize = (u64)DrawData->TotalIdxCount * sizeof(ImDrawIdx);
             u64 IndexDataEnd = IndexDataOffset + IndexDataSize;
 
             u64 ImGuiDataSize = VertexDataSize + IndexDataSize;
             u64 ImGuiDataEnd = IndexDataEnd;
-            if ((ImGuiDataEnd <= FrameParams->VertexStack.Size) &&
-                (DrawData->TotalVtxCount > 0) &&
-                (DrawData->TotalIdxCount > 0))
+
+            if (ImGuiDataEnd <= FrameParams->VertexStack.Size)
             {
-                FrameParams->VertexStack.At += ImGuiDataSize;
+                FrameParams->VertexStack.At = ImGuiDataEnd;
 
                 vkCmdBindPipeline(FrameParams->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, FrameParams->Renderer->ImGuiPipeline);
                 vkCmdBindDescriptorSets(
@@ -736,6 +745,9 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
 
                 ImDrawVert* VertexDataAt = (ImDrawVert*)((u8*)FrameParams->VertexStack.Mapping + VertexDataOffset);
                 ImDrawIdx* IndexDataAt = (ImDrawIdx*)((u8*)FrameParams->VertexStack.Mapping + IndexDataOffset);
+
+                u32 VertexOffset = 0;
+                u32 IndexOffset = 0;
                 for (int CmdListIndex = 0; CmdListIndex < DrawData->CmdListsCount; CmdListIndex++)
                 {
                     ImDrawList* CmdList = DrawData->CmdLists[CmdListIndex];
@@ -744,6 +756,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
                     VertexDataAt += CmdList->VtxBuffer.Size;
 
                     memcpy(IndexDataAt, CmdList->IdxBuffer.Data, (u64)CmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
+                    IndexDataAt += CmdList->IdxBuffer.Size;
 
                     for (int CmdBufferIndex = 0; CmdBufferIndex < CmdList->CmdBuffer.Size; CmdBufferIndex++)
                     {
@@ -760,8 +773,15 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
                             },
                         };
                         vkCmdSetScissor(FrameParams->CmdBuffer, 0, 1, &Scissor);
-                        vkCmdDrawIndexed(FrameParams->CmdBuffer, Command->ElemCount, 1, Command->IdxOffset, Command->VtxOffset, 0);
+                        vkCmdDrawIndexed(
+                            FrameParams->CmdBuffer, Command->ElemCount, 1, 
+                            Command->IdxOffset + IndexOffset, 
+                            Command->VtxOffset + VertexOffset, 
+                            0);
                     }
+
+                    VertexOffset += CmdList->VtxBuffer.Size;
+                    IndexOffset += CmdList->IdxBuffer.Size;
                 }
 
                 // Reset the scissor in case someone wants to render after us

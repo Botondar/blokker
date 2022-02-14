@@ -194,7 +194,7 @@ struct renderer_frame_params
     vulkan_renderer* Renderer;
 };
 
-u64 Frame_PushToStack(renderer_frame_params* Frame, const void* Data, u64 Size);
+u64 Frame_PushToStack(renderer_frame_params* Frame, u64 Alignment, const void* Data, u64 Size);
 
 struct vulkan_renderer 
 {

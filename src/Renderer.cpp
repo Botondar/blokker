@@ -1472,7 +1472,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
     // Create per frame vertex stack
     for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
     {
-        constexpr u64 VertexStackSize = 32*1024*1024;
+        constexpr u64 VertexStackSize = 64*1024*1024;
         renderer_frame_params* Frame = Renderer->FrameParams + i;
 
         VkBufferCreateInfo BufferInfo = 
@@ -2278,7 +2278,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         vkDestroyShaderModule(Renderer->Device, FSModule, nullptr);
     }
 
-    // ImGui
+    // ImGui pipeline
     {
         // Sampler
         {
@@ -3348,9 +3348,9 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
         .pDepthAttachment = &DepthAttachment,
         .pStencilAttachment = &StencilAttachment,
     };
-    
+
     vkCmdBeginRenderingKHR(Frame->CmdBuffer, &RenderingInfo);
-    
+
     VkViewport Viewport = 
     {
         .x = 0.0f,
@@ -3478,17 +3478,25 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, const chunk*
     }
 }
 
-u64 Frame_PushToStack(renderer_frame_params* Frame, const void* Data, u64 Size)
+u64 Frame_PushToStack(renderer_frame_params* Frame, u64 Alignment, const void* Data, u64 Size)
 {
     assert(Frame);
     u64 Result = INVALID_INDEX_U64;
 
-    if ((Frame->VertexStack.At + Size) <= Frame->VertexStack.Size)
+    u64 Offset = Frame->VertexStack.At;
+    if (Alignment != 0)
     {
-        u8* Dest = (u8*)Frame->VertexStack.Mapping + Frame->VertexStack.At;
+        Offset = AlignTo(Offset, Alignment);
+    }
+
+    u64 End = Offset + Size;
+    if (End <= Frame->VertexStack.Size)
+    {
+        u8* Dest = (u8*)Frame->VertexStack.Mapping + Offset;
         memcpy(Dest, Data, Size);
-        Result = Frame->VertexStack.At;
-        Frame->VertexStack.At += Size;
+        Frame->VertexStack.At = End;
+
+        Result = Offset;
     }
 
     return Result;
@@ -3501,9 +3509,6 @@ void Renderer_BeginImmediate(renderer_frame_params* Frame)
     // NOTE(boti): Supposedly we don't need to set the viewport/scissor here when all our pipelines have that as dynamic
     // TODO(boti): ^Verify
     vkCmdBindPipeline(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImPipeline);
-
-    VkDeviceSize VBOffset = 0;
-    vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &VBOffset);
 }
 
 void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, aabb Box, u32 Color)
@@ -3544,17 +3549,21 @@ void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, aabb Box, u32 Co
         { { Box.Min.x, Box.Max.y, Box.Max.z }, { }, Color },
     };
 
-    u64 Offset = Frame_PushToStack(Frame, VertexData, sizeof(VertexData));
+    u64 Offset = Frame_PushToStack(Frame, 4, VertexData, sizeof(VertexData));
     if (Offset != INVALID_INDEX_U64)
     {
+#if 0
         assert((Offset % sizeof(vertex)) == 0);
         u32 VertexOffset = SafeU64ToU32(Offset / sizeof(vertex));
+#else
+        vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &Offset);
+#endif
 
         mat4 Transform = Frame->ProjectionTransform * Frame->ViewTransform;
         vkCmdSetPrimitiveTopologyEXT(Frame->CmdBuffer, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
         vkCmdPushConstants(Frame->CmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &Transform);
         vkCmdSetDepthBias(Frame->CmdBuffer, 0.0f, 0.0f, 0.0f);
-        vkCmdDraw(Frame->CmdBuffer, VertexCount, 1, VertexOffset, 0);
+        vkCmdDraw(Frame->CmdBuffer, VertexCount, 1, 0, 0);
     }
     else
     {
