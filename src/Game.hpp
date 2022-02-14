@@ -43,6 +43,7 @@ struct game_input
     bool MouseButtons[MOUSE_ButtonCount];
 
     bool EscapePressed;
+    bool BacktickPressed;
 
     bool Forward;
     bool Back;
@@ -62,6 +63,12 @@ struct game_state
     // TODO: this maybe shouldn't be here
     bool NeedRendererResize;
     bool IsMinimized;
+
+    struct 
+    {
+        bool IsDebuggingEnabled;
+        bool IsHitboxEnabled;
+    } Debug;
 
     u64 FrameIndex;
     player Player;

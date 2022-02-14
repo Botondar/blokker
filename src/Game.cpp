@@ -382,6 +382,10 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
     {
         Input->IsCursorEnabled = ToggleCursor();
     }
+    if (Input->BacktickPressed)
+    {
+        GameState->Debug.IsDebuggingEnabled = !GameState->Debug.IsDebuggingEnabled;
+    }
 
     // ImGui
     {
@@ -408,14 +412,19 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
 
         }
         ImGui::NewFrame();
+    }
 
+    if (GameState->Debug.IsDebuggingEnabled)
+    {
         ImGui::Begin("Debug");
         ImGui::Text("FrameTime: %.2fms", 1000.0f*DeltaTime);
         ImGui::Text("FPS: %.1f", 1.0f / DeltaTime);
+        ImGui::Checkbox("Hitboxes", &GameState->Debug.IsHitboxEnabled);
         ImGui::End();
 
         GlobalProfiler.DoGUI();
     }
+
     Game_LoadChunks(GameState);
 
     Game_PreUpdatePlayer(GameState, Input);
@@ -688,10 +697,12 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
 
     Renderer_RenderChunks(FrameParams, GameState->ChunkCount, GameState->Chunks);
 
-    Renderer_BeginImmediate(FrameParams);
-    Renderer_ImmediateBoxOutline(FrameParams, Player_GetVerticalAABB(&GameState->Player), PackColor(0xFF, 0xFF, 0x00));
-    Renderer_ImmediateBoxOutline(FrameParams, Player_GetAABB(&GameState->Player), PackColor(0xFF, 0x00, 0x00));
-
+    if (GameState->Debug.IsHitboxEnabled)
+    {
+        Renderer_BeginImmediate(FrameParams);
+        Renderer_ImmediateBoxOutline(FrameParams, Player_GetVerticalAABB(&GameState->Player), PackColor(0xFF, 0xFF, 0x00));
+        Renderer_ImmediateBoxOutline(FrameParams, Player_GetAABB(&GameState->Player), PackColor(0xFF, 0x00, 0x00));
+    }
     // Render ImGui
     // TODO(boti): move to renderer
     {
