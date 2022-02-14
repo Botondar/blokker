@@ -497,14 +497,17 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     }
     else
     {
-        // Duplicate walk code for now, but we'll want drag probably
-        Player->Velocity.x = 0.0f;
-        Player->Velocity.y = 0.0f;
-        
-        f32 Speed = Input->LeftShift ? RunSpeed : WalkSpeed;
-        vec3 dVelocity = DesiredMoveDirection * Speed;
-        
-        Player->Velocity += dVelocity;
+        // Keep velocity if the user is not trying to move
+        if (Dot(DesiredMoveDirection, DesiredMoveDirection) != 0.0f)
+        {
+            Player->Velocity.x = 0.0f;
+            Player->Velocity.y = 0.0f;
+
+            f32 Speed = Input->LeftShift ? RunSpeed : WalkSpeed;
+            vec3 dVelocity = DesiredMoveDirection * Speed;
+
+            Player->Velocity += dVelocity;
+        }
     }
 
     constexpr f32 Gravity = 25.0f;
