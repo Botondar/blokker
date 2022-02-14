@@ -414,9 +414,6 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
         ImGui::Text("FPS: %.1f", 1.0f / DeltaTime);
         ImGui::End();
 
-        ImGui::Begin("Hello window");
-        ImGui::End();
-
         GlobalProfiler.DoGUI();
     }
     Game_LoadChunks(GameState);
@@ -674,7 +671,6 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
 #endif
 
     renderer_frame_params* FrameParams = Renderer_NewFrame(Renderer);
-    DebugPrint("Frame acquired: %llu\n", GameState->FrameIndex);
 
     FrameParams->Camera = camera
     {

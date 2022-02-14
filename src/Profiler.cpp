@@ -6,6 +6,8 @@
 #include <cassert>
 #include <cstring>
 
+#include <imgui/imgui.h>
+
 profiler GlobalProfiler;
 
 void profiler::Reset()
@@ -101,6 +103,45 @@ const frame_statistics* profiler::GetPrevFrameStats() const
         Stats = StatsBuffer + ((StatsBufferAt - 1) % MaxStatBufferCount);
     }
     return Stats;
+}
+
+void profiler::DrawEntry(
+    const frame_statistics* Stats, 
+    const profiler_entry* Entry, 
+    f32 ParentTime) const
+{
+    ImGui::TreePush(Entry->Name);
+
+    f32 Time = GetTimeFromCounter(Entry->CounterSum);
+    u64 ExtraLength = Entry->Extra ? strlen(Entry->Extra) : 0;
+    ImGui::Text("%s%.*s: %.2fms (%.1f%%) | Called %u times",
+        Entry->Name, ExtraLength, Entry->Extra,
+        1000.0f * Time, 100.0f * Time / ParentTime,
+        Entry->CallCount);
+
+    for (u32 i = 0; i < Entry->ChildrenCount; i++)
+    {
+        const profiler_entry* Child = Stats->EntryPool + Entry->Children[i];
+        DrawEntry(Stats, Child, Time);
+    }
+
+    ImGui::TreePop();
+}
+
+void profiler::DoGUI()
+{
+    ImGui::Begin("Profiler");
+
+    const frame_statistics* Stats = GetPrevFrameStats();
+    if (Stats && Stats->EntryPoolAt)
+    {
+        const profiler_entry* Root = Stats->EntryPool + Stats->EntryStack[0];
+        f32 Time = GetTimeFromCounter(Root->CounterSum);
+
+        DrawEntry(Stats, Root, Time);
+    }
+
+    ImGui::End();
 }
 
 void profiler::PrintFrom(const frame_statistics* Stats, const profiler_entry* Entry, f32 ParentTime, char* Padding, u32& PaddingAt) const

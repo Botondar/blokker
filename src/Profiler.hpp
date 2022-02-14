@@ -49,6 +49,8 @@ struct profiler
 
     const frame_statistics* GetPrevFrameStats() const;
 
+    void DoGUI();
+
     // NOTE: prints _previous_ frame
     void Print(f32 MinTime = 0.0f) const;
 
@@ -60,6 +62,11 @@ private:
         const profiler_entry* Entry, 
         f32 ParentTime, 
         char* Padding, u32& PaddingAt) const;
+
+    void DrawEntry(
+        const frame_statistics* Stats, 
+        const profiler_entry* Entry, 
+        f32 ParentTime) const;
 };
 
 struct timed_block
