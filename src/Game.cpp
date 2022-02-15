@@ -495,9 +495,26 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         // Clear xy for now, we always move at a fixed speed
         Player->Velocity.x = 0.0f;
         Player->Velocity.y = 0.0f;
-        
-        f32 Speed = Input->LeftShift ? RunSpeed : WalkSpeed;
-        vec3 dVelocity = DesiredMoveDirection * Speed;
+
+        f32 DesiredSpeed = 0.0f;
+        if (Input->LeftShift)
+        {
+            // Run
+            DesiredSpeed = RunSpeed;
+            
+            Player->BobAmplitude = 0.1f;
+            Player->BobFrequency = 3.0f;
+        }
+        else
+        {
+            // Walk
+            DesiredSpeed = WalkSpeed;
+            Player->BobAmplitude = Player->WalkBobAmplitude;
+            Player->BobFrequency = Player->WalkBobFrequency;
+        }
+        Player->HeadBob += dt;
+
+        vec3 dVelocity = DesiredMoveDirection * DesiredSpeed;
         
         Player->Velocity += dVelocity;
 
@@ -510,17 +527,32 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     }
     else
     {
-        // Keep velocity if the user is not trying to move
+        // Clear velocity if the user is trying to move
         if (Dot(DesiredMoveDirection, DesiredMoveDirection) != 0.0f)
         {
             Player->Velocity.x = 0.0f;
             Player->Velocity.y = 0.0f;
-
-            f32 Speed = Input->LeftShift ? RunSpeed : WalkSpeed;
-            vec3 dVelocity = DesiredMoveDirection * Speed;
-
-            Player->Velocity += dVelocity;
         }
+
+        f32 MoveSpeed = Input->LeftShift ? RunSpeed : WalkSpeed;
+        vec3 dVelocity = DesiredMoveDirection * MoveSpeed;
+
+        Player->Velocity += dVelocity;
+
+        // Drag force = 0.5 * c * rho * v_r^2 * A
+        constexpr f32 AirDensity = 1.2041f;
+        constexpr f32 DragCoeff = 1.0f;
+        constexpr f32 BottomArea = Player->Width * Player->Width;
+        constexpr f32 SideArea = Player->Width * Player->Height;
+            
+        f32 Speed = Length(Player->Velocity);
+        vec3 UnitVelocity = SafeNormalize(Player->Velocity);
+            
+        f32 Area = Lerp(SideArea, BottomArea, Abs(Dot(UnitVelocity, vec3{0.0f, 0.0f, 1.0f})));
+        vec3 DragForce = (-0.5f * AirDensity * DragCoeff * Area) * Player->Velocity * Speed;
+            
+        constexpr f32 PlayerMass = 60.0f;
+        Acceleration += DragForce * (1.0f / PlayerMass);
     }
 
     constexpr f32 Gravity = 25.0f;
@@ -688,6 +720,8 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
         .Yaw = GameState->Player.Yaw,
         .Pitch = GameState->Player.Pitch,
     };
+
+    FrameParams->Camera.P.z += GameState->Player.BobAmplitude * Sin(2.0f * PI * GameState->Player.HeadBob * GameState->Player.BobFrequency);
 
     FrameParams->ViewTransform = FrameParams->Camera.GetInverseTransform();
 

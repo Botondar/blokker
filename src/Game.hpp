@@ -16,10 +16,18 @@ struct player
     f32 Yaw, Pitch;
     bool WasGroundedLastFrame;
 
+    
     static constexpr f32 Height = 1.8f;
     static constexpr f32 EyeHeight = 1.75f;
     static constexpr f32 LegHeight = 0.51f;
     static constexpr f32 Width = 0.6f;
+
+    f32 HeadBob;
+    f32 BobAmplitude = 0.05f;
+    f32 BobFrequency = 2.0f;
+
+    static constexpr f32 WalkBobAmplitude = 0.05f;
+    static constexpr f32 WalkBobFrequency = 2.0f;
 };
 
 static aabb Player_GetAABB(const player* Player);
