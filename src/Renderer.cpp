@@ -1111,9 +1111,24 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
 
         // Choose device
         {
-            // TODO: device selection logic
-            Renderer->PhysicalDevice = PhysicalDevices[0];
-            Renderer->DeviceDesc = PhysicalDeviceDescs[0];
+            u32 SelectedDeviceIndex = INVALID_INDEX_U32;
+            for (u32 i = 0; i < PhysicalDeviceCount; i++)
+            {
+                if (PhysicalDeviceDescs[i].Props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+                {
+                    SelectedDeviceIndex = i;
+                    break;
+                }
+            }
+
+            if (SelectedDeviceIndex == INVALID_INDEX_U32)
+            {
+                DebugPrint("Error: no suitable GPU found\n");
+                return false;
+            }
+            Renderer->PhysicalDevice = PhysicalDevices[SelectedDeviceIndex];
+            Renderer->DeviceDesc = PhysicalDeviceDescs[SelectedDeviceIndex];
+            
 
             Renderer->NonCoherentAtomSize = Renderer->DeviceDesc.Props.limits.nonCoherentAtomSize;
 
