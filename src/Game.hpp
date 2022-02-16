@@ -31,8 +31,11 @@ struct player
 
     static constexpr f32 RunBobAmplitude = 0.1f;
     static constexpr f32 RunBobFrequency = 3.0f;
+
+    vec3i TargetBlock;
 };
 
+static camera Player_GetCamera(const player* Player);
 static aabb Player_GetAABB(const player* Player);
 static void Player_GetHorizontalAxes(const player* Player, vec3& Forward, vec3& Right);
 

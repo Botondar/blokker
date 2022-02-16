@@ -15,6 +15,19 @@
 #include "Shapes.cpp"
 #include "Profiler.cpp"
 
+static camera Player_GetCamera(const player* Player)
+{
+    vec3 CamPDelta = { 0.0f, 0.0f, Player->BobAmplitude * Sin(2.0f * PI * Player->HeadBob) };
+    camera Camera =
+    {
+        .P = Player->P + CamPDelta,
+        .Yaw = Player->Yaw,
+        .Pitch = Player->Pitch,
+    };
+
+    return Camera;
+}
+
 static aabb Player_GetAABB(const player* Player)
 {
     aabb Result = 
@@ -716,15 +729,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
 
     renderer_frame_params* FrameParams = Renderer_NewFrame(Renderer);
 
-    FrameParams->Camera = camera
-    {
-        .P = GameState->Player.P,
-        .Yaw = GameState->Player.Yaw,
-        .Pitch = GameState->Player.Pitch,
-    };
-
-    FrameParams->Camera.P.z += GameState->Player.BobAmplitude * Sin(2.0f * PI * GameState->Player.HeadBob);
-
+    FrameParams->Camera = Player_GetCamera(&GameState->Player);
     FrameParams->ViewTransform = FrameParams->Camera.GetInverseTransform();
 
     const f32 AspectRatio = (f32)FrameParams->Renderer->SwapchainSize.width / (f32)FrameParams->Renderer->SwapchainSize.height;
