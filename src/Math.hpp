@@ -40,6 +40,7 @@ inline f32 ATan2(f32 y, f32 x) { return atan2f(y, x); }
 inline f32 Modulo(f32 x, f32 y) { return fmodf(x, y); }
 
 inline f32 Lerp(f32 a, f32 b, f32 t) { return a*(1.0f - t) + b*t; }
+inline constexpr f32 Fade3(f32 t) { return (3.0f - 2.0f*t)*t*t; }
 
 struct vec2;
 struct vec2i;
@@ -145,6 +146,11 @@ f32 Dot(const vec3& a, const vec3& b);
 f32 Length(const vec3& v);
 vec3 Normalize(const vec3& v);
 vec3 SafeNormalize(const vec3& v);
+
+// NOTE(boti): b should be normalized
+vec3 Projection(const vec3& a, const vec3& b);
+// NOTE(boti): b should be normalized
+vec3 Rejection(const vec3& a, const vec3& b);
 
 vec3 Cross(const vec3& a, const vec3& b);
 

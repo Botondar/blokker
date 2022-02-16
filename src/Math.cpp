@@ -369,6 +369,18 @@ vec3 SafeNormalize(const vec3& v)
     return Result;
 }
 
+vec3 Projection(const vec3& a, const vec3& b)
+{
+    vec3 Result = Dot(a, b) * b;
+    return Result;
+}
+
+vec3 Rejection(const vec3& a, const vec3& b)
+{
+    vec3 Result = a - Projection(a, b);
+    return Result;
+}
+
 s32& vec3i::operator[](int idx)
 {
     return (&x)[idx];

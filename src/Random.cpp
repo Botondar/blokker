@@ -51,11 +51,7 @@ f32 Perlin2_Sample(const perlin2* Perlin, vec2 P)
         { { P0.x - 1.0f, P0.y }, { P0.x - 1.0f, P0.y - 1.0f } }, 
     };
 
-    vec2 Factor = 
-    {
-        P0.x * P0.x * (3.0f - 2.0f * P0.x),
-        P0.y * P0.y * (3.0f - 2.0f * P0.y),
-    };
+    vec2 Factor = { Fade3(P0.x), Fade3(P0.y), };
 
     f32 dx0 = Lerp(Dot(G[0][0], V[0][0]), Dot(G[1][0], V[1][0]), Factor.x);
     f32 dx1 = Lerp(Dot(G[0][1], V[0][1]), Dot(G[1][1], V[1][1]), Factor.x);

@@ -28,6 +28,9 @@ struct player
 
     static constexpr f32 WalkBobAmplitude = 0.05f;
     static constexpr f32 WalkBobFrequency = 2.0f;
+
+    static constexpr f32 RunBobAmplitude = 0.1f;
+    static constexpr f32 RunBobFrequency = 3.0f;
 };
 
 static aabb Player_GetAABB(const player* Player);

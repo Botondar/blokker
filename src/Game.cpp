@@ -492,31 +492,15 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     {
         // Walk/Run controls
 
-        // Clear xy for now, we always move at a fixed speed
-        Player->Velocity.x = 0.0f;
-        Player->Velocity.y = 0.0f;
+        f32 DesiredSpeed = Input->LeftShift ? RunSpeed : WalkSpeed;
 
-        f32 DesiredSpeed = 0.0f;
-        if (Input->LeftShift)
-        {
-            // Run
-            DesiredSpeed = RunSpeed;
-            
-            Player->BobAmplitude = 0.1f;
-            Player->BobFrequency = 3.0f;
-        }
-        else
-        {
-            // Walk
-            DesiredSpeed = WalkSpeed;
-            Player->BobAmplitude = Player->WalkBobAmplitude;
-            Player->BobFrequency = Player->WalkBobFrequency;
-        }
-        Player->HeadBob += dt;
-
-        vec3 dVelocity = DesiredMoveDirection * DesiredSpeed;
+        vec3 DesiredVelocity = DesiredMoveDirection * DesiredSpeed;
+        vec3 VelocityXY = { Player->Velocity.x, Player->Velocity.y, 0.0f };
         
-        Player->Velocity += dVelocity;
+        vec3 DiffV = DesiredVelocity - VelocityXY;
+
+        constexpr f32 Accel = 10.0f;
+        Player->Velocity += Accel * DiffV * dt;
 
         if (Input->Space)
         {
@@ -524,20 +508,38 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
             constexpr f32 JumpVelocity = 7.7459667f; // sqrt(2 * Gravity * DesiredJumpHeight)
             Player->Velocity.z += JumpVelocity;
         }
+
+        // Head bobbing
+        f32 Speed = Length(Player->Velocity);
+        if (Speed < WalkSpeed)
+        {
+            f32 t = Fade3(Speed / WalkSpeed);
+            Player->BobAmplitude = Lerp(0, Player->WalkBobAmplitude, t);
+            Player->BobFrequency = Lerp(0, Player->WalkBobFrequency, t);
+        }
+        else
+        {
+            f32 t = Fade3((Speed - WalkSpeed) / (RunSpeed - WalkSpeed));
+            Player->BobAmplitude = Lerp(Player->WalkBobAmplitude, Player->RunBobAmplitude, t);
+            Player->BobFrequency = Lerp(Player->WalkBobFrequency, Player->RunBobFrequency, t);
+        }
+        Player->HeadBob += Player->BobFrequency*dt;
     }
     else
     {
         // Clear velocity if the user is trying to move
         if (Dot(DesiredMoveDirection, DesiredMoveDirection) != 0.0f)
         {
-            Player->Velocity.x = 0.0f;
-            Player->Velocity.y = 0.0f;
+            f32 DesiredSpeed = Input->LeftShift ? RunSpeed : WalkSpeed;
+
+            vec3 DesiredVelocity = DesiredMoveDirection * DesiredSpeed;
+            vec3 VelocityXY = { Player->Velocity.x, Player->Velocity.y, 0.0f };
+        
+            vec3 DiffV = DesiredVelocity - VelocityXY;
+
+            constexpr f32 Accel = 10.0f;
+            Player->Velocity += Accel * DiffV * dt;
         }
-
-        f32 MoveSpeed = Input->LeftShift ? RunSpeed : WalkSpeed;
-        vec3 dVelocity = DesiredMoveDirection * MoveSpeed;
-
-        Player->Velocity += dVelocity;
 
         // Drag force = 0.5 * c * rho * v_r^2 * A
         constexpr f32 AirDensity = 1.2041f;
@@ -721,7 +723,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
         .Pitch = GameState->Player.Pitch,
     };
 
-    FrameParams->Camera.P.z += GameState->Player.BobAmplitude * Sin(2.0f * PI * GameState->Player.HeadBob * GameState->Player.BobFrequency);
+    FrameParams->Camera.P.z += GameState->Player.BobAmplitude * Sin(2.0f * PI * GameState->Player.HeadBob);
 
     FrameParams->ViewTransform = FrameParams->Camera.GetInverseTransform();
 
