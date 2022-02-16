@@ -23,6 +23,7 @@ static camera Player_GetCamera(const player* Player)
         .P = Player->P + CamPDelta,
         .Yaw = Player->Yaw,
         .Pitch = Player->Pitch,
+        .FieldOfView = Player->CurrentFov,
     };
 
     return Camera;
@@ -504,7 +505,6 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     if (Player->WasGroundedLastFrame)
     {
         // Walk/Run controls
-
         f32 DesiredSpeed = Input->LeftShift ? RunSpeed : WalkSpeed;
 
         vec3 DesiredVelocity = DesiredMoveDirection * DesiredSpeed;
@@ -513,7 +513,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         vec3 DiffV = DesiredVelocity - VelocityXY;
 
         constexpr f32 Accel = 10.0f;
-        Player->Velocity += Accel * DiffV * dt;
+        Acceleration += Accel * DiffV;
 
         if (Input->Space)
         {
@@ -537,6 +537,10 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
             Player->BobFrequency = Lerp(Player->WalkBobFrequency, Player->RunBobFrequency, t);
         }
         Player->HeadBob += Player->BobFrequency*dt;
+        if (Player->HeadBob >= 1.0f)
+        {
+            Player->HeadBob -= 1.0f;
+        }
     }
     else
     {
@@ -551,7 +555,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
             vec3 DiffV = DesiredVelocity - VelocityXY;
 
             constexpr f32 Accel = 10.0f;
-            Player->Velocity += Accel * DiffV * dt;
+            Acceleration += Accel * DiffV;
         }
 
         // Drag force = 0.5 * c * rho * v_r^2 * A
@@ -575,6 +579,23 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     Acceleration += vec3{ 0.0f, 0.0f, -Gravity };
     Player->Velocity += Acceleration * dt;
 
+    // Fov animation
+    {
+        f32 PlayerSpeed = Length(Player->Velocity);
+        vec3 MoveDirection = SafeNormalize(Player->Velocity);
+        vec3 FacingDirection = { Forward.x * Cos(Player->Pitch), Forward.y * Cos(Player->Pitch), Sin(Player->Pitch) };
+        
+        f32 t = (PlayerSpeed - WalkSpeed) / (RunSpeed - WalkSpeed);
+        t *= Max(Dot(MoveDirection, FacingDirection), 0.0f);
+        t = Fade3(Clamp(t, 0.0f, 1.0f));
+        Player->TargetFov = Lerp(Player->DefaultFov, ToRadians(100.0f), t);
+        
+        constexpr f32 dFov = ToRadians(1000.0f);
+        f32 FovDiff = Player->TargetFov - Player->CurrentFov;
+
+        Player->CurrentFov += Signum(FovDiff) * Min(Abs(dFov * FovDiff * dt), Abs(FovDiff));
+    }
+    
     vec3 dP = (Player->Velocity + 0.5f * Acceleration * dt) * dt;
 
     // Collision
@@ -733,7 +754,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
     FrameParams->ViewTransform = FrameParams->Camera.GetInverseTransform();
 
     const f32 AspectRatio = (f32)FrameParams->Renderer->SwapchainSize.width / (f32)FrameParams->Renderer->SwapchainSize.height;
-    FrameParams->ProjectionTransform = PerspectiveMat4(ToRadians(90.0f), AspectRatio, 0.045f, 8000.0f);
+    FrameParams->ProjectionTransform = PerspectiveMat4(FrameParams->Camera.FieldOfView, AspectRatio, 0.045f, 8000.0f);
 
     Renderer_BeginRendering(FrameParams);
 
@@ -793,6 +814,8 @@ bool Game_Initialize(game_state* GameState)
 
     // Place the player in the middle of the starting chunk
     GameState->Player.P = { (0.5f * CHUNK_DIM_X + 0.5f), 0.5f * CHUNK_DIM_Y + 0.5f, 100.0f };
+    GameState->Player.CurrentFov = GameState->Player.DefaultFov;
+    GameState->Player.TargetFov = GameState->Player.TargetFov;
 
     Perlin2_Init(&GameState->Perlin, 0);
 

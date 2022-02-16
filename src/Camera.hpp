@@ -6,7 +6,8 @@ struct camera
 {
     vec3 P;
     f32 Yaw, Pitch;
-    
+    f32 FieldOfView;
+
     mat4 GetGlobalTransform() const;
     mat4 GetLocalTransform() const;
     mat4 GetTransform() const;

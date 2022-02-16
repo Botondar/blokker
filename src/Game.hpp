@@ -16,7 +16,6 @@ struct player
     f32 Yaw, Pitch;
     bool WasGroundedLastFrame;
 
-    
     static constexpr f32 Height = 1.8f;
     static constexpr f32 EyeHeight = 1.75f;
     static constexpr f32 LegHeight = 0.51f;
@@ -31,6 +30,12 @@ struct player
 
     static constexpr f32 RunBobAmplitude = 0.1f;
     static constexpr f32 RunBobFrequency = 3.0f;
+
+    static constexpr f32 DefaultFov = ToRadians(80.0f);
+
+    f32 FieldOfView;
+    f32 CurrentFov;
+    f32 TargetFov;
 
     vec3i TargetBlock;
 };
