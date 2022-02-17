@@ -2854,7 +2854,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
             .pNext = nullptr,
             .flags = 0,
-            .topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST,
+            .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
             .primitiveRestartEnable = VK_FALSE,
         };
         
@@ -2880,7 +2880,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .depthClampEnable = VK_FALSE,
             .rasterizerDiscardEnable = VK_FALSE,
             .polygonMode = VK_POLYGON_MODE_FILL,
-            .cullMode = VK_CULL_MODE_BACK_BIT,
+            .cullMode = VK_CULL_MODE_NONE,
             .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
             .depthBiasEnable = VK_TRUE,
             .depthBiasConstantFactor = 0.0f,
@@ -3564,7 +3564,7 @@ void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, aabb Box, u32 Co
         { { Box.Min.x, Box.Max.y, Box.Max.z }, { }, Color },
     };
 
-    u64 Offset = Frame_PushToStack(Frame, 4, VertexData, sizeof(VertexData));
+    u64 Offset = Frame_PushToStack(Frame, 16, VertexData, sizeof(VertexData));
     if (Offset != INVALID_INDEX_U64)
     {
 #if 0
@@ -3583,6 +3583,39 @@ void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, aabb Box, u32 Co
     else
     {
         assert(!"Renderer_ImmediateBoxOutline failed");
+    }
+}
+
+void Renderer_ImmediateRect2D(renderer_frame_params* Frame, vec2 p0, vec2 p1, u32 Color)
+{
+    TIMED_FUNCTION();
+
+    vertex VertexData[] = 
+    {
+        { { p1.x, p0.y, 0.0f }, {}, Color }, 
+        { { p1.x, p1.y, 0.0f }, {}, Color },
+        { { p0.x, p0.y, 0.0f }, {}, Color },
+        { { p0.x, p1.y, 0.0f }, {}, Color },
+    };
+    u32 VertexCount = CountOf(VertexData);
+
+    u64 Offset = Frame_PushToStack(Frame, 16, VertexData, sizeof(VertexData));
+    if (Offset != INVALID_INDEX_U64)
+    {
+        vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &Offset);
+        mat4 Transform = Mat4(
+            2.0f / Frame->Renderer->SwapchainSize.width, 0.0f, 0.0f, -1.0f,
+            0.0f, 2.0f / Frame->Renderer->SwapchainSize.height, 0.0f, -1.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f);
+        vkCmdPushConstants(Frame->CmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &Transform);
+        vkCmdSetPrimitiveTopologyEXT(Frame->CmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+        vkCmdSetDepthBias(Frame->CmdBuffer, 0.0f, 0.0f, 0.0f);
+        vkCmdDraw(Frame->CmdBuffer, VertexCount, 1, 0, 0);
+    }
+    else
+    {
+        assert(!"Renderer_ImmediateRect2D failed");
     }
 }
 

@@ -579,6 +579,9 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     Acceleration += vec3{ 0.0f, 0.0f, -Gravity };
     Player->Velocity += Acceleration * dt;
 
+#if 1
+    Player->CurrentFov = Player->DefaultFov;
+#else
     // Fov animation
     {
         f32 PlayerSpeed = Length(Player->Velocity);
@@ -588,14 +591,14 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         f32 t = (PlayerSpeed - WalkSpeed) / (RunSpeed - WalkSpeed);
         t *= Max(Dot(MoveDirection, FacingDirection), 0.0f);
         t = Fade3(Clamp(t, 0.0f, 1.0f));
-        Player->TargetFov = Lerp(Player->DefaultFov, ToRadians(100.0f), t);
+        Player->TargetFov = Lerp(Player->DefaultFov, ToRadians(90.0f), t);
         
         constexpr f32 dFov = ToRadians(1000.0f);
         f32 FovDiff = Player->TargetFov - Player->CurrentFov;
 
         Player->CurrentFov += Signum(FovDiff) * Min(Abs(dFov * FovDiff * dt), Abs(FovDiff));
     }
-    
+#endif
     vec3 dP = (Player->Velocity + 0.5f * Acceleration * dt) * dt;
 
     // Collision
@@ -760,12 +763,17 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
 
     Renderer_RenderChunks(FrameParams, GameState->ChunkCount, GameState->Chunks);
 
+    Renderer_BeginImmediate(FrameParams);
     if (GameState->Debug.IsHitboxEnabled)
     {
-        Renderer_BeginImmediate(FrameParams);
         Renderer_ImmediateBoxOutline(FrameParams, Player_GetAABB(&GameState->Player), PackColor(0xFF, 0x00, 0x00));
         Renderer_ImmediateBoxOutline(FrameParams, Player_GetVerticalAABB(&GameState->Player), PackColor(0xFF, 0xFF, 0x00));
     }
+
+    vec2 CenterP = { 0.5f * FrameParams->Renderer->SwapchainSize.width, 0.5f * FrameParams->Renderer->SwapchainSize.height };
+    Renderer_ImmediateRect2D(FrameParams, CenterP - vec2{30.0f, 2.5f}, CenterP + vec2{30.0f, 2.5f}, PackColor(0xFF, 0xFF, 0xFF));
+    Renderer_ImmediateRect2D(FrameParams, CenterP - vec2{2.5f, 30.0f}, CenterP + vec2{2.5f, 30.0f}, PackColor(0xFF, 0xFF, 0xFF));
+
     Renderer_RenderImGui(FrameParams);
 
     Renderer_EndRendering(FrameParams);

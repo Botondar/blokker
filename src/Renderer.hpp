@@ -288,5 +288,6 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, const chunk*
 
 void Renderer_BeginImmediate(renderer_frame_params* Frame);
 void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, aabb Box, u32 Color);
+void Renderer_ImmediateRect2D(renderer_frame_params* Frame, vec2 p0, vec2 p1, u32 Color);
 
 void Renderer_RenderImGui(renderer_frame_params* Frame);

@@ -25,11 +25,11 @@ struct player
     f32 BobAmplitude = 0.05f;
     f32 BobFrequency = 2.0f;
 
-    static constexpr f32 WalkBobAmplitude = 0.05f;
+    static constexpr f32 WalkBobAmplitude = 0.025f;
     static constexpr f32 WalkBobFrequency = 2.0f;
 
-    static constexpr f32 RunBobAmplitude = 0.1f;
-    static constexpr f32 RunBobFrequency = 3.0f;
+    static constexpr f32 RunBobAmplitude = 0.075f;
+    static constexpr f32 RunBobFrequency = 2.5f;
 
     static constexpr f32 DefaultFov = ToRadians(80.0f);
 
