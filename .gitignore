@@ -2,4 +2,5 @@
 /build/
 /lib/
 *.10x
+*.sln
 imgui.ini
