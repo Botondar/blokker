@@ -533,28 +533,26 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         int Direction = -1;
         if (Chunk_RayCast(PlayerChunk, Player->P, Forward, PlayerReach, &VoxelP, &Direction))
         {
-            if (VoxelP == Player->TargetBlock)
+            if ((VoxelP == Player->TargetBlock) && Input->MouseButtons[MOUSE_LEFT])
             {
-                if (Input->MouseButtons[MOUSE_LEFT])
+                u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, VoxelP.x, VoxelP.y, VoxelP.z);
+                if (VoxelType == VOXEL_GROUND)
                 {
-                    u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, VoxelP.x, VoxelP.y, VoxelP.z);
-                    if (VoxelType == VOXEL_GROUND)
+                    if (Player->BreakTime < 0.0f)
                     {
-                        if (Player->BreakTime < 0.0f)
-                        {
-                            Player->BreakTime = 0.0f;
-                        }
-                        else
-                        {
-                            Player->BreakTime += dt;
-                        }
-
-                        if (Player->BreakTime >= Player->BlockBreakTime)
-                        {
-                            Chunk_SetVoxelType(PlayerChunk, VOXEL_AIR, VoxelP.x, VoxelP.y, VoxelP.z);
-                        }
+                        Player->BreakTime = 0.0f;
+                    }
+                    else
+                    {
+                        Player->BreakTime += dt;
+                    }
+                
+                    if (Player->BreakTime >= Player->BlockBreakTime)
+                    {
+                        Chunk_SetVoxelType(PlayerChunk, VOXEL_AIR, VoxelP.x, VoxelP.y, VoxelP.z);
                     }
                 }
+                
             }
             else
             {
