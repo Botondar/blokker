@@ -3174,15 +3174,16 @@ bool Renderer_CreateImGuiTexture(vulkan_renderer* Renderer, u32 Width, u32 Heigh
     return Result;
 }
 
-renderer_frame_params* Renderer_NewFrame(vulkan_renderer* Renderer)
+renderer_frame_params* Renderer_NewFrame(vulkan_renderer* Renderer, u64 FrameIndex)
 {
     TIMED_FUNCTION();
 
-    u64 FrameIndex = Renderer->NextFrameIndex;
-    Renderer->NextFrameIndex = (Renderer->NextFrameIndex + 1) % 2;
+    u32 BufferIndex = Renderer->NextBufferIndex;
+    Renderer->NextBufferIndex = (Renderer->NextBufferIndex + 1) % 2;
 
-    renderer_frame_params* Frame = Renderer->FrameParams + FrameIndex;
+    renderer_frame_params* Frame = Renderer->FrameParams + BufferIndex;
     Frame->FrameIndex = FrameIndex;
+    Frame->BufferIndex = BufferIndex;
     Frame->Renderer = Renderer;
     Frame->SwapchainImageIndex = INVALID_INDEX_U32;
     Frame->VertexStack.At = 0;
@@ -3445,7 +3446,7 @@ void Renderer_EndRendering(renderer_frame_params* Frame)
     vkEndCommandBuffer(Frame->CmdBuffer);
 }
 
-void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, const chunk* Chunks)
+void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk* Chunks)
 {
     TIMED_FUNCTION();
 
@@ -3460,7 +3461,7 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, const chunk*
 
     for (u32 i = 0; i < Count; i++)
     {
-        const chunk* Chunk = Chunks + i;
+        chunk* Chunk = Chunks + i;
         if (!(Chunk->Flags & CHUNK_STATE_UPLOADED_BIT))
         {
             continue;
@@ -3475,6 +3476,9 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, const chunk*
         {
             continue;
         }
+
+        Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
+
         mat4 WorldTransform = Mat4(
             1.0f, 0.0f, 0.0f, (f32)Chunk->P.x * CHUNK_DIM_X,
             0.0f, 1.0f, 0.0f, (f32)Chunk->P.y * CHUNK_DIM_Y,

@@ -122,6 +122,8 @@ static chunk* Game_ReserveChunk(game_state* GameState)
         // For now, chunk headers are implicitly tied to the chunk data by their indices
         // but we'll want to separate them in the future;
         Result->Data = GameState->ChunkData + GameState->ChunkCount;
+        Result->AllocationIndex = INVALID_INDEX_U32;
+        Result->OldAllocationIndex = INVALID_INDEX_U32;
         GameState->ChunkCount++;
     }
     return Result;
@@ -498,6 +500,66 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
         Game_UpdatePlayer(GameState, Input, dt);
         RemainingTime -= dt;
     }
+
+    // Chunk update
+    // TODO: move this
+    {
+        TIMED_BLOCK("ChunkUpdate");
+
+        for (u32 i = 0; i < GameState->ChunkCount; i++)
+        {
+            chunk* Chunk = GameState->Chunks + i;
+            if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
+            {
+                continue;
+            }
+
+            if (Chunk->OldAllocationIndex != INVALID_INDEX_U32)
+            {
+                if (Chunk->OldAllocationLastRenderedInFrameIndex < GameState->FrameIndex - 1)
+                {
+                    VB_Free(&GameState->Renderer->VB, Chunk->OldAllocationIndex);
+                    Chunk->OldAllocationIndex = INVALID_INDEX_U32;
+                }
+            }
+
+            if ((Chunk->Flags & CHUNK_STATE_MESHED_BIT) &&
+                (Chunk->Flags & CHUNK_STATE_MESH_DIRTY_BIT))
+            {
+                assert(Chunk->OldAllocationIndex == INVALID_INDEX_U32);
+
+                Chunk->OldAllocationIndex = Chunk->AllocationIndex;
+                Chunk->LastRenderedInFrameIndex = Chunk->OldAllocationLastRenderedInFrameIndex;
+
+                std::vector<vertex> VertexData = Chunk_Mesh(Chunk);
+
+                if (VertexData.size() && (VertexData.size() <= 0xFFFFFFFFu))
+                {
+                    Chunk->AllocationIndex = VB_Allocate(&GameState->Renderer->VB, (u32)VertexData.size());
+                    u64 Offset = VB_GetAllocationMemoryOffset(&GameState->Renderer->VB, Chunk->AllocationIndex);
+                    Chunk->LastRenderedInFrameIndex = 0;
+
+                    u64 MemorySize = VertexData.size() * sizeof(vertex);
+                    if (StagingHeap_Copy(&GameState->Renderer->StagingHeap,
+                        GameState->Renderer->TransferQueue,
+                        GameState->Renderer->TransferCmdBuffer,
+                        Offset, GameState->Renderer->VB.Buffer,
+                        MemorySize, VertexData.data()))
+                    {
+                        Chunk->Flags &= ~CHUNK_STATE_MESH_DIRTY_BIT;
+                    }
+                    else
+                    {
+                        assert(!"Chunk upload failed");
+                    }
+                }
+                else
+                {
+                    assert(!"Invalid VertexData");
+                }
+            }
+        }
+    }
 }
 
 static void Game_PreUpdatePlayer(game_state* GameState, game_input* Input)
@@ -829,7 +891,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
         GameState->NeedRendererResize = false;
     }
 
-    renderer_frame_params* FrameParams = Renderer_NewFrame(Renderer);
+    renderer_frame_params* FrameParams = Renderer_NewFrame(Renderer, GameState->FrameIndex);
 
     FrameParams->Camera = Player_GetCamera(&GameState->Player);
     FrameParams->ViewTransform = FrameParams->Camera.GetInverseTransform();

@@ -160,6 +160,7 @@ u64 VB_GetAllocationMemoryOffset(const vulkan_vertex_buffer* VB, u32 AllocationI
 struct renderer_frame_params
 {
     u64 FrameIndex;
+    u32 BufferIndex;
 
     camera Camera;
     mat4 ProjectionTransform;
@@ -236,7 +237,7 @@ struct vulkan_renderer
     };
     vulkan_rt_heap RTHeap;
 
-    u64 NextFrameIndex;
+    u32 NextBufferIndex;
     renderer_frame_params FrameParams[16];
 
     vulkan_staging_heap StagingHeap;
@@ -284,7 +285,7 @@ void Renderer_SubmitFrame(vulkan_renderer* Renderer, renderer_frame_params* Fram
 void Renderer_BeginRendering(renderer_frame_params* Frame);
 void Renderer_EndRendering(renderer_frame_params* Frame);
 
-void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, const chunk* Chunks);
+void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk* Chunks);
 
 enum class outline_type : u32
 {

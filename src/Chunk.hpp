@@ -62,6 +62,7 @@ enum chunk_state_flags : u32
     CHUNK_STATE_GENERATED_BIT = (1 << 0),
     CHUNK_STATE_MESHED_BIT    = (1 << 1),
     CHUNK_STATE_UPLOADED_BIT  = (1 << 2),
+    CHUNK_STATE_MESH_DIRTY_BIT = (1 << 3),
 };
 
 struct chunk_data
@@ -78,6 +79,10 @@ struct chunk
     chunk_data* Data;
 
     u32 AllocationIndex; // in VB
+    u64 LastRenderedInFrameIndex;
+
+    u32 OldAllocationIndex;
+    u64 OldAllocationLastRenderedInFrameIndex;
 };
 
 static u16 Chunk_GetVoxelType(const chunk* Chunk, s32 x, s32 y, s32 z);

@@ -71,35 +71,37 @@ static bool Chunk_SetVoxelType(chunk* Chunk, u16 Type, s32 x, s32 y, s32 z)
         if (Chunk)
         {
             Chunk->Data->Voxels[z][y][x] = Type;
-            Chunk->Flags &= ~(CHUNK_STATE_MESHED_BIT | CHUNK_STATE_UPLOADED_BIT);
-            
+            if (Chunk->Flags & CHUNK_STATE_MESHED_BIT)
+            {
+                Chunk->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
+            }
             // Remesh neighbors if we've modified a block on the edge of the chunk
             if(x == 0)
             {
-                if (Chunk->Neighbors[West])
+                if (Chunk->Neighbors[West] && (Chunk->Neighbors[West]->Flags & CHUNK_STATE_MESHED_BIT))
                 {
-                    Chunk->Neighbors[West]->Flags &= ~(CHUNK_STATE_MESHED_BIT | CHUNK_STATE_UPLOADED_BIT);
+                    Chunk->Neighbors[West]->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
                 }
             }
             else if (x == CHUNK_DIM_X - 1)
             {
-                if (Chunk->Neighbors[East])
+                if (Chunk->Neighbors[East] && (Chunk->Neighbors[East]->Flags & CHUNK_STATE_MESHED_BIT))
                 {
-                    Chunk->Neighbors[East]->Flags &= ~(CHUNK_STATE_MESHED_BIT | CHUNK_STATE_UPLOADED_BIT);
+                    Chunk->Neighbors[East]->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
                 }
             }
             if(y == 0)
             {
-                if (Chunk->Neighbors[South])
+                if (Chunk->Neighbors[South] && (Chunk->Neighbors[South]->Flags & CHUNK_STATE_MESHED_BIT))
                 {
-                    Chunk->Neighbors[South]->Flags &= ~(CHUNK_STATE_MESHED_BIT | CHUNK_STATE_UPLOADED_BIT);
+                    Chunk->Neighbors[South]->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
                 }
             }
             else if (y == CHUNK_DIM_Y - 1)
             {
-                if (Chunk->Neighbors[North])
+                if (Chunk->Neighbors[North] && (Chunk->Neighbors[North]->Flags & CHUNK_STATE_MESHED_BIT))
                 {
-                    Chunk->Neighbors[North]->Flags &= ~(CHUNK_STATE_MESHED_BIT | CHUNK_STATE_UPLOADED_BIT);
+                    Chunk->Neighbors[North]->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
                 }
             }
 
