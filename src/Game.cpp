@@ -837,7 +837,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
     FrameParams->ViewTransform = FrameParams->Camera.GetInverseTransform();
 
     const f32 AspectRatio = (f32)FrameParams->Renderer->SwapchainSize.width / (f32)FrameParams->Renderer->SwapchainSize.height;
-    FrameParams->ProjectionTransform = PerspectiveMat4(FrameParams->Camera.FieldOfView, AspectRatio, 0.045f, 8000.0f);
+    FrameParams->ProjectionTransform = PerspectiveMat4(FrameParams->Camera.FieldOfView, AspectRatio, 0.019f, 8000.0f);
 
     Renderer_BeginRendering(FrameParams);
 
