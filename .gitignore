@@ -1,6 +1,7 @@
 /shader/
 /build/
 /lib/
+/.vs/
 *.10x
 *.sln
 imgui.ini
