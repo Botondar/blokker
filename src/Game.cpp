@@ -431,9 +431,26 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
     if (GameState->Debug.IsDebuggingEnabled)
     {
         ImGui::Begin("Debug");
-        ImGui::Text("FrameTime: %.2fms", 1000.0f*DeltaTime);
-        ImGui::Text("FPS: %.1f", 1.0f / DeltaTime);
-        ImGui::Checkbox("Hitboxes", &GameState->Debug.IsHitboxEnabled);
+        {
+            ImGui::Text("FrameTime: %.2fms", 1000.0f*DeltaTime);
+            ImGui::Text("FPS: %.1f", 1.0f / DeltaTime);
+            ImGui::Checkbox("Hitboxes", &GameState->Debug.IsHitboxEnabled);
+        }
+        ImGui::End();
+
+        ImGui::Begin("Memory");
+        {
+            ImGui::Text("RenderTarget: %lluMB / %lluMB (%.1f%%)\n",
+                GameState->Renderer->RTHeap.HeapOffset >> 20,
+                GameState->Renderer->RTHeap.HeapSize >> 20,
+                100.0 * ((f64)GameState->Renderer->RTHeap.HeapOffset / (f64)GameState->Renderer->RTHeap.HeapSize));
+            ImGui::Text("VertexBuffer: %lluMB / %lluMB (%.1f%%)\n",
+                GameState->Renderer->VB.MemoryUsage >> 20,
+                GameState->Renderer->VB.MemorySize >> 20,
+                100.0 * GameState->Renderer->VB.MemoryUsage / GameState->Renderer->VB.MemorySize);
+
+            ImGui::Text("Chunks: %u/%u\n", GameState->ChunkCount, GameState->MaxChunkCount);
+        }
         ImGui::End();
 
         GlobalProfiler.DoGUI();
@@ -735,21 +752,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
             assert(!"Fatal error");
         }
         GameState->NeedRendererResize = false;
-
-        DebugPrint("RenderTarget MEM: %lluMB / %lluMB (%.1f%%)\n",
-            Renderer->RTHeap.HeapOffset >> 20,
-            Renderer->RTHeap.HeapSize >> 20,
-            100.0 * ((f64)Renderer->RTHeap.HeapOffset / (f64)Renderer->RTHeap.HeapSize));
     }
-
-
-#if 0
-    DebugPrint("Chunks: %u/%u\n", GameState->ChunkCount, GameState->MaxChunkCount);
-    DebugPrint("VB mem: %lluMB / %lluMB (%.1f%%)\n",
-        GameState->VB.MemoryUsage >> 20,
-        GameState->VB.MemorySize >> 20,
-        100.0 * GameState->VB.MemoryUsage / GameState->VB.MemorySize);
-#endif
 
     renderer_frame_params* FrameParams = Renderer_NewFrame(Renderer);
 
