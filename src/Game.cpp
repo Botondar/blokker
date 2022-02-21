@@ -899,27 +899,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
             vec2 P0 = { CenterP.x - 0.5f * Width, ScreenExtent.y - OffsetY - 0.5f * Height }; // Upper-left
             vec2 P1 = P0 + vec2{Width, Height}; // Lower-right
 
-            // Outline
-            // Top
-            Renderer_ImmediateRect2D(FrameParams, 
-                vec2{ P0.x - OutlineSize, P0.y - OutlineSize },
-                vec2{ P1.x + OutlineSize, P0.y               },
-                PackColor(0xFF, 0xFF, 0xFF));
-            // Left
-            Renderer_ImmediateRect2D(FrameParams, 
-                vec2{ P0.x - OutlineSize, P0.y - OutlineSize },
-                vec2{ P0.x              , P1.y + OutlineSize },
-                PackColor(0xFF, 0xFF, 0xFF));
-            // Right
-            Renderer_ImmediateRect2D(FrameParams, 
-                vec2{ P1.x              , P0.y - OutlineSize },
-                vec2{ P1.x + OutlineSize, P1.y + OutlineSize },
-                PackColor(0xFF, 0xFF, 0xFF));
-            // Bottom
-            Renderer_ImmediateRect2D(FrameParams, 
-                vec2{ P0.x - OutlineSize, P1.y               },
-                vec2{ P1.x + OutlineSize, P1.y + OutlineSize },
-                PackColor(0xFF, 0xFF, 0xFF));
+            Renderer_ImmediateRectOutline2D(FrameParams, outline_type::Outer, OutlineSize, P0, P1, PackColor(0xFF, 0xFF, 0xFF));
 
             // Center
             f32 FillRatio = GameState->Player.BreakTime / GameState->Player.BlockBreakTime;

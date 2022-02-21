@@ -3619,6 +3619,50 @@ void Renderer_ImmediateRect2D(renderer_frame_params* Frame, vec2 p0, vec2 p1, u3
     }
 }
 
+void Renderer_ImmediateRectOutline2D(renderer_frame_params* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color)
+{
+    TIMED_FUNCTION();
+
+    vec2 P0, P1;
+    if (Type == outline_type::Outer)
+    {
+        P0 = p0;
+        P1 = p1;
+    }
+    else if (Type == outline_type::Inner)
+    {
+        P0 = p0 + vec2{ OutlineSize, OutlineSize };
+        P1 = p1 + vec2{ -OutlineSize, -OutlineSize };
+    }
+    else
+    {
+        P0 = {};
+        P1 = {};
+        assert(!"Invalid code path");
+    }
+
+    // Top
+    Renderer_ImmediateRect2D(Frame,
+        vec2{ P0.x - OutlineSize, P0.y - OutlineSize },
+        vec2{ P1.x + OutlineSize, P0.y               },
+        Color);
+    // Left
+    Renderer_ImmediateRect2D(Frame, 
+        vec2{ P0.x - OutlineSize, P0.y - OutlineSize },
+        vec2{ P0.x              , P1.y + OutlineSize },
+        Color);
+    // Right
+    Renderer_ImmediateRect2D(Frame, 
+        vec2{ P1.x              , P0.y - OutlineSize },
+        vec2{ P1.x + OutlineSize, P1.y + OutlineSize },
+        Color);
+    // Bottom
+    Renderer_ImmediateRect2D(Frame, 
+        vec2{ P0.x - OutlineSize, P1.y               },
+        vec2{ P1.x + OutlineSize, P1.y + OutlineSize },
+        Color);
+}
+
 void Renderer_RenderImGui(renderer_frame_params* Frame)
 {
     TIMED_FUNCTION();
