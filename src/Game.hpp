@@ -37,12 +37,15 @@ struct player
     f32 CurrentFov;
     f32 TargetFov;
 
+    static constexpr f32 BlockBreakTime = 0.5f;
     vec3i TargetBlock;
+    f32 BreakTime = -1.0f;
 };
 
 static camera Player_GetCamera(const player* Player);
 static aabb Player_GetAABB(const player* Player);
 static void Player_GetHorizontalAxes(const player* Player, vec3& Forward, vec3& Right);
+static vec3 Player_GetForward(const player* Player);
 
 enum mouse_button : u32
 {

@@ -158,6 +158,8 @@ struct vec3i
 {
     s32 x, y, z;
 
+    bool operator==(const vec3i& Other) const = default;
+
     s32& operator[](int idx);
     const s32& operator[](int idx) const;
 

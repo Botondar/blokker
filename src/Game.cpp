@@ -79,6 +79,26 @@ static void Player_GetHorizontalAxes(const player* Player, vec3& Forward, vec3& 
     Forward = { -SinYaw, CosYaw, 0.0f };
 }
 
+static vec3 Player_GetForward(const player* Player)
+{
+    assert(Player);
+    vec3 Result = {};
+    
+    f32 SinYaw = Sin(Player->Yaw);
+    f32 CosYaw = Cos(Player->Yaw);
+    f32 SinPitch = Sin(Player->Pitch);
+    f32 CosPitch = Cos(Player->Pitch);
+
+    Result = 
+    {
+        -SinYaw*CosPitch,
+        CosYaw*CosPitch,
+        SinPitch,
+    };
+
+    return Result;
+}
+
 static bool Game_InitImGui(game_state* GameState);
 
 static chunk* Game_ReserveChunk(game_state* GameState);
@@ -178,6 +198,15 @@ static void Game_LoadChunks(game_state* GameState)
         {
             // TODO: free up some memory
             return;
+        }
+    }
+    else
+    {
+        if (!(PlayerChunk->Flags & CHUNK_STATE_GENERATED_BIT) ||
+            !(PlayerChunk->Flags & CHUNK_STATE_MESHED_BIT) ||
+            !(PlayerChunk->Flags & CHUNK_STATE_UPLOADED_BIT))
+        {
+            Stack[StackAt++] = PlayerChunk;
         }
     }
 
@@ -492,6 +521,54 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     
     player* Player = &GameState->Player;
 
+    // Block breaking
+    if (!Input->IsCursorEnabled)
+    {
+        vec3 Forward = Player_GetForward(Player);
+
+        chunk* PlayerChunk = Game_FindPlayerChunk(GameState);
+        constexpr f32 PlayerReach = 8.0f;
+
+        vec3i VoxelP;
+        int Direction = -1;
+        if (Chunk_RayCast(PlayerChunk, Player->P, Forward, PlayerReach, &VoxelP, &Direction))
+        {
+            if (VoxelP == Player->TargetBlock)
+            {
+                if (Input->MouseButtons[MOUSE_LEFT])
+                {
+                    u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, VoxelP.x, VoxelP.y, VoxelP.z);
+                    if (VoxelType == VOXEL_GROUND)
+                    {
+                        if (Player->BreakTime < 0.0f)
+                        {
+                            Player->BreakTime = 0.0f;
+                        }
+                        else
+                        {
+                            Player->BreakTime += dt;
+                        }
+
+                        if (Player->BreakTime >= Player->BlockBreakTime)
+                        {
+                            Chunk_SetVoxelType(PlayerChunk, VOXEL_AIR, VoxelP.x, VoxelP.y, VoxelP.z);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                Player->BreakTime = -1.0f;
+            }
+            Player->TargetBlock = VoxelP;
+        }
+        else
+        {
+            Player->TargetBlock = { 100000, 100000, 100000 };
+        }
+    }
+    
+
     vec3 Forward, Right;
     Player_GetHorizontalAxes(Player, Forward, Right);
     vec3 Up = { 0.0f, 0.0f, 1.0f };
@@ -800,10 +877,59 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
         }
     }
 
-    vec2 CenterP = { 0.5f * FrameParams->Renderer->SwapchainSize.width, 0.5f * FrameParams->Renderer->SwapchainSize.height };
-    Renderer_ImmediateRect2D(FrameParams, CenterP - vec2{20.0f, 1.0f}, CenterP + vec2{20.0f, 1.0f}, PackColor(0xFF, 0xFF, 0xFF));
-    Renderer_ImmediateRect2D(FrameParams, CenterP - vec2{1.0f, 20.0f}, CenterP + vec2{1.0f, 20.0f}, PackColor(0xFF, 0xFF, 0xFF));
+    // HUD
+    {
+        vec2 ScreenExtent = { (f32)FrameParams->Renderer->SwapchainSize.width, (f32)FrameParams->Renderer->SwapchainSize.height };
+        vec2 CenterP = 0.5f * ScreenExtent;
 
+        // Crosshair
+        {
+            constexpr f32 Radius = 20.0f;
+            constexpr f32 Width = 1.0f;
+            Renderer_ImmediateRect2D(FrameParams, CenterP - vec2{Radius, Width}, CenterP + vec2{Radius, Width}, PackColor(0xFF, 0xFF, 0xFF));
+            Renderer_ImmediateRect2D(FrameParams, CenterP - vec2{Width, Radius}, CenterP + vec2{Width, Radius}, PackColor(0xFF, 0xFF, 0xFF));
+        }
+
+        // Block break indicator
+        if (GameState->Player.BreakTime >= 0.0f)
+        {
+            constexpr f32 OutlineSize = 1.0f;
+            constexpr f32 Height = 20.0f;
+            constexpr f32 Width = 100.0f;
+            constexpr f32 OffsetY = 200.0f;
+
+            vec2 P0 = { CenterP.x - 0.5f * Width, ScreenExtent.y - OffsetY - 0.5f * Height }; // Upper-left
+            vec2 P1 = P0 + vec2{Width, Height}; // Lower-right
+
+            // Outline
+            // Top
+            Renderer_ImmediateRect2D(FrameParams, 
+                vec2{ P0.x - OutlineSize, P0.y - OutlineSize },
+                vec2{ P1.x + OutlineSize, P0.y               },
+                PackColor(0xFF, 0xFF, 0xFF));
+            // Left
+            Renderer_ImmediateRect2D(FrameParams, 
+                vec2{ P0.x - OutlineSize, P0.y - OutlineSize },
+                vec2{ P0.x              , P1.y + OutlineSize },
+                PackColor(0xFF, 0xFF, 0xFF));
+            // Right
+            Renderer_ImmediateRect2D(FrameParams, 
+                vec2{ P1.x              , P0.y - OutlineSize },
+                vec2{ P1.x + OutlineSize, P1.y + OutlineSize },
+                PackColor(0xFF, 0xFF, 0xFF));
+            // Bottom
+            Renderer_ImmediateRect2D(FrameParams, 
+                vec2{ P0.x - OutlineSize, P1.y               },
+                vec2{ P1.x + OutlineSize, P1.y + OutlineSize },
+                PackColor(0xFF, 0xFF, 0xFF));
+
+            // Center
+            f32 FillRatio = GameState->Player.BreakTime / GameState->Player.BlockBreakTime;
+            f32 EndX = P0.x + FillRatio * Width;
+
+            Renderer_ImmediateRect2D(FrameParams, P0, vec2{ EndX, P1.y }, PackColor(0xFF, 0x00, 0x00));
+        }
+    }
     Renderer_RenderImGui(FrameParams);
 
     Renderer_EndRendering(FrameParams);
