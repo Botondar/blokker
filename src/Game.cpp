@@ -770,9 +770,36 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
         Renderer_ImmediateBoxOutline(FrameParams, Player_GetVerticalAABB(&GameState->Player), PackColor(0xFF, 0xFF, 0x00));
     }
 
+    // Render selected block
+    {
+        chunk* PlayerChunk = Game_FindPlayerChunk(GameState);
+
+        vec3 P = FrameParams->Camera.P;
+
+        f32 SinYaw = Sin(FrameParams->Camera.Yaw);
+        f32 CosYaw = Cos(FrameParams->Camera.Yaw);
+        f32 SinPitch = Sin(FrameParams->Camera.Pitch);
+        f32 CosPitch = Cos(FrameParams->Camera.Pitch);
+        vec3 V = 
+        {
+            -SinYaw*CosPitch,
+            CosYaw*CosPitch,
+            SinPitch,
+        };
+
+        vec3i BoxP;
+        int Dir;
+        if (Chunk_RayCast(PlayerChunk, P, V, 8.0f, &BoxP, &Dir))
+        {
+            BoxP = BoxP + (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
+            aabb Box = MakeAABB((vec3)BoxP, (vec3)(BoxP + vec3i{ 1, 1, 1 }));
+            Renderer_ImmediateBoxOutline(FrameParams, Box, PackColor(0x00, 0x00, 0x00));
+        }
+    }
+
     vec2 CenterP = { 0.5f * FrameParams->Renderer->SwapchainSize.width, 0.5f * FrameParams->Renderer->SwapchainSize.height };
-    Renderer_ImmediateRect2D(FrameParams, CenterP - vec2{30.0f, 2.5f}, CenterP + vec2{30.0f, 2.5f}, PackColor(0xFF, 0xFF, 0xFF));
-    Renderer_ImmediateRect2D(FrameParams, CenterP - vec2{2.5f, 30.0f}, CenterP + vec2{2.5f, 30.0f}, PackColor(0xFF, 0xFF, 0xFF));
+    Renderer_ImmediateRect2D(FrameParams, CenterP - vec2{20.0f, 1.0f}, CenterP + vec2{20.0f, 1.0f}, PackColor(0xFF, 0xFF, 0xFF));
+    Renderer_ImmediateRect2D(FrameParams, CenterP - vec2{1.0f, 20.0f}, CenterP + vec2{1.0f, 20.0f}, PackColor(0xFF, 0xFF, 0xFF));
 
     Renderer_RenderImGui(FrameParams);
 

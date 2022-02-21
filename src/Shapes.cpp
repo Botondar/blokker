@@ -1,5 +1,15 @@
 #include "Shapes.hpp"
 
+static aabb MakeAABB(const vec3& a, const vec3& b)
+{
+    aabb Result = 
+    {
+        .Min = { Min(a.x, b.x), Min(a.y, b.y), Min(a.z, b.z) },
+        .Max = { Max(a.x, b.x), Max(a.y, b.y), Max(a.z, b.z) },
+    };
+    return Result;
+}
+
 static bool AABB_Intersect(const aabb& A, const aabb& B, vec3& Overlap, int& MinCoord)
 {
     vec3 Overlap_ = {};

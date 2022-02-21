@@ -19,7 +19,7 @@ static VkBool32 VKAPI_PTR VulkanDebugCallback(
     const VkDebugUtilsMessengerCallbackDataEXT* CallbackData,
     void* UserData)
 {
-    DebugPrint("%s\n", CallbackData->pMessage);
+    //DebugPrint("%s\n", CallbackData->pMessage);
     return VK_FALSE;
 }
 

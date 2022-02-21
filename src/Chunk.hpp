@@ -81,6 +81,14 @@ struct chunk
 };
 
 static u16 Chunk_GetVoxelType(const chunk* Chunk, s32 x, s32 y, s32 z);
+static bool Chunk_SetVoxelType(chunk* Chunk, u16 Type, s32 x, s32 y, s32 z);
+
+static bool Chunk_RayCast(
+    const chunk* Chunk, 
+    vec3 P, vec3 V, 
+    f32 Max, 
+    vec3i* OutP, int* OutDir);
+
 static void Chunk_Generate(const perlin2* Perlin, chunk* Chunk);
 static std::vector<vertex> Chunk_Mesh(const chunk* Chunk);
 
