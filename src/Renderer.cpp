@@ -19,7 +19,7 @@ static VkBool32 VKAPI_PTR VulkanDebugCallback(
     const VkDebugUtilsMessengerCallbackDataEXT* CallbackData,
     void* UserData)
 {
-    //DebugPrint("%s\n", CallbackData->pMessage);
+    DebugPrint("%s\n", CallbackData->pMessage);
     return VK_FALSE;
 }
 
@@ -3528,65 +3528,113 @@ void Renderer_BeginImmediate(renderer_frame_params* Frame)
     // NOTE(boti): Supposedly we don't need to set the viewport/scissor here when all our pipelines have that as dynamic
     // TODO(boti): ^Verify
     vkCmdBindPipeline(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImPipeline);
+
+    vkCmdSetPrimitiveTopologyEXT(Frame->CmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 }
 
-void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, aabb Box, u32 Color)
+void Renderer_ImmediateBox(renderer_frame_params* Frame, aabb Box, u32 Color)
 {
     TIMED_FUNCTION();
 
-    static constexpr u32 VertexCount = 2*8 + 8;
-    vertex VertexData[VertexCount] = 
+    const vertex VertexData[] =
     {
-        // Bottom
-        { { Box.Min.x, Box.Min.y, Box.Min.z }, { }, Color },
-        { { Box.Max.x, Box.Min.y, Box.Min.z }, { }, Color },
-        { { Box.Max.x, Box.Min.y, Box.Min.z }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Min.z }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Min.z }, { }, Color },
-        { { Box.Min.x, Box.Max.y, Box.Min.z }, { }, Color },
-        { { Box.Min.x, Box.Max.y, Box.Min.z }, { }, Color },
-        { { Box.Min.x, Box.Min.y, Box.Min.z }, { }, Color },
-
-        // Top
-        { { Box.Min.x, Box.Min.y, Box.Max.z }, { }, Color },
-        { { Box.Max.x, Box.Min.y, Box.Max.z }, { }, Color },
-        { { Box.Max.x, Box.Min.y, Box.Max.z }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Max.z }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Max.z }, { }, Color },
-        { { Box.Min.x, Box.Max.y, Box.Max.z }, { }, Color },
-        { { Box.Min.x, Box.Max.y, Box.Max.z }, { }, Color },
-        { { Box.Min.x, Box.Min.y, Box.Max.z }, { }, Color },
-
-        // Sides
-        { { Box.Min.x, Box.Min.y, Box.Min.z }, { }, Color },
-        { { Box.Min.x, Box.Min.y, Box.Max.z }, { }, Color },
-        { { Box.Max.x, Box.Min.y, Box.Min.z }, { }, Color },
-        { { Box.Max.x, Box.Min.y, Box.Max.z }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Min.z }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Max.z }, { }, Color },
-        { { Box.Min.x, Box.Max.y, Box.Min.z }, { }, Color },
-        { { Box.Min.x, Box.Max.y, Box.Max.z }, { }, Color },
+        // EAST
+        { { Box.Max.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Max.z, }, { }, Color },
+                                        
+        // WEST                         
+        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Max.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Max.z, }, { }, Color },
+                                        
+        // NORTH                        
+        { { Box.Min.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
+                                        
+        // SOUTH                        
+        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Max.z, }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Max.z, }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Max.z, }, { }, Color },
+                                        
+        // TOP                          
+        { { Box.Min.x, Box.Min.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Max.z, }, { }, Color },
+                                        
+        // BOTTOM                       
+        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
     };
+    constexpr u32 VertexCount = CountOf(VertexData);
 
     u64 Offset = Frame_PushToStack(Frame, 16, VertexData, sizeof(VertexData));
     if (Offset != INVALID_INDEX_U64)
     {
-#if 0
-        assert((Offset % sizeof(vertex)) == 0);
-        u32 VertexOffset = SafeU64ToU32(Offset / sizeof(vertex));
-#else
         vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &Offset);
-#endif
 
         mat4 Transform = Frame->ProjectionTransform * Frame->ViewTransform;
-        vkCmdSetPrimitiveTopologyEXT(Frame->CmdBuffer, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
         vkCmdPushConstants(Frame->CmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &Transform);
-        vkCmdSetDepthBias(Frame->CmdBuffer, -0.1f, 0.0f, 0.0f);
         vkCmdDraw(Frame->CmdBuffer, VertexCount, 1, 0, 0);
     }
     else
     {
-        assert(!"Renderer_ImmediateBoxOutline failed");
+        assert(!"Renderer_ImmediateBox failed");
+    }
+}
+
+void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, f32 OutlineSize, aabb Box, u32 Color)
+{
+    TIMED_FUNCTION();
+
+    vkCmdSetDepthBias(Frame->CmdBuffer, 0.0f, 0.0f, 0.0f);
+
+    const aabb Boxes[] = 
+    {
+        // Bottom
+        MakeAABB({ Box.Min.x, Box.Min.y, Box.Min.z }, { Box.Max.x, Box.Min.y + OutlineSize, Box.Min.z + OutlineSize }),
+        MakeAABB({ Box.Min.x, Box.Min.y, Box.Min.z }, { Box.Min.x + OutlineSize, Box.Max.y, Box.Min.z + OutlineSize }),
+        MakeAABB({ Box.Max.x, Box.Min.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Max.y, Box.Min.z + OutlineSize }),
+        MakeAABB({ Box.Min.x, Box.Max.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Max.y - OutlineSize, Box.Min.z + OutlineSize }),
+
+        // Top
+        MakeAABB({ Box.Min.x, Box.Min.y, Box.Max.z }, { Box.Max.x, Box.Min.y + OutlineSize, Box.Max.z - OutlineSize }),
+        MakeAABB({ Box.Min.x, Box.Min.y, Box.Max.z }, { Box.Min.x + OutlineSize, Box.Max.y, Box.Max.z - OutlineSize }),
+        MakeAABB({ Box.Max.x, Box.Min.y, Box.Max.z }, { Box.Max.x - OutlineSize, Box.Max.y, Box.Max.z - OutlineSize }),
+        MakeAABB({ Box.Min.x, Box.Max.y, Box.Max.z }, { Box.Max.x - OutlineSize, Box.Max.y - OutlineSize, Box.Max.z - OutlineSize }),
+
+        // Side
+        MakeAABB({ Box.Min.x, Box.Min.y, Box.Min.z }, { Box.Min.x + OutlineSize, Box.Min.y + OutlineSize, Box.Max.z }),
+        MakeAABB({ Box.Max.x, Box.Min.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Min.y + OutlineSize, Box.Max.z }),
+        MakeAABB({ Box.Min.x, Box.Max.y, Box.Min.z }, { Box.Min.x + OutlineSize, Box.Max.y - OutlineSize, Box.Max.z }),
+        MakeAABB({ Box.Max.x, Box.Max.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Max.y - OutlineSize, Box.Max.z }),
+    };
+    constexpr u32 BoxCount = CountOf(Boxes);
+
+    vkCmdSetDepthBias(Frame->CmdBuffer, -1.0f, 0.0f, -1.0f);
+    for (u32 i = 0; i < BoxCount; i++)
+    {
+        Renderer_ImmediateBox(Frame, Boxes[i], Color);
     }
 }
 

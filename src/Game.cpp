@@ -906,8 +906,8 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
     Renderer_BeginImmediate(FrameParams);
     if (GameState->Debug.IsHitboxEnabled)
     {
-        Renderer_ImmediateBoxOutline(FrameParams, Player_GetAABB(&GameState->Player), PackColor(0xFF, 0x00, 0x00));
-        Renderer_ImmediateBoxOutline(FrameParams, Player_GetVerticalAABB(&GameState->Player), PackColor(0xFF, 0xFF, 0x00));
+        Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, Player_GetAABB(&GameState->Player), PackColor(0xFF, 0x00, 0x00));
+        Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, Player_GetVerticalAABB(&GameState->Player), PackColor(0xFF, 0xFF, 0x00));
     }
 
     // Render selected block
@@ -933,7 +933,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
         {
             BoxP = BoxP + (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
             aabb Box = MakeAABB((vec3)BoxP, (vec3)(BoxP + vec3i{ 1, 1, 1 }));
-            Renderer_ImmediateBoxOutline(FrameParams, Box, PackColor(0x00, 0x00, 0x00));
+            Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, Box, PackColor(0x00, 0x00, 0x00));
         }
     }
 
