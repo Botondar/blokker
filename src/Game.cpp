@@ -591,13 +591,14 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         chunk* PlayerChunk = Game_FindPlayerChunk(GameState);
         constexpr f32 PlayerReach = 8.0f;
 
-        vec3i VoxelP;
-        int Direction = -1;
-        if (Chunk_RayCast(PlayerChunk, Player->P, Forward, PlayerReach, &VoxelP, &Direction))
+        vec3i OldTargetBlock = Player->TargetBlock;
+        Player->HasTargetBlock = Chunk_RayCast(PlayerChunk, Player->P, Forward, PlayerReach, &Player->TargetBlock, &Player->TargetDirection);
+
+        if (Player->HasTargetBlock)
         {
-            if ((VoxelP == Player->TargetBlock) && Input->MouseButtons[MOUSE_LEFT])
+            if ((OldTargetBlock == Player->TargetBlock) && Input->MouseButtons[MOUSE_LEFT])
             {
-                u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, VoxelP.x, VoxelP.y, VoxelP.z);
+                u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, Player->TargetBlock.x, Player->TargetBlock.y, Player->TargetBlock.z);
                 if (VoxelType == VOXEL_GROUND)
                 {
                     if (Player->BreakTime < 0.0f)
@@ -611,20 +612,15 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
                 
                     if (Player->BreakTime >= Player->BlockBreakTime)
                     {
-                        Chunk_SetVoxelType(PlayerChunk, VOXEL_AIR, VoxelP.x, VoxelP.y, VoxelP.z);
+                        Chunk_SetVoxelType(PlayerChunk, VOXEL_AIR, Player->TargetBlock.x, Player->TargetBlock.y, Player->TargetBlock.z);
                     }
                 }
                 
             }
             else
             {
-                Player->BreakTime = -1.0f;
+                Player->BreakTime = 0.0f;
             }
-            Player->TargetBlock = VoxelP;
-        }
-        else
-        {
-            Player->TargetBlock = { 100000, 100000, 100000 };
         }
     }
     
@@ -779,11 +775,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
 
             Player->P[Direction] += dP[Direction];
 
-#if 1
             aabb PlayerAABBAbsolute = Player_GetAABB(Player);
-#else
-            aabb PlayerAABBAbsolute = (Direction == AXIS_Z) ? Player_GetAABB(Player) : Player_GetVerticalAABB(Player);
-#endif
             vec3i ChunkP = (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
 
             // Relative coordinates 
@@ -904,37 +896,21 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
     Renderer_RenderChunks(FrameParams, GameState->ChunkCount, GameState->Chunks);
 
     Renderer_BeginImmediate(FrameParams);
+    
+    // Render selected block
+    if (GameState->Player.HasTargetBlock)
+    {
+        vec3 ChunkP = { CHUNK_DIM_X * Floor(GameState->Player.P.x / CHUNK_DIM_X), CHUNK_DIM_Y * Floor(GameState->Player.P.y / CHUNK_DIM_Y), 0.0f };
+        vec3 P = (vec3)GameState->Player.TargetBlock + ChunkP;
+        aabb Box = MakeAABB(P, P + vec3{ 1, 1, 1 });
+        
+        Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, Box, PackColor(0x00, 0x00, 0x00));
+    }
+
     if (GameState->Debug.IsHitboxEnabled)
     {
         Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, Player_GetAABB(&GameState->Player), PackColor(0xFF, 0x00, 0x00));
         Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, Player_GetVerticalAABB(&GameState->Player), PackColor(0xFF, 0xFF, 0x00));
-    }
-
-    // Render selected block
-    {
-        chunk* PlayerChunk = Game_FindPlayerChunk(GameState);
-
-        vec3 P = FrameParams->Camera.P;
-
-        f32 SinYaw = Sin(FrameParams->Camera.Yaw);
-        f32 CosYaw = Cos(FrameParams->Camera.Yaw);
-        f32 SinPitch = Sin(FrameParams->Camera.Pitch);
-        f32 CosPitch = Cos(FrameParams->Camera.Pitch);
-        vec3 V = 
-        {
-            -SinYaw*CosPitch,
-            CosYaw*CosPitch,
-            SinPitch,
-        };
-
-        vec3i BoxP;
-        int Dir;
-        if (Chunk_RayCast(PlayerChunk, P, V, 8.0f, &BoxP, &Dir))
-        {
-            BoxP = BoxP + (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
-            aabb Box = MakeAABB((vec3)BoxP, (vec3)(BoxP + vec3i{ 1, 1, 1 }));
-            Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, Box, PackColor(0x00, 0x00, 0x00));
-        }
     }
 
     // HUD
@@ -951,7 +927,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
         }
 
         // Block break indicator
-        if (GameState->Player.BreakTime >= 0.0f)
+        if (GameState->Player.HasTargetBlock && (GameState->Player.BreakTime > 0.0f))
         {
             constexpr f32 OutlineSize = 1.0f;
             constexpr f32 Height = 20.0f;

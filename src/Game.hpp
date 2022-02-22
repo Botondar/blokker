@@ -38,8 +38,10 @@ struct player
     f32 TargetFov;
 
     static constexpr f32 BlockBreakTime = 0.5f;
+    bool HasTargetBlock;
     vec3i TargetBlock;
-    f32 BreakTime = -1.0f;
+    int TargetDirection;
+    f32 BreakTime;
 };
 
 static camera Player_GetCamera(const player* Player);
