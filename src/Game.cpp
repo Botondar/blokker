@@ -643,7 +643,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
                 if (VoxelType == VOXEL_AIR)
                 {
                     aabb PlayerBox = Player_GetAABB(Player);
-                    vec3i BoxP = PlacementP + (vec3i)PlayerChunk->P;
+                    vec3i BoxP = PlacementP + (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
                     aabb BlockBox = MakeAABB((vec3)BoxP, (vec3)(BoxP + vec3i{1, 1, 1}));
 
                     vec3 Overlap;
