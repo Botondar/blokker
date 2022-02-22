@@ -330,7 +330,7 @@ static void Chunk_Generate(const perlin2* Perlin, chunk* Chunk)
             vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
             vec2 P = Scale * (vec2{ (f32)x, (f32)y } + ChunkP);
 
-            f32 Sample = 16.0f * Perlin2_Octave(Perlin, P, 2);
+            f32 Sample = 16.0f * Perlin2_Octave(Perlin, P, 2, 0.5f, 1.5f);
             s32 Height = (s32)Round(Sample) + 80;
 
             for (u32 z = 0; z < CHUNK_DIM_Z; z++)

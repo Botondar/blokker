@@ -118,18 +118,32 @@ inline f32 ATan2(f32 y, f32 x) { return atan2f(y, x); }
 inline f32 Modulo(f32 x, f32 y) { return fmodf(x, y); }
 
 template<typename T>
-inline f32 Lerp(T a, T b, f32 t) 
+inline T Lerp(T a, T b, f32 t) 
 { 
     return a*(1.0f - t) + b*t; 
 }
 
 template<typename T>
-inline f32 Blerp(const T& v00, const T& v01, const T& v10, const T& v11, vec2 uv)
+inline T Blerp(const T& v00, const T& v10, const T& v01, const T& v11, vec2 uv)
 {
-    T x0 = Lerp(v00, v01, uv.x);
-    T x1 = Lerp(v10, v11, uv.x);
+    T x0 = Lerp(v00, v10, uv.x);
+    T x1 = Lerp(v01, v11, uv.x);
 
     T Result = Lerp(x0, x1, uv.y);
+    return Result;
+}
+
+template<typename T>
+inline T Trilerp(
+    const T& c000, const T& c100, const T& c010, const T& c110,
+    const T& c001, const T& c101, const T& c011, const T& c111,
+    vec3 uvw)
+{
+    T x0 = Blerp(c000, c100, c010, c110, { uvw.x, uvw.y });
+    T x1 = Blerp(c001, c101, c011, c111, { uvw.x, uvw.y });
+
+    T Result = Lerp(x0, x1, uvw.z);
+
     return Result;
 }
 

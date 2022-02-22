@@ -4,6 +4,8 @@
 
 void Perlin2_Init(perlin2* Perlin, u32 Seed)
 {
+    assert(Perlin);
+
     std::mt19937 Twister(Seed);
     std::uniform_real_distribution<f32> Distribution(0.0f, 2.0f*PI);
     auto Dice = std::bind(Distribution, Twister);
@@ -41,7 +43,29 @@ f32 Perlin2_Sample(const perlin2* Perlin, vec2 P)
             // Hash
             u32 Index = (((Pi.x + x) % Mod) + Perlin->Permutation[(Pi.y + y) % Mod]) % Mod;
             u32 Permutation = Perlin->Permutation[Index];
+#if 0
+            switch (Permutation & 3u)
+            {
+                case 0: G[x][y] = { 0.0f, +1.0f }; break;
+                case 1: G[x][y] = { 0.0f, -1.0f }; break;
+                case 2: G[x][y] = { +1.0f, 0.0f }; break;
+                case 3: G[x][y] = { -1.0f, 0.0f }; break;
+            };
+#elif 0
+            switch (Permutation & 7u)
+            {
+                case 0: G[x][y] = { +1.0f, +1.0f }; break;
+                case 1: G[x][y] = { -1.0f, +1.0f }; break;
+                case 2: G[x][y] = { +1.0f, -1.0f }; break;
+                case 3: G[x][y] = { -1.0f, -1.0f }; break;
+                case 4: G[x][y] = { 0.0f, +1.0f }; break;
+                case 5: G[x][y] = { 0.0f, -1.0f }; break;
+                case 6: G[x][y] = { +1.0f, 0.0f }; break;
+                case 7: G[x][y] = { -1.0f, 0.0f }; break;
+            };
+#else
             G[x][y] = Perlin->Gradients[Permutation];
+#endif
         }
     }
 
@@ -61,7 +85,7 @@ f32 Perlin2_Sample(const perlin2* Perlin, vec2 P)
     return Result;
 }
 
-f32 Perlin2_Octave(const perlin2* Perlin, vec2 P0, u32 OctaveCount)
+f32 Perlin2_Octave(const perlin2* Perlin, vec2 P0, u32 OctaveCount, f32 Persistence, f32 Lacunarity)
 {
     f32 Result = 0.0f;
     f32 Amplitude = 1.0f;
@@ -71,8 +95,8 @@ f32 Perlin2_Octave(const perlin2* Perlin, vec2 P0, u32 OctaveCount)
         vec2 P = Frequency * P0;
         Result += Amplitude * Perlin2_Sample(Perlin, P);
 
-        Frequency *= 2.0f;
-        Amplitude *= 0.5f;
+        Frequency *= Lacunarity;
+        Amplitude *= Persistence;
     }
     return Result;
 }
