@@ -712,8 +712,8 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         if (Speed < WalkSpeed)
         {
             f32 t = Fade3(Speed / WalkSpeed);
-            Player->BobAmplitude = Lerp(0, Player->WalkBobAmplitude, t);
-            Player->BobFrequency = Lerp(0, Player->WalkBobFrequency, t);
+            Player->BobAmplitude = Lerp(0.0f, Player->WalkBobAmplitude, t);
+            Player->BobFrequency = Lerp(0.0f, Player->WalkBobFrequency, t);
         }
         else
         {

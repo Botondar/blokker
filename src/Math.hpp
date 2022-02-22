@@ -3,8 +3,86 @@
 #include <Common.hpp>
 #include <cmath>
 
+/* Constants */
 constexpr f32 PI = 3.14159265358979323846f;
 
+/* Types */
+struct vec2;
+struct vec2i;
+struct vec3;
+struct vec3i;
+struct vec4;
+struct mat4;
+
+struct vec2 
+{
+    f32 x, y;
+
+    f32& operator[](int idx);
+    const f32& operator[](int idx) const;
+
+    explicit operator vec2i() const;
+    explicit operator vec3() const;
+};
+
+struct vec2i 
+{
+    s32 x, y;
+
+    s32& operator[](int idx);
+    const s32& operator[](int idx) const;
+
+    explicit operator vec2() const;
+    explicit operator vec3i() const;
+
+    bool operator==(const vec2i& Other) const = default;
+};
+
+struct vec3 
+{
+    f32 x, y, z;
+
+    f32& operator[](int idx);
+    const f32& operator[](int idx) const;
+
+    explicit operator vec3i() const;
+    explicit operator vec2() const;
+};
+
+struct vec3i
+{
+    s32 x, y, z;
+
+    bool operator==(const vec3i& Other) const = default;
+
+    s32& operator[](int idx);
+    const s32& operator[](int idx) const;
+
+    explicit operator vec3() const;
+    explicit operator vec2i() const;
+};
+
+struct vec4 
+{
+    f32 x, y, z, w;
+
+    f32& operator[](int idx);
+    const f32& operator[](int idx) const;
+};
+
+struct mat4
+{
+    union
+    {
+        f32 m[4][4];
+        f32 mm[16];
+    };
+
+    f32& operator()(int i, int j);
+    const f32& operator()(int i, int j) const;
+};
+
+/* Common functions */
 constexpr f32 ToRadians(f32 Degrees) { return PI * Degrees / 180.0f; }
 constexpr f32 ToDegrees(f32 Radians) { return 180.0f * Radians / PI; }
 
@@ -39,28 +117,26 @@ inline f32 ATan2(f32 y, f32 x) { return atan2f(y, x); }
 
 inline f32 Modulo(f32 x, f32 y) { return fmodf(x, y); }
 
-inline f32 Lerp(f32 a, f32 b, f32 t) { return a*(1.0f - t) + b*t; }
+template<typename T>
+inline f32 Lerp(T a, T b, f32 t) 
+{ 
+    return a*(1.0f - t) + b*t; 
+}
+
+template<typename T>
+inline f32 Blerp(const T& v00, const T& v01, const T& v10, const T& v11, vec2 uv)
+{
+    T x0 = Lerp(v00, v01, uv.x);
+    T x1 = Lerp(v10, v11, uv.x);
+
+    T Result = Lerp(x0, x1, uv.y);
+    return Result;
+}
+
 inline constexpr f32 Fade3(f32 t) { return (3.0f - 2.0f*t)*t*t; }
 inline constexpr f32 Fade5(f32 t) { return ((6.0f*t - 15.0f) * t + 10.0f)*t*t*t; }
 
-struct vec2;
-struct vec2i;
-struct vec3;
-struct vec3i;
-struct vec4;
-struct mat4;
-
-struct vec2 
-{
-    f32 x, y;
-
-    f32& operator[](int idx);
-    const f32& operator[](int idx) const;
-
-    explicit operator vec2i() const;
-    explicit operator vec3() const;
-};
-
+/* Vector and matrix functions */
 vec2 operator-(const vec2& v);
 vec2& operator*=(vec2& v, f32 s);
 vec2& operator+=(vec2& v, const vec2& Other);
@@ -82,19 +158,6 @@ f32 Dot(const vec2& a, const vec2& b);
 f32 Length(const vec2& v);
 vec2 Normalize(const vec2& v);
 
-struct vec2i 
-{
-    s32 x, y;
-
-    s32& operator[](int idx);
-    const s32& operator[](int idx) const;
-
-    explicit operator vec2() const;
-    explicit operator vec3i() const;
-
-    bool operator==(const vec2i& Other) const = default;
-};
-
 vec2i operator-(const vec2i& v);
 vec2i& operator*=(vec2i& v, s32 s);
 vec2i& operator+=(vec2i& v, const vec2i& Other);
@@ -112,17 +175,6 @@ vec2i operator/(const vec2i& a, const vec2i& b);
 
 s32 ManhattanDistance(const vec2i& a, const vec2i& b);
 s32 ChebyshevDistance(const vec2i& a, const vec2i& b);
-
-struct vec3 
-{
-    f32 x, y, z;
-
-    f32& operator[](int idx);
-    const f32& operator[](int idx) const;
-
-    explicit operator vec3i() const;
-    explicit operator vec2() const;
-};
 
 vec3 operator-(const vec3& v);
 vec3& operator*=(vec3& v, f32 s);
@@ -155,19 +207,6 @@ vec3 Rejection(const vec3& a, const vec3& b);
 
 vec3 Cross(const vec3& a, const vec3& b);
 
-struct vec3i
-{
-    s32 x, y, z;
-
-    bool operator==(const vec3i& Other) const = default;
-
-    s32& operator[](int idx);
-    const s32& operator[](int idx) const;
-
-    explicit operator vec3() const;
-    explicit operator vec2i() const;
-};
-
 vec3i operator-(const vec3i& v);
 
 vec3i operator*(const vec3i& v, s32 s);
@@ -178,14 +217,6 @@ vec3i operator+(const vec3i& a, const vec3i& b);
 vec3i operator-(const vec3i& a, const vec3i& b);
 vec3i operator*(const vec3i& a, const vec3i& b);
 vec3i operator/(const vec3i& a, const vec3i& b);
-
-struct vec4 
-{
-    f32 x, y, z, w;
-
-    f32& operator[](int idx);
-    const f32& operator[](int idx) const;
-};
 
 vec4 operator-(const vec4& v);
 
@@ -207,18 +238,6 @@ f32 Dot(const vec4& a, const vec4& b);
 f32 Length(const vec4& v);
 vec4 Normalize(const vec4& v);
 
-struct mat4
-{
-    union
-    {
-        f32 m[4][4];
-        f32 mm[16];
-    };
-
-    f32& operator()(int i, int j);
-    const f32& operator()(int i, int j) const;
-};
-
 mat4 Mat4(f32 m00, f32 m01, f32 m02, f32 m03,
           f32 m10, f32 m11, f32 m12, f32 m13,
           f32 m20, f32 m21, f32 m22, f32 m23,
@@ -227,7 +246,6 @@ mat4 Mat4(f32 m00, f32 m01, f32 m02, f32 m03,
 vec4 operator*(const mat4& M, const vec4& v);
 vec4 operator*(const vec4& v, const mat4& M);
 mat4 operator*(const mat4& A, const mat4& B);
-
 
 mat4 Identity4();
 
