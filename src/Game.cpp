@@ -596,6 +596,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
 
         if (Player->HasTargetBlock)
         {
+            // Breaking
             if ((OldTargetBlock == Player->TargetBlock) && Input->MouseButtons[MOUSE_LEFT])
             {
                 u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, Player->TargetBlock.x, Player->TargetBlock.y, Player->TargetBlock.z);
@@ -615,11 +616,45 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
                         Chunk_SetVoxelType(PlayerChunk, VOXEL_AIR, Player->TargetBlock.x, Player->TargetBlock.y, Player->TargetBlock.z);
                     }
                 }
-                
             }
             else
             {
                 Player->BreakTime = 0.0f;
+            }
+
+            // Placing
+            Player->TimeSinceLastBlockPlacement += dt;
+            if (Input->MouseButtons[MOUSE_RIGHT] && (Player->TimeSinceLastBlockPlacement > Player->MaxBlockPlacementFrequency))
+            {
+                vec3i DeltaP = {};
+                switch (Player->TargetDirection)
+                {
+                    case 0: DeltaP = { +1, 0, 0 }; break;
+                    case 1: DeltaP = { -1, 0, 0 }; break;
+                    case 2: DeltaP = { 0, +1, 0 }; break;
+                    case 3: DeltaP = { 0, -1, 0 }; break;
+                    case 4: DeltaP = { 0, 0, +1 }; break;
+                    case 5: DeltaP = { 0, 0, -1 }; break;
+                    default: assert(!"Invalid code path");
+                }
+
+                vec3i PlacementP = Player->TargetBlock + DeltaP;
+                u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, PlacementP.x, PlacementP.y, PlacementP.z);
+                if (VoxelType == VOXEL_AIR)
+                {
+                    aabb PlayerBox = Player_GetAABB(Player);
+                    vec3i BoxP = PlacementP + (vec3i)PlayerChunk->P;
+                    aabb BlockBox = MakeAABB((vec3)BoxP, (vec3)(BoxP + vec3i{1, 1, 1}));
+
+                    vec3 Overlap;
+                    int MinCoord;
+                    if (!AABB_Intersect(PlayerBox, BlockBox, Overlap, MinCoord))
+                    {
+                        Chunk_SetVoxelType(PlayerChunk, VOXEL_GROUND, PlacementP.x, PlacementP.y, PlacementP.z);
+                        Player->TimeSinceLastBlockPlacement = 0.0f;
+                    }
+
+                }
             }
         }
     }

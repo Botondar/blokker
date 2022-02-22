@@ -42,6 +42,9 @@ struct player
     vec3i TargetBlock;
     int TargetDirection;
     f32 BreakTime;
+
+    static constexpr f32 MaxBlockPlacementFrequency = 0.2f;
+    f32 TimeSinceLastBlockPlacement;
 };
 
 static camera Player_GetCamera(const player* Player);
