@@ -7,9 +7,66 @@
 // TODO: remove stl
 #include <vector>
 
+struct game_state;
+
 constexpr s32 CHUNK_DIM_X = 16;
 constexpr s32 CHUNK_DIM_Y = 16;
 constexpr s32 CHUNK_DIM_Z = 256;
+
+enum axis : u32
+{
+    AXIS_X = 0,
+    AXIS_Y = 1,
+    AXIS_Z = 2,
+    AXIS_Count,
+    AXIS_First = AXIS_X,
+};
+
+enum direction : u32
+{
+    DIRECTION_POS_X = 0,
+    DIRECTION_NEG_X = 1,
+    DIRECTION_POS_Y = 2,
+    DIRECTION_NEG_Y = 3,
+    DIRECTION_POS_Z = 4,
+    DIRECTION_NEG_Z = 5,
+
+    DIRECTION_Count,
+    DIRECTION_First = DIRECTION_POS_X,
+};
+
+static const vec3i GlobalDirections[DIRECTION_Count] = 
+{
+    { +1, 0, 0 },
+    { -1, 0, 0 },
+    { 0, +1, 0 },
+    { 0, -1, 0 },
+    { 0, 0, +1 },
+    { 0, 0, -1 },
+};
+
+// TODO: namespace/enum class + operator overloads
+enum cardinal : u32
+{
+    East = 0,
+    North,
+    West,
+    South,
+
+    Cardinal_Count,
+    Cardinal_First = East,
+};
+
+static const vec2i CardinalDirections[Cardinal_Count] =
+{
+    { +1,  0 },
+    {  0, +1 },
+    { -1,  0 },
+    {  0, -1 },
+};
+
+inline constexpr u32 CardinalOpposite(u32 Cardinal);
+inline constexpr u32 CardinalNext(u32 Cardinal);
 
 constexpr u16 VOXEL_AIR = 0;
 constexpr u16 VOXEL_GROUND = 1;
@@ -29,32 +86,9 @@ struct voxel_desc
 static voxel_desc VoxelDescs[] = 
 {
     { VOXEL_FLAGS_NO_MESH, { } },
-    { VOXEL_FLAGS_NONE,   { 0, 0, 0, 0, 1, 2 } },
+    { VOXEL_FLAGS_NONE,    { 0, 0, 0, 0, 1, 2 } },
 };
 static constexpr u32 VoxelDescCount = CountOf(VoxelDescs);
-
-// TODO: namespace/enum class + operator overloads
-enum cardinal : u32
-{
-    East = 0,
-    North,
-    West,
-    South,
-
-    Cardinal_Count,
-    Cardinal_First = East,
-};
-
-inline constexpr u32 CardinalOpposite(u32 Cardinal);
-inline constexpr u32 CardinalNext(u32 Cardinal);
-
-static const vec2i CardinalDirections[Cardinal_Count] =
-{
-    { +1,  0 },
-    {  0, +1 },
-    { -1,  0 },
-    {  0, -1 },
-};
 
 enum chunk_state_flags : u32
 {
@@ -75,7 +109,9 @@ struct chunk
     vec2i P;
     u32 Flags;
 
+#if 0
     chunk* Neighbors[Cardinal_Count];
+#endif
     chunk_data* Data;
 
     u32 AllocationIndex; // in VB
@@ -85,6 +121,7 @@ struct chunk
     u64 OldAllocationLastRenderedInFrameIndex;
 };
 
+#if 0
 static u16 Chunk_GetVoxelType(const chunk* Chunk, s32 x, s32 y, s32 z);
 static bool Chunk_SetVoxelType(chunk* Chunk, u16 Type, s32 x, s32 y, s32 z);
 
@@ -93,11 +130,12 @@ static bool Chunk_RayCast(
     vec3 P, vec3 V, 
     f32 Max, 
     vec3i* OutP, int* OutDir);
+#endif
 
-static void Chunk_Generate(const perlin2* Perlin, chunk* Chunk);
-static std::vector<vertex> Chunk_Mesh(const chunk* Chunk);
+static void Chunk_Generate(chunk* Chunk, game_state* GameState);
+static std::vector<vertex> Chunk_Mesh(const chunk* Chunk, game_state* GameState);
 
-/* Implentations */
+/* Implementations */
 inline constexpr u32 CardinalOpposite(u32 Cardinal)
 {
     u32 Result = (u32)((Cardinal + 2) % Cardinal_Count);

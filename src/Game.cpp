@@ -101,9 +101,7 @@ static vec3 Player_GetForward(const player* Player)
 
 static bool Game_InitImGui(game_state* GameState);
 
-static chunk* Game_ReserveChunk(game_state* GameState);
-static void Game_FindChunkNeighbors(game_state* GameState, chunk* Chunk);
-static chunk* Game_FindPlayerChunk(game_state* GameState);
+static u32 Game_HashChunkP(const game_state* GameState, vec2i P);
 
 static void Game_LoadChunks(game_state* GameState);
 
@@ -113,41 +111,168 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
 
 static void Game_Render(game_state* GameState, f32 DeltaTime);
 
-static chunk* Game_ReserveChunk(game_state* GameState)
+static u32 Game_HashChunkP(const game_state* GameState, vec2i P)
+{
+    s32 ix = (P.x % (s32)(GameState->MaxChunkCountSqrt / 2)) + GameState->MaxChunkCountSqrt / 2;
+    s32 iy = (P.y % (s32)(GameState->MaxChunkCountSqrt / 2)) + GameState->MaxChunkCountSqrt / 2;
+    assert((ix >= 0) && (iy >= 0));
+
+    u32 x = (u32)ix;
+    u32 y = (u32)iy;
+
+    u32 Result = x + y * GameState->MaxChunkCountSqrt;
+    return Result;
+}
+
+static chunk* Game_GetChunkFromP(game_state* GameState, vec2i P)
 {
     chunk* Result = nullptr;
-    if (GameState->ChunkCount < GameState->MaxChunkCount)
+
+    u32 Index = Game_HashChunkP(GameState, P);
+    chunk* Chunk = GameState->Chunks + Index;
+    if (Chunk->P == P)
     {
-        Result = GameState->Chunks + GameState->ChunkCount;
-        // For now, chunk headers are implicitly tied to the chunk data by their indices
-        // but we'll want to separate them in the future;
-        Result->Data = GameState->ChunkData + GameState->ChunkCount;
-        Result->AllocationIndex = INVALID_INDEX_U32;
-        Result->OldAllocationIndex = INVALID_INDEX_U32;
-        GameState->ChunkCount++;
+        Result = Chunk;
+    }
+
+    return Result;
+}
+
+static chunk* Game_GetChunkFromP(game_state* GameState, vec3i P, vec3i* RelP)
+{
+    chunk* Result = nullptr;
+
+    vec2i ChunkP = { P.x / CHUNK_DIM_X, P.y / CHUNK_DIM_Y };
+    // Floor the chunk coords instead of trunc
+    if (P.x < 0 && (P.x % CHUNK_DIM_X != 0)) ChunkP.x -= 1;
+    if (P.y < 0 && (P.y % CHUNK_DIM_Y != 0)) ChunkP.y -= 1;
+
+    chunk* Chunk = Game_GetChunkFromP(GameState, ChunkP);
+    if (Chunk)
+    {
+        if (RelP)
+        {
+            *RelP = P - vec3i{ ChunkP.x * CHUNK_DIM_X, ChunkP.y * CHUNK_DIM_Y, 0 };
+        }
+        Result = Chunk;
+    }
+
+    return Result;
+}
+
+static u16 Game_GetVoxelType(game_state* GameState, vec3i P)
+{
+    u16 Result = VOXEL_AIR;
+
+    if (0 <= P.z && P.z < CHUNK_DIM_Z)
+    {
+        vec3i RelP = {};
+        chunk* Chunk = Game_GetChunkFromP(GameState, P, &RelP);
+
+        if (Chunk && (Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
+        {
+            assert(Chunk->Data);
+            Result = Chunk->Data->Voxels[RelP.z][RelP.y][RelP.x];
+        }
+        else
+        {
+            DebugPrint("WARNING: Invalid voxel read\n");
+        }
     }
     return Result;
 }
 
-static void Game_FindChunkNeighbors(game_state* GameState, chunk* Chunk)
+static bool Game_SetVoxelType(game_state* GameState, vec3i P, u16 Type)
 {
-    TIMED_FUNCTION();
+    bool Result = false;
 
-    if (!Chunk->Neighbors[East] || !Chunk->Neighbors[North] || !Chunk->Neighbors[West] || !Chunk->Neighbors[South])
+    vec3i RelP = {};
+    chunk* Chunk = Game_GetChunkFromP(GameState, P, &RelP);
+
+    if (Chunk && (Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
     {
-        for (u32 i = 0; i < GameState->ChunkCount; i++)
+        assert(Chunk->Data);
+        if ((0 <= RelP.z) && (RelP.z < CHUNK_DIM_Z))
         {
-            chunk* Other = GameState->Chunks + i;
-            for (u32 Cardinal = Cardinal_First; Cardinal < Cardinal_Count; Cardinal++)
+            Chunk->Data->Voxels[RelP.z][RelP.y][RelP.x] = Type;
+            Chunk->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
+
+            if (RelP.x == 0)
             {
-                if ((Chunk->P + CardinalDirections[Cardinal]) == Other->P)
+                chunk* Neighbor = Game_GetChunkFromP(GameState, Chunk->P + CardinalDirections[West]);
+                if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
                 {
-                    Chunk->Neighbors[Cardinal] = Other;
-                    Other->Neighbors[CardinalOpposite(Cardinal)] = Chunk;
+                    Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
                 }
             }
+            else if (RelP.x == CHUNK_DIM_X - 1)
+            {
+                chunk* Neighbor = Game_GetChunkFromP(GameState, Chunk->P + CardinalDirections[East]);
+                if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
+                {
+                    Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
+                }
+            }
+            if (RelP.y == 0)
+            {
+                chunk* Neighbor = Game_GetChunkFromP(GameState, Chunk->P + CardinalDirections[South]);
+                if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
+                {
+                    Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
+                }
+            }
+            else if (RelP.y == CHUNK_DIM_Y - 1)
+            {
+                chunk* Neighbor = Game_GetChunkFromP(GameState, Chunk->P + CardinalDirections[North]);
+                if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
+                {
+                    Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
+                }
+            }
+
+            Result = true;
         }
     }
+
+    return Result;
+}
+
+static chunk* Game_ReserveChunk(game_state* GameState, vec2i P)
+{
+    chunk* Result = nullptr;
+    u32 Index = Game_HashChunkP(GameState, P);
+    assert(Index < GameState->MaxChunkCount);
+
+    Result = GameState->Chunks + Index;
+    if (Result->P != P)
+    {
+        if (Result->Flags & CHUNK_STATE_GENERATED_BIT)
+        {
+            DebugPrint("WARNING: Evicting chunk { %d, %d }\n", Result->P.x, Result->P.y);
+
+            if (Result->OldAllocationIndex != INVALID_INDEX_U32)
+            {
+                if (Result->OldAllocationIndex < GameState->FrameIndex - 1)
+                {
+                    VB_Free(&GameState->Renderer->VB, Result->OldAllocationIndex);
+                }
+                else
+                {
+                    // TODO(boti): the vertex memory will need to be kept alive until the GPU is no longer using it
+                    assert(!"Unimplemented code path");
+                }
+            }
+
+            // Preserve the current allocation, it will get freed once the GPU is no longer using it
+            Result->OldAllocationIndex = Result->AllocationIndex;
+            Result->OldAllocationLastRenderedInFrameIndex = Result->LastRenderedInFrameIndex;
+        }
+
+        Result->P = P;
+        Result->Flags = 0;
+    }
+
+    return Result;
 }
 
 static chunk* Game_FindPlayerChunk(game_state* GameState)
@@ -156,6 +281,14 @@ static chunk* Game_FindPlayerChunk(game_state* GameState)
     chunk* Result = nullptr;
     vec2i PlayerChunkP = (vec2i)Floor(vec2{ GameState->Player.P.x / CHUNK_DIM_X, GameState->Player.P.y / CHUNK_DIM_Y });
 
+#if 1
+    u32 Index = Game_HashChunkP(GameState, PlayerChunkP);
+    chunk* Chunk = GameState->Chunks + Index;
+    if (Chunk->P == PlayerChunkP)
+    {
+        Result = Chunk;
+    }
+#else
     for (u32 i = 0; i < GameState->ChunkCount; i++)
     {
         chunk* Chunk = GameState->Chunks + i;
@@ -164,6 +297,208 @@ static chunk* Game_FindPlayerChunk(game_state* GameState)
             Result = Chunk;
             break;
         }
+    }
+#endif
+    return Result;
+}
+
+static bool Game_RayCast(
+    game_state* GameState, 
+    vec3 P, vec3 V, 
+    f32 tMax, 
+    vec3i* OutP, direction* OutDir)
+{
+    TIMED_FUNCTION();
+
+    bool Result = false;
+
+    auto RayPlaneIntersection = [](vec3 P, vec3 v, vec4 Plane, f32 tMin, f32 tMax, f32* tOut) -> bool
+    {
+        bool Result = false;
+
+        vec3 N = { Plane.x, Plane.y, Plane.z };
+        f32 NdotV = Dot(N, v);
+
+        if (NdotV != 0.0f)
+        {
+            f32 t = (-Dot(P, N) - Plane.w) / NdotV;
+            if ((tMin <= t) && (t < tMax))
+            {
+                *tOut = t;
+                Result = true;
+            }
+        }
+
+        return Result;
+    };
+
+    auto RayAABBIntersection = [RayPlaneIntersection](vec3 P, vec3 v, aabb Box, f32 tMin, f32 tMax, f32* tOut, direction* OutDir) -> bool
+    {
+        bool Result = false;
+
+        bool AnyIntersection = false;
+        f32 tIntersection = -1.0f;
+        u32 IntersectionDir = (u32)-1;
+        for (u32 i = DIRECTION_First; i < DIRECTION_Count; i++)
+        {
+            switch (i)
+            {
+                case DIRECTION_POS_X: 
+                {
+                    vec4 Plane = { +1.0f, 0.0f, 0.0f, -Box.Max.x };
+                    f32 t;
+                    if (RayPlaneIntersection(P, v, Plane, tMin, tMax, &t))
+                    {
+                        vec3 P0 = P + t*v;
+                        if ((Box.Min.y <= P0.y) && (P0.y <= Box.Max.y) &&
+                            (Box.Min.z <= P0.z) && (P0.z <= Box.Max.z))
+                        {
+                            AnyIntersection = true;
+                            tIntersection = t;
+                            IntersectionDir = i;
+                            tMax = Min(tMax, t);
+                        }
+                    }
+                } break;
+                case DIRECTION_NEG_X: 
+                {
+                    vec4 Plane = { -1.0f, 0.0f, 0.0f, +Box.Min.x };
+                    f32 t;
+                    if (RayPlaneIntersection(P, v, Plane, tMin, tMax, &t))
+                    {
+                        vec3 P0 = P + t*v;
+                        if ((Box.Min.y <= P0.y) && (P0.y <= Box.Max.y) &&
+                            (Box.Min.z <= P0.z) && (P0.z <= Box.Max.z))
+                        {
+                            AnyIntersection = true;
+                            tIntersection = t;
+                            IntersectionDir = i;
+                            tMax = Min(tMax, t);
+                        }
+                    }
+                } break;
+                case DIRECTION_POS_Y: 
+                {
+                    vec4 Plane = { 0.0f, +1.0f, 0.0f, -Box.Max.y };
+                    f32 t;
+                    if (RayPlaneIntersection(P, v, Plane, tMin, tMax, &t))
+                    {
+                        vec3 P0 = P + t*v;
+                        if ((Box.Min.x <= P0.x) && (P0.x <= Box.Max.x) &&
+                            (Box.Min.z <= P0.z) && (P0.z <= Box.Max.z))
+                        {
+                            AnyIntersection = true;
+                            tIntersection = t;
+                            IntersectionDir = i;
+                            tMax = Min(tMax, t);
+                        }
+                    }
+                } break;
+                case DIRECTION_NEG_Y: 
+                {
+                    vec4 Plane = { 0.0f, -1.0f, 0.0f, +Box.Min.y };
+                    f32 t;
+                    if (RayPlaneIntersection(P, v, Plane, tMin, tMax, &t))
+                    {
+                        vec3 P0 = P + t*v;
+                        if ((Box.Min.x <= P0.x) && (P0.x <= Box.Max.x) &&
+                            (Box.Min.z <= P0.z) && (P0.z <= Box.Max.z))
+                        {
+                            AnyIntersection = true;
+                            tIntersection = t;
+                            IntersectionDir = i;
+                            tMax = Min(tMax, t);
+                        }
+                    }
+                } break;
+                case DIRECTION_POS_Z:
+                {
+                    vec4 Plane = { 0.0f, 0.0f, +1.0f, -Box.Max.z };
+                    f32 t;
+                    if (RayPlaneIntersection(P, v, Plane, tMin, tMax, &t))
+                    {
+                        vec3 P0 = P + t*v;
+                        if ((Box.Min.x <= P0.x) && (P0.x <= Box.Max.x) &&
+                            (Box.Min.y <= P0.y) && (P0.y <= Box.Max.y))
+                        {
+                            AnyIntersection = true;
+                            tIntersection = t;
+                            IntersectionDir = i;
+                            tMax = Min(tMax, t);
+                        }
+                    }
+                } break;
+                case DIRECTION_NEG_Z:
+                {
+                    vec4 Plane = { 0.0f, 0.0f, -1.0f, +Box.Min.z };
+                    f32 t;
+                    if (RayPlaneIntersection(P, v, Plane, tMin, tMax, &t))
+                    {
+                        vec3 P0 = P + t*v;
+                        if ((Box.Min.x <= P0.x) && (P0.x <= Box.Max.x) &&
+                            (Box.Min.y <= P0.y) && (P0.y <= Box.Max.y))
+                        {
+                            AnyIntersection = true;
+                            tIntersection = t;
+                            IntersectionDir = i;
+                            tMax = Min(tMax, t);
+                        }
+                    }
+                } break;
+            }
+        }
+
+        if (AnyIntersection)
+        {
+            *tOut = tIntersection;
+            *OutDir = (direction)IntersectionDir;
+            Result = true;
+        }
+
+        return Result;
+    };
+
+    //vec3 RelP = P - (vec3)(vec3i{Chunk->P.x, Chunk->P.y, 0 } * vec3i{ CHUNK_DIM_X, CHUNK_DIM_Y, 1 });
+
+    V = SafeNormalize(V);
+    aabb SearchBox = MakeAABB(Floor(P), Floor(P + tMax * V));
+
+    vec3i StartP = (vec3i)SearchBox.Min;
+    vec3i EndP = (vec3i)SearchBox.Max;
+
+    bool AnyHit = false;
+    vec3i HitP = {};
+    direction HitDirection = DIRECTION_First;
+    for (s32 z = StartP.z; z <= EndP.z; z++)
+    {
+        for (s32 y = StartP.y; y <= EndP.y; y++)
+        {
+            for (s32 x = StartP.x; x <= EndP.x; x++)
+            {
+                u16 Voxel = Game_GetVoxelType(GameState, vec3i{x, y, z});
+                if (Voxel == VOXEL_GROUND)
+                {
+                    aabb Box = MakeAABB(vec3{ (f32)x, (f32)y, (f32)z }, vec3{ (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) });
+
+                    f32 tCurrent;
+                    direction CurrentDir;
+                    if (RayAABBIntersection(P, V, Box, 0.0f, tMax, &tCurrent, &CurrentDir))
+                    {
+                        tMax = Min(tMax, tCurrent);
+                        HitP = vec3i { x, y, z };
+                        HitDirection = CurrentDir;
+                        AnyHit = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if (AnyHit)
+    {
+        *OutP = HitP;
+        *OutDir = HitDirection;
+        Result = true;
     }
 
     return Result;
@@ -190,161 +525,49 @@ static void Game_LoadChunks(game_state* GameState)
     chunk* PlayerChunk = Game_FindPlayerChunk(GameState);
     if (!PlayerChunk)
     {
-        PlayerChunk = Game_ReserveChunk(GameState);
+        PlayerChunk = Game_ReserveChunk(GameState, PlayerChunkP);
         if (PlayerChunk)
         {
             Stack[StackAt++] = PlayerChunk;
             PlayerChunk->P = PlayerChunkP;
         }
-        else
-        {
-            // TODO: free up some memory
-            return;
-        }
     }
-    else
+    
+    if (!(PlayerChunk->Flags & CHUNK_STATE_GENERATED_BIT) ||
+        !(PlayerChunk->Flags & CHUNK_STATE_MESHED_BIT) ||
+        !(PlayerChunk->Flags & CHUNK_STATE_UPLOADED_BIT) ||
+        (PlayerChunk->Flags & CHUNK_STATE_MESH_DIRTY_BIT))
     {
-        if (!(PlayerChunk->Flags & CHUNK_STATE_GENERATED_BIT) ||
-            !(PlayerChunk->Flags & CHUNK_STATE_MESHED_BIT) ||
-            !(PlayerChunk->Flags & CHUNK_STATE_UPLOADED_BIT))
-        {
-            Stack[StackAt++] = PlayerChunk;
-        }
+        Stack[StackAt++] = PlayerChunk;
     }
-
-    chunk* CurrentChunk = PlayerChunk;
-    for (u32 i = 1; i <= GenerationDistance; i++)
+    
+    for (u32 i = 0; i <= GenerationDistance; i++)
     {
         u32 Diameter = 2*i + 1;
+        vec2i CurrentP = PlayerChunk->P - vec2i{(s32)i, (s32)i};
 
-        u32 CurrentCardinal = Cardinal_First;
-        chunk* NextChunk = nullptr;
-
-        /*
-        * Walk to the next chunk in the current cardinal direction:
-        * if it doesn't exist, reserve it and push it onto the stack so that it can get processed later.
-        * If it does, check if it has been generated or meshed and push it onto the stack if it hasn't.
-        */
-        auto WalkChunk = [&]() -> bool
-        {
-            bool Result = false;
-
-            NextChunk = CurrentChunk->Neighbors[CurrentCardinal];
-            if (!NextChunk)
-            {
-                NextChunk = Game_ReserveChunk(GameState);
-                if (NextChunk)
-                {
-                    NextChunk->P = CurrentChunk->P + CardinalDirections[CurrentCardinal];
-                    CurrentChunk->Neighbors[CurrentCardinal] = NextChunk;
-                    NextChunk->Neighbors[CardinalOpposite(CurrentCardinal)] = CurrentChunk;
-                    
-                    // Push chunk onto the stack, it'll need to be generated and meshed later
-                    assert(StackAt < StackSize);
-                    Stack[StackAt++] = NextChunk;
-
-                    Result = true;
-                }
-            }
-            else
-            {
-                if (!(NextChunk->Flags & CHUNK_STATE_GENERATED_BIT) ||
-                    !(NextChunk->Flags & CHUNK_STATE_MESHED_BIT) ||
-                    !(NextChunk->Flags & CHUNK_STATE_UPLOADED_BIT))
-                {
-                    assert(StackAt < StackSize);
-                    Stack[StackAt++] = NextChunk;
-                }
-                Result = true;
-            }
-
-            CurrentChunk = NextChunk;
-            return Result;
-        };
-
-        /* 
-        * # = chunks that will be processed now
-        * 0 = chunks that have been already processed
-        * 1 = previous chunk
-        * - = chunks that will be processed later
-        */
-
-        // Walk to the next ring (i)
-        /* 
-        * --#--
-        * -010-
-        * -000-
-        * -000-
-        * -----
-        */
-        if (!WalkChunk())
-        {
-            // TODO
-            return;
-        }
-        chunk* RingFirst = CurrentChunk;
-        
-        /* ##1--
-         * -000-
-         * -000-
-         * -000-
-         * -----
-         */
-        CurrentCardinal = CardinalNext(CurrentCardinal);
-        for (u32 j = 0; j < Diameter / 2; j++)
-        {
-            if (!WalkChunk())
-            {
-                // TODO
-                return;
-            }
-        }
-
-        /* 100--    000--    000-#
-         * #000-    0000-    0000#
-         * #000- => 0000- => 0000#
-         * #000-    0000-    0000#
-         * #----    1####    00001
-         */
-
-        for (u32 k = 0; k < 3; k++)
+        u32 CurrentCardinal = South; // last
+        for (u32 j = 0; j < 4; j++)
         {
             CurrentCardinal = CardinalNext(CurrentCardinal);
-            for (u32 j = 0; j < Diameter - 1; j++)
+            for (u32 k = 0; k < Diameter - 1; k++)
             {
-                if (!WalkChunk())
+                CurrentP = CurrentP + CardinalDirections[CurrentCardinal];
+                chunk* Chunk = Game_GetChunkFromP(GameState, CurrentP);
+                if (!Chunk)
                 {
-                    return;
+                    Chunk = Game_ReserveChunk(GameState, CurrentP);
+                }
+
+                if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT) ||
+                    !(Chunk->Flags & CHUNK_STATE_MESHED_BIT) ||
+                    !(Chunk->Flags & CHUNK_STATE_UPLOADED_BIT) ||
+                    (Chunk->Flags & CHUNK_STATE_MESH_DIRTY_BIT))
+                {
+                    Stack[StackAt++] = Chunk;
                 }
             }
         }
-
-        /* 000#1
-         * 00000
-         * 00000
-         * 00000
-         * 00000
-         */
-        CurrentCardinal = CardinalNext(CurrentCardinal);
-        for (u32 j = 0; j < (Diameter / 2) - 1; j++)
-        {
-            if (!WalkChunk())
-            {
-                // TODO
-                return;
-            }
-        }
-
-        assert((CurrentChunk->P + CardinalDirections[North]) == RingFirst->P);
-        CurrentChunk = RingFirst;
-    }
-
-    // Generate the chunk neighborhood.
-    // This could be done during the initial walk, but the logic of that is already complicated enough.
-    for (u32 i = 0; i < StackAt; i++)
-    {
-        chunk* Chunk= Stack[i];
-        Game_FindChunkNeighbors(GameState, Chunk);
     }
 
     // Limit the number of chunks that can be processed in a single frame so that we don't hitch
@@ -361,7 +584,7 @@ static void Game_LoadChunks(game_state* GameState)
         {
             if ((Distance <= ImmediateGenerationDistance) || (ProcessedChunkCount < ProcessedChunkLimit))
             {
-                Chunk_Generate(&GameState->Perlin, Chunk);
+                Chunk_Generate(Chunk, GameState);
                 Chunk->Flags |= CHUNK_STATE_GENERATED_BIT;
                 ProcessedChunkCount++;
             }
@@ -383,7 +606,7 @@ static void Game_LoadChunks(game_state* GameState)
 
                 ProcessedChunkCount++;
 
-                std::vector<vertex> VertexData = Chunk_Mesh(Chunk);
+                std::vector<vertex> VertexData = Chunk_BuildMesh(Chunk, GameState);
                 Chunk->Flags |= CHUNK_STATE_MESHED_BIT;
 
                 Chunk->AllocationIndex = VB_Allocate(&GameState->Renderer->VB, (u32)VertexData.size());
@@ -466,6 +689,7 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
             ImGui::Text("FrameTime: %.2fms", 1000.0f*DeltaTime);
             ImGui::Text("FPS: %.1f", 1.0f / DeltaTime);
             ImGui::Checkbox("Hitboxes", &GameState->Debug.IsHitboxEnabled);
+            ImGui::Text("PlayerP: { %.1f, %.1f, %.1f }", GameState->Player.P.x, GameState->Player.P.y, GameState->Player.P.z);
         }
         ImGui::End();
 
@@ -506,7 +730,7 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
     {
         TIMED_BLOCK("ChunkUpdate");
 
-        for (u32 i = 0; i < GameState->ChunkCount; i++)
+        for (u32 i = 0; i < GameState->MaxChunkCount; i++)
         {
             chunk* Chunk = GameState->Chunks + i;
             if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
@@ -531,7 +755,7 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
                 Chunk->OldAllocationIndex = Chunk->AllocationIndex;
                 Chunk->LastRenderedInFrameIndex = Chunk->OldAllocationLastRenderedInFrameIndex;
 
-                std::vector<vertex> VertexData = Chunk_Mesh(Chunk);
+                std::vector<vertex> VertexData = Chunk_BuildMesh(Chunk, GameState);
 
                 if (VertexData.size() && (VertexData.size() <= 0xFFFFFFFFu))
                 {
@@ -592,28 +816,20 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         constexpr f32 PlayerReach = 8.0f;
 
         vec3i OldTargetBlock = Player->TargetBlock;
-        Player->HasTargetBlock = Chunk_RayCast(PlayerChunk, Player->P, Forward, PlayerReach, &Player->TargetBlock, &Player->TargetDirection);
+        Player->HasTargetBlock = Game_RayCast(GameState, Player->P, Forward, PlayerReach, &Player->TargetBlock, &Player->TargetDirection);
 
         if (Player->HasTargetBlock)
         {
             // Breaking
             if ((OldTargetBlock == Player->TargetBlock) && Input->MouseButtons[MOUSE_LEFT])
             {
-                u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, Player->TargetBlock.x, Player->TargetBlock.y, Player->TargetBlock.z);
+                u16 VoxelType = Game_GetVoxelType(GameState, Player->TargetBlock);
                 if (VoxelType == VOXEL_GROUND)
                 {
-                    if (Player->BreakTime < 0.0f)
-                    {
-                        Player->BreakTime = 0.0f;
-                    }
-                    else
-                    {
-                        Player->BreakTime += dt;
-                    }
-                
+                    Player->BreakTime += dt;
                     if (Player->BreakTime >= Player->BlockBreakTime)
                     {
-                        Chunk_SetVoxelType(PlayerChunk, VOXEL_AIR, Player->TargetBlock.x, Player->TargetBlock.y, Player->TargetBlock.z);
+                        Game_SetVoxelType(GameState, Player->TargetBlock, VOXEL_AIR);
                     }
                 }
             }
@@ -639,18 +855,18 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
                 }
 
                 vec3i PlacementP = Player->TargetBlock + DeltaP;
-                u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, PlacementP.x, PlacementP.y, PlacementP.z);
+                u16 VoxelType = Game_GetVoxelType(GameState, PlacementP);
                 if (VoxelType == VOXEL_AIR)
                 {
                     aabb PlayerBox = Player_GetAABB(Player);
-                    vec3i BoxP = PlacementP + (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
+                    vec3i BoxP = PlacementP;
                     aabb BlockBox = MakeAABB((vec3)BoxP, (vec3)(BoxP + vec3i{1, 1, 1}));
 
                     vec3 Overlap;
                     int MinCoord;
                     if (!AABB_Intersect(PlayerBox, BlockBox, Overlap, MinCoord))
                     {
-                        Chunk_SetVoxelType(PlayerChunk, VOXEL_GROUND, PlacementP.x, PlacementP.y, PlacementP.z);
+                        Game_SetVoxelType(GameState, PlacementP, VOXEL_GROUND);
                         Player->TimeSinceLastBlockPlacement = 0.0f;
                     }
 
@@ -794,31 +1010,18 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
 
         chunk* PlayerChunk = Game_FindPlayerChunk(GameState);
         assert(PlayerChunk);
-        assert(
-            PlayerChunk->Neighbors[East] &&
-            PlayerChunk->Neighbors[North] &&
-            PlayerChunk->Neighbors[West] &&
-            PlayerChunk->Neighbors[South]);
 
         constexpr u32 AXIS_X = 0;
         constexpr u32 AXIS_Y = 1;
         constexpr u32 AXIS_Z = 2;
 
-        auto ApplyMovement = [&PlayerChunk, &Player](vec3 dP, u32 Direction) -> f32
+        auto ApplyMovement = [&GameState, &Player](vec3 dP, u32 Direction) -> f32
         {
             TIMED_FUNCTION();
 
             Player->P[Direction] += dP[Direction];
 
-            aabb PlayerAABBAbsolute = Player_GetAABB(Player);
-            vec3i ChunkP = (vec3i)(PlayerChunk->P * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y });
-
-            // Relative coordinates 
-            aabb PlayerAABB = 
-            {
-                PlayerAABBAbsolute.Min - (vec3)ChunkP,
-                PlayerAABBAbsolute.Max - (vec3)ChunkP,
-            };
+            aabb PlayerAABB = Player_GetAABB(Player);
 
             vec3i MinPi = (vec3i)Floor(PlayerAABB.Min);
             vec3i MaxPi = (vec3i)Ceil(PlayerAABB.Max);
@@ -833,7 +1036,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
                 {
                     for (s32 x = MinPi.x; x <= MaxPi.x; x++)
                     {
-                        u16 VoxelType = Chunk_GetVoxelType(PlayerChunk, x, y, z);
+                        u16 VoxelType = Game_GetVoxelType(GameState, vec3i{x, y, z});
                         if (VoxelType != VOXEL_AIR)
                         {
                             assert(AABBAt < AABBStackSize);
@@ -928,15 +1131,14 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
 
     Renderer_BeginRendering(FrameParams);
 
-    Renderer_RenderChunks(FrameParams, GameState->ChunkCount, GameState->Chunks);
+    Renderer_RenderChunks(FrameParams, GameState->MaxChunkCount, GameState->Chunks);
 
     Renderer_BeginImmediate(FrameParams);
     
     // Render selected block
     if (GameState->Player.HasTargetBlock)
     {
-        vec3 ChunkP = { CHUNK_DIM_X * Floor(GameState->Player.P.x / CHUNK_DIM_X), CHUNK_DIM_Y * Floor(GameState->Player.P.y / CHUNK_DIM_Y), 0.0f };
-        vec3 P = (vec3)GameState->Player.TargetBlock + ChunkP;
+        vec3 P = (vec3)GameState->Player.TargetBlock;
         aabb Box = MakeAABB(P, P + vec3{ 1, 1, 1 });
         
         Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, Box, PackColor(0x00, 0x00, 0x00));
@@ -1027,6 +1229,17 @@ bool Game_Initialize(game_state* GameState)
         return false;
     }
 
+    // Init chunks
+    for (u32 i = 0; i < GameState->MaxChunkCount; i++)
+    {
+        chunk* Chunk = GameState->Chunks + i;
+        chunk_data* ChunkData = GameState->ChunkData + i;
+
+        Chunk->AllocationIndex = INVALID_INDEX_U32;
+        Chunk->OldAllocationIndex = INVALID_INDEX_U32;
+        Chunk->Data = ChunkData;
+    }
+
     // Place the player in the middle of the starting chunk
     GameState->Player.P = { (0.5f * CHUNK_DIM_X + 0.5f), 0.5f * CHUNK_DIM_Y + 0.5f, 100.0f };
     GameState->Player.CurrentFov = GameState->Player.DefaultFov;
@@ -1051,12 +1264,4 @@ void Game_UpdateAndRender(game_state* GameState, game_input* Input, f32 DeltaTim
 
     Game_Update(GameState, Input, DeltaTime);
     Game_Render(GameState, DeltaTime);
-
-#if 0
-    DebugPrint("Chunks: %u/%u ", GameState->ChunkCount, GameState->MaxChunkCount);
-    DebugPrint("[GPU: %lluMB / %lluMB (%.1f%%)]\n",
-        GameState->VB.MemoryUsage >> 20,
-        GameState->VB.MemorySize >> 20,
-        100.0 * GameState->VB.MemoryUsage / GameState->VB.MemorySize);
-#endif
 }

@@ -291,7 +291,6 @@ enum class outline_type : u32
 {
     Outer = 0,
     Inner,
-    
 };
 
 void Renderer_BeginImmediate(renderer_frame_params* Frame);

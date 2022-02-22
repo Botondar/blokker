@@ -40,7 +40,7 @@ struct player
     static constexpr f32 BlockBreakTime = 0.5f;
     bool HasTargetBlock;
     vec3i TargetBlock;
-    int TargetDirection;
+    direction TargetDirection;
     f32 BreakTime;
 
     static constexpr f32 MaxBlockPlacementFrequency = 0.2f;
@@ -103,6 +103,7 @@ struct game_state
     perlin2 Perlin;
 
     static constexpr u32 MaxChunkCount = 16384;
+    static constexpr u32 MaxChunkCountSqrt = 128;
 
     u32 ChunkCount;
     chunk* Chunks;
@@ -114,3 +115,19 @@ void Game_UpdateAndRender(
     game_state* GameState,
     game_input* Input, 
     f32 DeltaTime);
+
+// From chunk position
+static chunk* Game_GetChunkFromP(game_state* GameState, vec2i P);
+// From voxel position
+static chunk* Game_GetChunkFromP(game_state* GameState, vec3i P, vec3i* RelP);
+static u16 Game_GetVoxelType(game_state* GameState, vec3i P);
+static bool Game_SetVoxelType(game_state* GameState, vec3i P, u16 Type);
+
+static bool Game_RayCast(
+    game_state* GameState, 
+    vec3 P, vec3 V, 
+    f32 tMax, 
+    vec3i* OutP, direction* OutDir);
+
+static chunk* Game_ReserveChunk(game_state* GameState, vec2i P);
+static chunk* Game_FindPlayerChunk(game_state* GameState);
