@@ -322,19 +322,19 @@ static void Chunk_Generate(const perlin2* Perlin, chunk* Chunk)
     assert(Chunk);
     assert(Chunk->Data);
 
-    for (u32 z = 0; z < CHUNK_DIM_Z; z++)
+    for (u32 y = 0; y < CHUNK_DIM_Y; y++)
     {
-        for (u32 y = 0; y < CHUNK_DIM_Y; y++)
+        for (u32 x = 0; x < CHUNK_DIM_X; x++)
         {
-            for (u32 x = 0; x < CHUNK_DIM_X; x++)
+            constexpr f32 Scale = 1.0f / 32.0f;
+            vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
+            vec2 P = Scale * (vec2{ (f32)x, (f32)y } + ChunkP);
+
+            f32 Sample = 16.0f * Perlin2_Octave(Perlin, P, 2);
+            s32 Height = (s32)Round(Sample) + 80;
+
+            for (u32 z = 0; z < CHUNK_DIM_Z; z++)
             {
-                constexpr f32 Scale = 1.0f / 32.0f;
-                vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
-                vec2 P = Scale * (vec2{ (f32)x, (f32)y } + ChunkP);
-
-                f32 Sample = 32.0f * Perlin2_Octave(Perlin, P, 2);
-                s32 Height = (s32)Round(Sample) + 80;
-
                 if ((s32)z > Height)
                 {
                     Chunk->Data->Voxels[z][y][x] = VOXEL_AIR;
