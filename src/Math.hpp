@@ -41,6 +41,7 @@ inline f32 Modulo(f32 x, f32 y) { return fmodf(x, y); }
 
 inline f32 Lerp(f32 a, f32 b, f32 t) { return a*(1.0f - t) + b*t; }
 inline constexpr f32 Fade3(f32 t) { return (3.0f - 2.0f*t)*t*t; }
+inline constexpr f32 Fade5(f32 t) { return ((6.0f*t - 15.0f) * t + 10.0f)*t*t*t; }
 
 struct vec2;
 struct vec2i;
