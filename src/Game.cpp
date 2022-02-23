@@ -1167,6 +1167,8 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
     vulkan_renderer* Renderer = GameState->Renderer;
     if (GameState->IsMinimized)
     {
+        // HACK: Call ImGui rendering here so that we don't crash on the next ImGui::NewFrame();
+        ImGui::Render();
         return;
     }
     if (GameState->NeedRendererResize)
