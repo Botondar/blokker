@@ -481,7 +481,7 @@ static bool Game_RayCast(
             for (s32 x = StartP.x; x <= EndP.x; x++)
             {
                 u16 Voxel = Game_GetVoxelType(GameState, vec3i{x, y, z});
-                if (Voxel == VOXEL_GROUND)
+                if (Voxel != VOXEL_AIR)
                 {
                     aabb Box = MakeAABB(vec3{ (f32)x, (f32)y, (f32)z }, vec3{ (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) });
 
@@ -849,7 +849,8 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
             if ((OldTargetBlock == Player->TargetBlock) && Input->MouseButtons[MOUSE_LEFT])
             {
                 u16 VoxelType = Game_GetVoxelType(GameState, Player->TargetBlock);
-                if (VoxelType == VOXEL_GROUND)
+                const voxel_desc* VoxelDesc = &VoxelDescs[VoxelType];
+                if (VoxelDesc->Flags & VOXEL_FLAGS_SOLID)
                 {
                     Player->BreakTime += dt;
                     if (Player->BreakTime >= Player->BlockBreakTime)
@@ -1058,7 +1059,8 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
                     for (s32 x = MinPi.x; x <= MaxPi.x; x++)
                     {
                         u16 VoxelType = Game_GetVoxelType(GameState, vec3i{x, y, z});
-                        if (VoxelType != VOXEL_AIR)
+                        const voxel_desc* VoxelDesc = &VoxelDescs[VoxelType];
+                        if (VoxelDesc->Flags & VOXEL_FLAGS_SOLID)
                         {
                             assert(AABBAt < AABBStackSize);
                             aabb VoxelAABB = 

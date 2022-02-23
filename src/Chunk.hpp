@@ -70,23 +70,27 @@ inline constexpr u32 CardinalNext(u32 Cardinal);
 
 constexpr u16 VOXEL_AIR = 0;
 constexpr u16 VOXEL_GROUND = 1;
+constexpr u16 VOXEL_STONE = 2;
 
 enum voxel_flags : u32
 {
-    VOXEL_FLAGS_NONE = 0,
-    VOXEL_FLAGS_NO_MESH = 1,
+    VOXEL_FLAGS_NONE        = 0,
+    VOXEL_FLAGS_NO_MESH     = (1 << 0),
+    VOXEL_FLAGS_TRANSPARENT = (1 << 2),
+    VOXEL_FLAGS_SOLID       = (1 << 3),
 };
 
 struct voxel_desc
 {
-    voxel_flags Flags;
+    u32 Flags;
     u32 FaceTextureIndices[DIRECTION_Count];
 };
 
-static voxel_desc VoxelDescs[] = 
+static const voxel_desc VoxelDescs[] = 
 {
-    { VOXEL_FLAGS_NO_MESH, { } },
-    { VOXEL_FLAGS_NONE,    { 0, 0, 0, 0, 1, 2 } },
+    { VOXEL_FLAGS_NO_MESH|VOXEL_FLAGS_TRANSPARENT, { } },
+    { VOXEL_FLAGS_SOLID,    { 0, 0, 0, 0, 1, 2 } },
+    { VOXEL_FLAGS_SOLID,    { 3, 3, 3, 3, 3, 3 } },
 };
 static constexpr u32 VoxelDescCount = CountOf(VoxelDescs);
 

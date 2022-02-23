@@ -27,9 +27,13 @@ static void Chunk_Generate(chunk* Chunk, game_state* GameState)
                 {
                     Chunk->Data->Voxels[z][y][x] = VOXEL_AIR;
                 }
-                else
+                else if ((s32)z > Height - 3)
                 {
                     Chunk->Data->Voxels[z][y][x] = VOXEL_GROUND;
+                }
+                else
+                {
+                    Chunk->Data->Voxels[z][y][x] = VOXEL_STONE;
                 }
             }
         }
@@ -120,8 +124,9 @@ static std::vector<vertex> Chunk_BuildMesh(const chunk* Chunk, game_state* GameS
                         bool IsOccluded = false;
                         vec3i NeighborP = vec3i{(s32)x, (s32)y, (s32)z} + vec3i{Chunk->P.x * CHUNK_DIM_X, Chunk->P.y * CHUNK_DIM_Y, 0 } + GlobalDirections[Direction];
                         u16 NeighborType = Game_GetVoxelType(GameState, NeighborP);
+                        const voxel_desc* NeighborDesc = &VoxelDescs[NeighborType];
 
-                        if (NeighborType == VOXEL_AIR)
+                        if ((NeighborDesc->Flags & VOXEL_FLAGS_NO_MESH) || (NeighborDesc->Flags & VOXEL_FLAGS_TRANSPARENT))
                         {
                             for (u32 i = 0; i < 6; i++)
                             {
