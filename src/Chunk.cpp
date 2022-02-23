@@ -50,14 +50,14 @@ static void Chunk_Generate(chunk* Chunk, game_state* GameState)
     }
 }
 
-static std::vector<vertex> Chunk_BuildMesh(const chunk* Chunk, game_state* GameState)
+static std::vector<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, game_state* GameState)
 {
     TIMED_FUNCTION();
 
     assert(Chunk);
     assert(Chunk->Data);
 
-    std::vector<vertex> VertexList;
+    std::vector<terrain_vertex> VertexList;
 
     for (u32 z = 0; z < CHUNK_DIM_Z; z++)
     {
@@ -140,9 +140,12 @@ static std::vector<vertex> Chunk_BuildMesh(const chunk* Chunk, game_state* GameS
                         {
                             for (u32 i = 0; i < 6; i++)
                             {
-                                vertex Vertex = Cube[Direction*DIRECTION_Count + i];
-                                Vertex.P += VoxelP;
-                                Vertex.UVW.z += (f32)Desc->FaceTextureIndices[Direction];
+                                vertex CubeVertex = Cube[Direction*DIRECTION_Count + i];
+                                terrain_vertex Vertex = 
+                                {
+                                    .P = CubeVertex.P + VoxelP,
+                                    .TexCoord = PackTexCoord((u32)CubeVertex.UVW.x, (u32)CubeVertex.UVW.y, (u32)Desc->FaceTextureIndices[Direction]),
+                                };
                                 VertexList.push_back(Vertex);
                             }
                         }

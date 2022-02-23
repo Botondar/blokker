@@ -2,7 +2,6 @@
 
 // SHARED
 layout(location = 0) vs_out vec3 TexCoord;
-layout(location = 1) vs_out vec4 Color;
 
 layout(push_constant) uniform PushConstants
 {
@@ -12,14 +11,22 @@ layout(push_constant) uniform PushConstants
 #if defined(VERTEX_SHADER)
 
 layout(location = ATTRIB_POS) in vec3 v_Position;
-layout(location = ATTRIB_TEXCOORD) in vec3 v_UVW;
-layout(location = ATTRIB_COLOR) in vec4 v_Color;
+layout(location = ATTRIB_TEXCOORD) in uint v_PackedTexCoord;
+
+vec3 UnpackTexCoord(in uint Packed)
+{
+    uint Layer = Packed & 0x07FF;
+    uint u = (Packed & 0x0800) >> 11;
+    uint v = (Packed & 0x1000) >> 12;
+
+    vec3 Result = vec3(float(u), float(v), float(Layer));
+    return Result;
+}
 
 void main()
 {
     gl_Position = Transform * vec4(v_Position, 1);
-    TexCoord = v_UVW;
-    Color = vec4(v_Color.rgb, 1);
+    TexCoord = UnpackTexCoord(v_PackedTexCoord);
 }
 
 #elif defined(FRAGMENT_SHADER)

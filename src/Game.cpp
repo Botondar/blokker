@@ -580,7 +580,7 @@ static void Game_LoadChunks(game_state* GameState)
     }
 
     // Limit the number of chunks that can be processed in a single frame so that we don't hitch
-    constexpr u32 ProcessedChunkLimit = 4;
+    constexpr u32 ProcessedChunkLimit = 1;
     u32 ProcessedChunkCount = 0;
 
     // Generate the chunks in the stack
@@ -615,7 +615,7 @@ static void Game_LoadChunks(game_state* GameState)
 
                 ProcessedChunkCount++;
 
-                std::vector<vertex> VertexData = Chunk_BuildMesh(Chunk, GameState);
+                std::vector<terrain_vertex> VertexData = Chunk_BuildMesh(Chunk, GameState);
                 Chunk->Flags |= CHUNK_STATE_MESHED_BIT;
 
                 Chunk->AllocationIndex = VB_Allocate(&GameState->Renderer->VB, (u32)VertexData.size());
@@ -623,7 +623,7 @@ static void Game_LoadChunks(game_state* GameState)
                 {
                     TIMED_BLOCK("Upload");
 
-                    u64 Size = VertexData.size() * sizeof(vertex);
+                    u64 Size = VertexData.size() * sizeof(terrain_vertex);
                     u64 Offset = VB_GetAllocationMemoryOffset(&GameState->Renderer->VB, Chunk->AllocationIndex);                    
 
                     if (StagingHeap_Copy(
@@ -772,7 +772,7 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
                 Chunk->OldAllocationIndex = Chunk->AllocationIndex;
                 Chunk->LastRenderedInFrameIndex = Chunk->OldAllocationLastRenderedInFrameIndex;
 
-                std::vector<vertex> VertexData = Chunk_BuildMesh(Chunk, GameState);
+                std::vector<terrain_vertex> VertexData = Chunk_BuildMesh(Chunk, GameState);
 
                 if (VertexData.size() && (VertexData.size() <= 0xFFFFFFFFu))
                 {
@@ -780,7 +780,7 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
                     u64 Offset = VB_GetAllocationMemoryOffset(&GameState->Renderer->VB, Chunk->AllocationIndex);
                     Chunk->LastRenderedInFrameIndex = 0;
 
-                    u64 MemorySize = VertexData.size() * sizeof(vertex);
+                    u64 MemorySize = VertexData.size() * sizeof(terrain_vertex);
                     if (StagingHeap_Copy(&GameState->Renderer->StagingHeap,
                         GameState->Renderer->TransferQueue,
                         GameState->Renderer->TransferCmdBuffer,

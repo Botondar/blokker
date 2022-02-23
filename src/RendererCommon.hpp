@@ -35,12 +35,39 @@ inline vec3 UnpackColor3(u32 c)
     return Result;
 }
 
-struct vertex 
+typedef u32 packed_texcoord;
+
+constexpr packed_texcoord TEXCOORD_LAYER_MASK = 0x07FFu;
+constexpr packed_texcoord TEXCOORD_U_MASK = 0x0800u;
+constexpr packed_texcoord TEXCOORD_V_MASK = 0x1000u;
+constexpr u32 TEXCOORD_U_SHIFT = 11;
+constexpr u32 TEXCOORD_V_SHIFT = 12;
+
+inline constexpr packed_texcoord PackTexCoord(u32 u, u32 v, u32 Layer)
+{
+    u32 Result = 
+        ((u << TEXCOORD_U_SHIFT) & TEXCOORD_U_MASK) |
+        ((v << TEXCOORD_V_SHIFT) & TEXCOORD_V_MASK) |
+        (Layer & TEXCOORD_LAYER_MASK);
+    return Result;
+}
+
+#pragma pack(push, 1)
+struct terrain_vertex
+{
+    vec3 P;
+    packed_texcoord TexCoord;
+};
+#pragma pack(pop)
+
+#if 1
+struct vertex
 {
     vec3 P;
     vec3 UVW;
     u32 Color;
 };
+#endif
 
 enum attrib_location : u32
 {

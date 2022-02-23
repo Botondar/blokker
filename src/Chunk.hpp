@@ -130,7 +130,7 @@ struct chunk_render_data
 };
 
 static void Chunk_Generate(chunk* Chunk, game_state* GameState);
-static std::vector<vertex> Chunk_Mesh(const chunk* Chunk, game_state* GameState);
+static std::vector<terrain_vertex> Chunk_Mesh(const chunk* Chunk, game_state* GameState);
 
 /* Implementations */
 inline constexpr u32 CardinalOpposite(u32 Cardinal)

@@ -466,8 +466,8 @@ bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Dev
     memset(VB, 0, sizeof(vulkan_vertex_buffer));
     bool Result = false;
 
-    Size = AlignTo(Size, sizeof(vertex));
-    u64 VertexCount64 = Size / sizeof(vertex);
+    Size = AlignTo(Size, sizeof(terrain_vertex));
+    u64 VertexCount64 = Size / sizeof(terrain_vertex);
     assert(VertexCount64 <= 0xFFFFFFFF);
 
     u32 VertexCount = (u32)VertexCount64;
@@ -621,7 +621,7 @@ u32 VB_Allocate(vulkan_vertex_buffer* VB, u32 VertexCount)
             VB->FreeAllocationRead %= vulkan_vertex_buffer::MaxAllocationCount;
             VB->FreeAllocationCount--;
 
-            VB->MemoryUsage += (u64)VertexCount * sizeof(vertex);
+            VB->MemoryUsage += (u64)VertexCount * sizeof(terrain_vertex);
 
             Result = AllocationIndex;
         }
@@ -650,7 +650,7 @@ void VB_Free(vulkan_vertex_buffer* VB, u32 AllocationIndex)
         VB->FreeAllocationWrite %= vulkan_vertex_buffer::MaxAllocationCount;
         VB->FreeAllocationCount++;
 
-        VB->MemoryUsage -= (u64)Block->VertexCount * sizeof(vertex);
+        VB->MemoryUsage -= (u64)Block->VertexCount * sizeof(terrain_vertex);
     }
 }
 
@@ -686,7 +686,7 @@ u64 VB_GetAllocationMemoryOffset(const vulkan_vertex_buffer* VB, u32 AllocationI
     assert(VB);
 
     u32 BlockIndex = VB->Allocations[AllocationIndex].BlockIndex;
-    u64 Result = (u64)VB->Blocks[BlockIndex].VertexOffset * sizeof(vertex);
+    u64 Result = (u64)VB->Blocks[BlockIndex].VertexOffset * sizeof(terrain_vertex);
     return Result;
 }
 
@@ -2072,7 +2072,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         VkVertexInputBindingDescription VertexBinding = 
         {
             .binding = 0,
-            .stride = sizeof(vertex),
+            .stride = sizeof(terrain_vertex),
             .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
         };
         
@@ -2083,21 +2083,14 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .location = ATTRIB_POS,
                 .binding = 0,
                 .format = VK_FORMAT_R32G32B32_SFLOAT,
-                .offset = offsetof(vertex, P),
+                .offset = offsetof(terrain_vertex, P),
             },
             // UVW
             {
                 .location = ATTRIB_TEXCOORD,
                 .binding = 0,
-                .format = VK_FORMAT_R32G32B32_SFLOAT,
-                .offset = offsetof(vertex, UVW),
-            },
-            // Color
-            {
-                .location = ATTRIB_COLOR,
-                .binding = 0,
-                .format = VK_FORMAT_R8G8B8A8_UNORM,
-                .offset = offsetof(vertex, Color),
+                .format = VK_FORMAT_R16_UINT,
+                .offset = offsetof(terrain_vertex, TexCoord),
             },
         };
         constexpr u32 VertexAttribCount = CountOf(VertexAttribs);
