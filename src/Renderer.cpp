@@ -3218,34 +3218,43 @@ void Renderer_SubmitFrame(vulkan_renderer* Renderer, renderer_frame_params* Fram
 {
     TIMED_FUNCTION();
 
-    VkPipelineStageFlags WaitStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-    VkSubmitInfo SubmitInfo = 
     {
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .pNext = nullptr,
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &Frame->ImageAcquiredSemaphore,
-        .pWaitDstStageMask = &WaitStageMask,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &Frame->CmdBuffer,
-        .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &Frame->RenderFinishedSemaphore,
-    };
-    vkQueueSubmit(Renderer->GraphicsQueue, 1, &SubmitInfo, Frame->RenderFinishedFence);
+        TIMED_BLOCK("Submit");
 
-    VkPresentInfoKHR PresentInfo = 
+        VkPipelineStageFlags WaitStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        VkSubmitInfo SubmitInfo = 
+        {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext = nullptr,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &Frame->ImageAcquiredSemaphore,
+            .pWaitDstStageMask = &WaitStageMask,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &Frame->CmdBuffer,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &Frame->RenderFinishedSemaphore,
+        };
+
+        vkQueueSubmit(Renderer->GraphicsQueue, 1, &SubmitInfo, Frame->RenderFinishedFence);
+    }
+
     {
-        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-        .pNext = nullptr,
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &Frame->RenderFinishedSemaphore,
-        .swapchainCount = 1,
-        .pSwapchains = &Frame->Renderer->Swapchain,
-        .pImageIndices = &Frame->SwapchainImageIndex,
-        .pResults = nullptr,
-    };
+        TIMED_BLOCK("Present");
 
-    vkQueuePresentKHR(Renderer->GraphicsQueue, &PresentInfo);
+        VkPresentInfoKHR PresentInfo = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .pNext = nullptr,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &Frame->RenderFinishedSemaphore,
+            .swapchainCount = 1,
+            .pSwapchains = &Frame->Renderer->Swapchain,
+            .pImageIndices = &Frame->SwapchainImageIndex,
+            .pResults = nullptr,
+        };
+
+        vkQueuePresentKHR(Renderer->GraphicsQueue, &PresentInfo);
+    }
 }
 
 void Renderer_BeginRendering(renderer_frame_params* Frame)

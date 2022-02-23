@@ -9,6 +9,8 @@
 
 #include <imgui/imgui.h>
 
+#define BLOKKER_TINY_RENDER_DISTANCE 0
+
 struct player
 {
     vec3 P;
@@ -102,8 +104,13 @@ struct game_state
 
     perlin2 Perlin;
 
+#if BLOKKER_TINY_RENDER_DISTANCE
+    static constexpr u32 MaxChunkCount = 36;
+    static constexpr u32 MaxChunkCountSqrt = 6;
+#else
     static constexpr u32 MaxChunkCount = 16384;
     static constexpr u32 MaxChunkCountSqrt = 128;
+#endif
 
     u32 ChunkCount;
     chunk* Chunks;

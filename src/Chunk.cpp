@@ -14,6 +14,7 @@ static void Chunk_Generate(chunk* Chunk, game_state* GameState)
         for (u32 x = 0; x < CHUNK_DIM_X; x++)
         {
             constexpr f32 Scale = 1.0f / 32.0f;
+
             vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
             vec2 P = Scale * (vec2{ (f32)x, (f32)y } + ChunkP);
 

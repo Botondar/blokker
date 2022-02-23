@@ -101,7 +101,7 @@ static vec3 Player_GetForward(const player* Player)
 
 static bool Game_InitImGui(game_state* GameState);
 
-static u32 Game_HashChunkP(const game_state* GameState, vec2i P);
+static u32 Game_HashChunkP(const game_state* GameState, vec2i P, vec2i* Coords = nullptr);
 
 static void Game_LoadChunks(game_state* GameState);
 
@@ -111,16 +111,22 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
 
 static void Game_Render(game_state* GameState, f32 DeltaTime);
 
-static u32 Game_HashChunkP(const game_state* GameState, vec2i P)
+static u32 Game_HashChunkP(const game_state* GameState, vec2i P, vec2i* Coords /*= nullptr*/)
 {
-    s32 ix = (P.x % (s32)(GameState->MaxChunkCountSqrt / 2)) + GameState->MaxChunkCountSqrt / 2;
-    s32 iy = (P.y % (s32)(GameState->MaxChunkCountSqrt / 2)) + GameState->MaxChunkCountSqrt / 2;
+    s32 ix = Modulo(P.x, GameState->MaxChunkCountSqrt);
+    s32 iy = Modulo(P.y, GameState->MaxChunkCountSqrt);
     assert((ix >= 0) && (iy >= 0));
 
     u32 x = (u32)ix;
     u32 y = (u32)iy;
 
     u32 Result = x + y * GameState->MaxChunkCountSqrt;
+    if (Coords)
+    {
+        Coords->x = ix;
+        Coords->y = iy;
+    }
+
     return Result;
 }
 
@@ -142,11 +148,7 @@ static chunk* Game_GetChunkFromP(game_state* GameState, vec3i P, vec3i* RelP)
 {
     chunk* Result = nullptr;
 
-    vec2i ChunkP = { P.x / CHUNK_DIM_X, P.y / CHUNK_DIM_Y };
-    // Floor the chunk coords instead of trunc
-    if (P.x < 0 && (P.x % CHUNK_DIM_X != 0)) ChunkP.x -= 1;
-    if (P.y < 0 && (P.y % CHUNK_DIM_Y != 0)) ChunkP.y -= 1;
-
+    vec2i ChunkP = { FloorDiv(P.x, CHUNK_DIM_X), FloorDiv(P.y, CHUNK_DIM_Y) };
     chunk* Chunk = Game_GetChunkFromP(GameState, ChunkP);
     if (Chunk)
     {
@@ -266,6 +268,9 @@ static chunk* Game_ReserveChunk(game_state* GameState, vec2i P)
             // Preserve the current allocation, it will get freed once the GPU is no longer using it
             Result->OldAllocationIndex = Result->AllocationIndex;
             Result->OldAllocationLastRenderedInFrameIndex = Result->LastRenderedInFrameIndex;
+
+            Result->AllocationIndex = INVALID_INDEX_U32;
+            Result->LastRenderedInFrameIndex = 0;
         }
 
         Result->P = P;
@@ -514,7 +519,11 @@ static void Game_LoadChunks(game_state* GameState)
 
     constexpr u32 ImmediateMeshDistance = 1;
     constexpr u32 ImmediateGenerationDistance = ImmediateMeshDistance + 1;
+#if BLOKKER_TINY_RENDER_DISTANCE
+    constexpr u32 MeshDistance = 1;
+#else
     constexpr u32 MeshDistance = 16;
+#endif
     constexpr u32 GenerationDistance = MeshDistance + 1;
 
     // Create a stack that'll hold the chunks that haven't been meshed/generated around the player.
@@ -1027,10 +1036,6 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         chunk* PlayerChunk = Game_FindPlayerChunk(GameState);
         assert(PlayerChunk);
 
-        constexpr u32 AXIS_X = 0;
-        constexpr u32 AXIS_Y = 1;
-        constexpr u32 AXIS_Z = 2;
-
         auto ApplyMovement = [&GameState, &Player](vec3 dP, u32 Direction) -> f32
         {
             TIMED_FUNCTION();
@@ -1235,6 +1240,53 @@ static bool Game_InitImGui(game_state* GameState)
 
 bool Game_Initialize(game_state* GameState)
 {
+    // HashChunkP test
+    {
+        DebugPrint("HashChunkP test: ");
+        {
+            vec2i StartP = { -10, -10 };
+            vec2i EndP = {+10, +10};
+            DebugPrint("Count = %u | SqrtCount = %u\n", GameState->MaxChunkCount, GameState->MaxChunkCountSqrt);
+            DebugPrint("       ");
+            for (s32 x = StartP.x; x < EndP.x; x++)
+            {
+                DebugPrint("%4d | ", x);
+            }
+            DebugPrint("\n");
+
+            for (s32 y = StartP.y; y < EndP.y; y++)
+            {
+                DebugPrint("%4d | ", y);
+                for (s32 x = StartP.x; x < EndP.x; x++)
+                {
+                    u32 Index = Game_HashChunkP(GameState, vec2i{x, y});
+                    DebugPrint("%4d | ", Index);
+                }
+                DebugPrint("\n");
+            }
+            DebugPrint("===================================\n");
+
+            DebugPrint("      ");
+            for (s32 x = StartP.x; x < EndP.x; x++)
+            {
+                DebugPrint("%9d | ", x);
+            }
+            DebugPrint("\n");
+
+            for (s32 y = StartP.y; y < EndP.y; y++)
+            {
+                DebugPrint("%3d | ", y);
+                for (s32 x = StartP.x; x < EndP.x; x++)
+                {
+                    vec2i Coords;
+                    u32 Index = Game_HashChunkP(GameState, vec2i{x, y}, &Coords);
+                    DebugPrint("(%3d %3d) | ", Coords.x, Coords.y);
+                }
+                DebugPrint("\n");
+            }
+        }
+    }
+
     if (!Renderer_Initialize(GameState->Renderer))
     {
         return false;

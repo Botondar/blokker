@@ -83,6 +83,43 @@ struct mat4
 };
 
 /* Common functions */
+
+inline s32 FloorDiv(s32 a, s32 b)
+{
+    assert(b > 0); // TODO(boti)?
+
+    s32 Result = a/b;
+    if ((a < 0) && ((a % b) != 0))
+    {
+        Result -= 1;
+    }
+    return Result;
+}
+
+inline s32 CeilDiv(s32 a, s32 b)
+{
+    assert(b > 0); // TODO(boti)?
+
+    s32 Result = a/b;
+    if ((a > 0) && ((a % b) != 0))
+    {
+        Result += 1;
+    }
+    return Result;
+}
+
+// Positive modulo
+inline s32 Modulo(s32 a, s32 b)
+{
+    assert(b > 0);
+    s32 Result = a % b;
+    if (Result < 0)
+    {
+        Result += b;
+    }
+    return Result;
+}
+
 constexpr f32 ToRadians(f32 Degrees) { return PI * Degrees / 180.0f; }
 constexpr f32 ToDegrees(f32 Radians) { return 180.0f * Radians / PI; }
 

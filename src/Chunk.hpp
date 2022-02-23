@@ -80,7 +80,7 @@ enum voxel_flags : u32
 struct voxel_desc
 {
     voxel_flags Flags;
-    u32 FaceTextureIndices[6];
+    u32 FaceTextureIndices[DIRECTION_Count];
 };
 
 static voxel_desc VoxelDescs[] = 
