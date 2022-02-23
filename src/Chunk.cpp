@@ -37,14 +37,7 @@ static void Chunk_Generate(chunk* Chunk, game_state* GameState)
                     Chunk->Data->Voxels[z][y][x] = VOXEL_STONE;
                 }
 
-                // Generate caves
-                constexpr f32 CaveScale = 1.0f / 8.0f;
                 vec3 P = vec3{ x + ChunkP.x, y + ChunkP.y, (f32)z };
-                f32 CaveSample = Perlin3_Octave(&GameState->Perlin3, CaveScale*P, 3, 0.5f, 2.0f);
-                if (CaveSample < -0.25f && ((z < 80) || ((s32)z < Height)))
-                {
-                    Chunk->Data->Voxels[z][y][x] = VOXEL_AIR;
-                }
 
                 // Generate ores
                 constexpr f32 OreScale = 1.0f / 8.0f;
@@ -60,6 +53,14 @@ static void Chunk_Generate(chunk* Chunk, game_state* GameState)
                     {
                         Chunk->Data->Voxels[z][y][x] = VOXEL_IRON;
                     }
+                }
+
+                // Generate caves
+                constexpr f32 CaveScale = 1.0f / 12.0f;
+                f32 CaveSample = Perlin3_Octave(&GameState->Perlin3, CaveScale*P, 3, 0.5f, 2.0f);
+                if (CaveSample < -0.5f && ((z < 80) || ((s32)z < Height)))
+                {
+                    Chunk->Data->Voxels[z][y][x] = VOXEL_AIR;
                 }
             }
         }
