@@ -24,3 +24,4 @@ struct perlin3
 
 void Perlin3_Init(perlin3* Perlin, u32 Seed);
 f32 Perlin3_Sample(const perlin3* Perlin, vec3 P);
+f32 Perlin3_Octave(const perlin3* Perlin, vec3 P, u32 OctaveCount, f32 Persistence, f32 Lacunarity);

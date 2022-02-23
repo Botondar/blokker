@@ -212,3 +212,21 @@ f32 Perlin3_Sample(const perlin3* Perlin, vec3 P)
 #endif
     return Result;
 }
+
+f32 Perlin3_Octave(const perlin3* Perlin, vec3 P0, u32 OctaveCount, f32 Persistence, f32 Lacunarity)
+{
+    f32 Result = 0.0f;
+
+    f32 Amplitude = 1.0f;
+    f32 Frequency = 1.0f;
+    for (u32 i = 0; i < OctaveCount; i++)
+    {
+        vec3 P = Frequency * P0;
+        Result += Amplitude * Perlin3_Sample(Perlin, P);
+
+        Frequency *= Lacunarity;
+        Amplitude *= Persistence;
+    }
+
+    return Result;
+}
