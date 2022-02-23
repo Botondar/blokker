@@ -699,6 +699,11 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
             ImGui::Text("FPS: %.1f", 1.0f / DeltaTime);
             ImGui::Checkbox("Hitboxes", &GameState->Debug.IsHitboxEnabled);
             ImGui::Text("PlayerP: { %.1f, %.1f, %.1f }", GameState->Player.P.x, GameState->Player.P.y, GameState->Player.P.z);
+            if (ImGui::Button("Reset player"))
+            {
+                Game_ResetPlayer(GameState);
+            }
+
         }
         ImGui::End();
 
@@ -808,6 +813,35 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
                 };
             }
         }
+    }
+}
+
+static void Game_ResetPlayer(game_state* GameState)
+{
+    player* Player = &GameState->Player;
+    Player->Velocity = {};
+    vec3i PlayerP = (vec3i)Floor(Player->P);
+    Player->P.x = PlayerP.x + 0.5f;
+    Player->P.y = PlayerP.y + 0.5f;
+    
+    vec3i RelP;
+    chunk* Chunk = Game_GetChunkFromP(GameState, PlayerP, &RelP);
+    if (Chunk && (Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
+    {
+        for (s32 z = CHUNK_DIM_Z - 1; z >= 0; z--)
+        {
+            u16 VoxelType = Chunk->Data->Voxels[z][RelP.y][RelP.x];
+            const voxel_desc* Desc = &VoxelDescs[VoxelType];
+            if (Desc->Flags & VOXEL_FLAGS_SOLID)
+            {
+                Player->P.z = z + Player->EyeHeight;
+                break;
+            }
+        }
+    }
+    else
+    {
+        assert(!"Invalid player chunk");
     }
 }
 

@@ -141,3 +141,5 @@ static bool Game_RayCast(
 
 static chunk* Game_ReserveChunk(game_state* GameState, vec2i P);
 static chunk* Game_FindPlayerChunk(game_state* GameState);
+
+static void Game_ResetPlayer(game_state* GameState);
