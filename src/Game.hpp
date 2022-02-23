@@ -102,7 +102,8 @@ struct game_state
     u64 FrameIndex;
     player Player;
 
-    perlin2 Perlin;
+    perlin2 Perlin2;
+    perlin3 Perlin3;
 
 #if BLOKKER_TINY_RENDER_DISTANCE
     static constexpr u32 MaxChunkCount = 36;

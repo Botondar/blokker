@@ -1349,7 +1349,8 @@ bool Game_Initialize(game_state* GameState)
     GameState->Player.CurrentFov = GameState->Player.DefaultFov;
     GameState->Player.TargetFov = GameState->Player.TargetFov;
 
-    Perlin2_Init(&GameState->Perlin, 0);
+    Perlin2_Init(&GameState->Perlin2, 0);
+    Perlin3_Init(&GameState->Perlin3, 0);
 
     DebugPrint("Game init done.\n");
     return true;
