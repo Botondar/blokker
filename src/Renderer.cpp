@@ -299,6 +299,7 @@ bool StagingHeap_CopyImage(
     u32 Stride = 0;
     switch (Format)
     {
+        case VK_FORMAT_R8G8B8A8_UNORM:
         case VK_FORMAT_R8G8B8A8_SRGB: Stride = 4; break;
         case VK_FORMAT_R8_UNORM: Stride = 1; break;
     }
@@ -1848,9 +1849,9 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 .pNext = nullptr,
-                .flags = 0,
+                .flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT,
                 .imageType = VK_IMAGE_TYPE_2D,
-                .format = VK_FORMAT_R8G8B8A8_SRGB,
+                .format = VK_FORMAT_R8G8B8A8_UNORM,
                 .extent = { TexWidth, TexHeight, 1 },
                 .mipLevels = TexMipCount,
                 .arrayLayers = TextureCount,
@@ -1890,7 +1891,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                                 Renderer->TransferCmdBuffer,
                                 Image, 
                                 TexWidth, TexHeight, TexMipCount, TextureCount,
-                                VK_FORMAT_R8G8B8A8_SRGB,
+                                VK_FORMAT_R8G8B8A8_UNORM,
                                 PixelBuffer))
                             {
                                 VkImageViewCreateInfo ViewInfo = 
