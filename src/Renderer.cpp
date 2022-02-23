@@ -3446,7 +3446,7 @@ void Renderer_EndRendering(renderer_frame_params* Frame)
     vkEndCommandBuffer(Frame->CmdBuffer);
 }
 
-void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk* Chunks)
+void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render_data* Chunks)
 {
     TIMED_FUNCTION();
 
@@ -3461,11 +3461,8 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk* Chunk
 
     for (u32 i = 0; i < Count; i++)
     {
-        chunk* Chunk = Chunks + i;
-        if (!(Chunk->Flags & CHUNK_STATE_UPLOADED_BIT))
-        {
-            continue;
-        }
+        chunk_render_data* Chunk = Chunks + i;
+
         if (Chunk->AllocationIndex == INVALID_INDEX_U32)
         {
             continue;
@@ -3474,10 +3471,11 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk* Chunk
         vulkan_vertex_buffer_allocation Allocation = Frame->Renderer->VB.Allocations[Chunk->AllocationIndex];
         if (Allocation.BlockIndex == INVALID_INDEX_U32)
         {
+            assert(!"Invalid code path");
             continue;
         }
 
-        Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
+        *Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
 
         mat4 WorldTransform = Mat4(
             1.0f, 0.0f, 0.0f, (f32)Chunk->P.x * CHUNK_DIM_X,

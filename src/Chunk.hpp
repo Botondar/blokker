@@ -118,6 +118,13 @@ struct chunk
     u64 OldAllocationLastRenderedInFrameIndex;
 };
 
+struct chunk_render_data
+{
+    vec2i P;
+    u32 AllocationIndex;
+    u64* LastRenderedInFrameIndex;
+};
+
 static void Chunk_Generate(chunk* Chunk, game_state* GameState);
 static std::vector<vertex> Chunk_Mesh(const chunk* Chunk, game_state* GameState);
 

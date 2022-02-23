@@ -108,6 +108,9 @@ struct game_state
     u32 ChunkCount;
     chunk* Chunks;
     chunk_data* ChunkData;
+
+    u32 ChunkRenderDataCount;
+    chunk_render_data ChunkRenderData[MaxChunkCount];
 };
 
 bool Game_Initialize(game_state* GameState);

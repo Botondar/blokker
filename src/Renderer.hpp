@@ -285,7 +285,7 @@ void Renderer_SubmitFrame(vulkan_renderer* Renderer, renderer_frame_params* Fram
 void Renderer_BeginRendering(renderer_frame_params* Frame);
 void Renderer_EndRendering(renderer_frame_params* Frame);
 
-void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk* Chunks);
+void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render_data* Chunks);
 
 enum class outline_type : u32
 {

@@ -705,6 +705,7 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
                 100.0 * GameState->Renderer->VB.MemoryUsage / GameState->Renderer->VB.MemorySize);
 
             ImGui::Text("Chunks: %u/%u\n", GameState->ChunkCount, GameState->MaxChunkCount);
+            ImGui::Text("Chunk header size: %d bytes", sizeof(chunk));
         }
         ImGui::End();
 
@@ -729,6 +730,8 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
     // TODO: move this
     {
         TIMED_BLOCK("ChunkUpdate");
+
+        GameState->ChunkRenderDataCount = 0;
 
         for (u32 i = 0; i < GameState->MaxChunkCount; i++)
         {
@@ -771,6 +774,7 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
                         MemorySize, VertexData.data()))
                     {
                         Chunk->Flags &= ~CHUNK_STATE_MESH_DIRTY_BIT;
+                        Chunk->Flags |= CHUNK_STATE_UPLOADED_BIT;
                     }
                     else
                     {
@@ -781,6 +785,18 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
                 {
                     assert(!"Invalid VertexData");
                 }
+            }
+
+            if (Chunk->Flags & CHUNK_STATE_UPLOADED_BIT)
+            {
+                assert(GameState->ChunkRenderDataCount < GameState->MaxChunkCount);
+
+                GameState->ChunkRenderData[GameState->ChunkRenderDataCount++] = 
+                {
+                    .P = Chunk->P,
+                    .AllocationIndex = Chunk->AllocationIndex,
+                    .LastRenderedInFrameIndex = &Chunk->LastRenderedInFrameIndex,
+                };
             }
         }
     }
@@ -1131,7 +1147,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
 
     Renderer_BeginRendering(FrameParams);
 
-    Renderer_RenderChunks(FrameParams, GameState->MaxChunkCount, GameState->Chunks);
+    Renderer_RenderChunks(FrameParams, GameState->ChunkRenderDataCount, GameState->ChunkRenderData);
 
     Renderer_BeginImmediate(FrameParams);
     
