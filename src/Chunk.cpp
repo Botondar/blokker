@@ -13,16 +13,17 @@ static void Chunk_Generate(chunk* Chunk, game_state* GameState)
     {
         for (u32 x = 0; x < CHUNK_DIM_X; x++)
         {
-            constexpr f32 Scale = 1.0f / 32.0f;
+            constexpr f32 TerrainScale = 1.0f / 32.0f;
 
             vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
-            vec2 P = Scale * (vec2{ (f32)x, (f32)y } + ChunkP);
+            vec2 TerrainP = TerrainScale * (vec2{ (f32)x, (f32)y } + ChunkP);
 
-            f32 Sample = 16.0f * Perlin2_Octave(&GameState->Perlin2, P, 2, 0.5f, 1.5f);
-            s32 Height = (s32)Round(Sample) + 80;
+            f32 TerrainSample = 16.0f * Perlin2_Octave(&GameState->Perlin2, TerrainP, 2, 0.5f, 1.5f);
+            s32 Height = (s32)Round(TerrainSample) + 80;
 
             for (u32 z = 0; z < CHUNK_DIM_Z; z++)
             {
+                // Generate base terrain
                 if ((s32)z > Height)
                 {
                     Chunk->Data->Voxels[z][y][x] = VOXEL_AIR;
@@ -34,6 +35,15 @@ static void Chunk_Generate(chunk* Chunk, game_state* GameState)
                 else
                 {
                     Chunk->Data->Voxels[z][y][x] = VOXEL_STONE;
+                }
+
+                // Generate caves
+                constexpr f32 CaveScale = 1.0f / 8.0f;
+                vec3 P = vec3{ x + ChunkP.x, y + ChunkP.y, (f32)z };
+                f32 CaveSample = Perlin3_Octave(&GameState->Perlin3, CaveScale*P, 3, 0.5f, 2.0f);
+                if (CaveSample < -0.25f && ((z < 80) || ((s32)z < Height)))
+                {
+                    Chunk->Data->Voxels[z][y][x] = VOXEL_AIR;
                 }
             }
         }
