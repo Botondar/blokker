@@ -1827,6 +1827,8 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             "texture/ground_top.bmp",
             "texture/ground_bottom.bmp",
             "texture/stone_side.bmp",
+            "texture/coal_side.bmp",
+            "texture/iron_side.bmp",
         };
         constexpr u32 TextureCount = CountOf(TexturePaths);
         static_assert(TextureCount <= TexMaxArrayCount);

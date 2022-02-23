@@ -45,6 +45,22 @@ static void Chunk_Generate(chunk* Chunk, game_state* GameState)
                 {
                     Chunk->Data->Voxels[z][y][x] = VOXEL_AIR;
                 }
+
+                // Generate ores
+                constexpr f32 OreScale = 1.0f / 8.0f;
+                f32 OreSample = Perlin3_Octave(&GameState->Perlin3, OreScale*P, 3, 0.5f, 2.0f);
+                // Only replace stone with ores
+                if (Chunk->Data->Voxels[z][y][x] == VOXEL_STONE)
+                {
+                    if (OreSample > 0.75f)
+                    {
+                        Chunk->Data->Voxels[z][y][x] = VOXEL_COAL;
+                    }
+                    else if (OreSample < -0.75f)
+                    {
+                        Chunk->Data->Voxels[z][y][x] = VOXEL_IRON;
+                    }
+                }
             }
         }
     }

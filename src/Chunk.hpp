@@ -71,6 +71,8 @@ inline constexpr u32 CardinalNext(u32 Cardinal);
 constexpr u16 VOXEL_AIR = 0;
 constexpr u16 VOXEL_GROUND = 1;
 constexpr u16 VOXEL_STONE = 2;
+constexpr u16 VOXEL_COAL = 3;
+constexpr u16 VOXEL_IRON = 4;
 
 enum voxel_flags : u32
 {
@@ -91,6 +93,8 @@ static const voxel_desc VoxelDescs[] =
     { VOXEL_FLAGS_NO_MESH|VOXEL_FLAGS_TRANSPARENT, { } },
     { VOXEL_FLAGS_SOLID,    { 0, 0, 0, 0, 1, 2 } },
     { VOXEL_FLAGS_SOLID,    { 3, 3, 3, 3, 3, 3 } },
+    { VOXEL_FLAGS_SOLID,    { 4, 4, 4, 4, 4, 4 } },
+    { VOXEL_FLAGS_SOLID,    { 5, 5, 5, 5, 5, 5 } },
 };
 static constexpr u32 VoxelDescCount = CountOf(VoxelDescs);
 
