@@ -522,7 +522,7 @@ static void Game_LoadChunks(game_state* GameState)
 #if BLOKKER_TINY_RENDER_DISTANCE
     constexpr u32 MeshDistance = 1;
 #else
-    constexpr u32 MeshDistance = 16;
+    constexpr u32 MeshDistance = 8;
 #endif
     constexpr u32 GenerationDistance = MeshDistance + 1;
 
