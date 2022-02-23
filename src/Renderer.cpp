@@ -6,10 +6,6 @@
 
 #include <imgui/imgui.h>
 
-PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR_ = nullptr;
-PFN_vkCmdEndRenderingKHR   vkCmdEndRenderingKHR_   = nullptr;
-PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT_ = nullptr;
-
 static PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT_ = nullptr;
 #define vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT_
 
@@ -948,9 +944,6 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
     static const char* RequiredDeviceExtensions[] = 
     {
         "VK_KHR_swapchain",
-        "VK_KHR_dynamic_rendering",
-        "VK_EXT_extended_dynamic_state",
-        "VK_EXT_extended_dynamic_state2",
         //"VK_KHR_synchronization2",
     };
 
@@ -1241,7 +1234,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             
             if ((Flags & VK_QUEUE_TRANSFER_BIT) &&
                 (Flags & VK_QUEUE_COMPUTE_BIT) &&
-                (Flags & VK_QUEUE_SPARSE_BINDING_BIT))\
+                (Flags & VK_QUEUE_SPARSE_BINDING_BIT))
             {
                 Renderer->GraphicsFamilyIndex = i;
             }
@@ -1304,19 +1297,6 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
 
         vkGetDeviceQueue(Renderer->Device, Renderer->GraphicsFamilyIndex, 0, &Renderer->GraphicsQueue);
         vkGetDeviceQueue(Renderer->Device, Renderer->TransferFamilyIndex, 0, &Renderer->TransferQueue);
-    }
-
-    vkCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR)vkGetInstanceProcAddr(Renderer->Instance, "vkCmdBeginRenderingKHR");
-    vkCmdEndRenderingKHR   = (PFN_vkCmdEndRenderingKHR  )vkGetInstanceProcAddr(Renderer->Instance, "vkCmdEndRenderingKHR");
-    if (!vkCmdBeginRenderingKHR || !vkCmdEndRenderingKHR)
-    {
-        return false;
-    }
-
-    vkCmdSetPrimitiveTopologyEXT = (PFN_vkCmdSetPrimitiveTopologyEXT)vkGetInstanceProcAddr(Renderer->Instance, "vkCmdSetPrimitiveTopologyEXT");
-    if (!vkCmdSetPrimitiveTopologyEXT)
-    {
-        return false;
     }
 
     Renderer->Surface = CreateVulkanSurface(Renderer->Instance);
@@ -2246,9 +2226,9 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         };
         constexpr u32 FormatCount = CountOf(Formats);
         
-        VkPipelineRenderingCreateInfoKHR DynamicRendering = 
+        VkPipelineRenderingCreateInfo DynamicRendering = 
         {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
             .pNext = nullptr,
             .viewMask = 0,
             .colorAttachmentCount = FormatCount,
@@ -3371,7 +3351,7 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
         .pStencilAttachment = &StencilAttachment,
     };
 
-    vkCmdBeginRenderingKHR(Frame->CmdBuffer, &RenderingInfo);
+    vkCmdBeginRendering(Frame->CmdBuffer, &RenderingInfo);
 
     VkViewport Viewport = 
     {
@@ -3397,7 +3377,7 @@ void Renderer_EndRendering(renderer_frame_params* Frame)
 {
     TIMED_FUNCTION();
 
-    vkCmdEndRenderingKHR(Frame->CmdBuffer);
+    vkCmdEndRendering(Frame->CmdBuffer);
 
     VkImageMemoryBarrier EndBarriers[] = 
     {
@@ -3533,7 +3513,7 @@ void Renderer_BeginImmediate(renderer_frame_params* Frame)
     // TODO(boti): ^Verify
     vkCmdBindPipeline(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImPipeline);
 
-    vkCmdSetPrimitiveTopologyEXT(Frame->CmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    vkCmdSetPrimitiveTopology(Frame->CmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 }
 
 void Renderer_ImmediateBox(renderer_frame_params* Frame, aabb Box, u32 Color)
@@ -3665,7 +3645,7 @@ void Renderer_ImmediateRect2D(renderer_frame_params* Frame, vec2 p0, vec2 p1, u3
             0.0f, 0.0f, 1.0f, 0.0f,
             0.0f, 0.0f, 0.0f, 1.0f);
         vkCmdPushConstants(Frame->CmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &Transform);
-        vkCmdSetPrimitiveTopologyEXT(Frame->CmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+        vkCmdSetPrimitiveTopology(Frame->CmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
         vkCmdSetDepthBias(Frame->CmdBuffer, 0.0f, 0.0f, 0.0f);
         vkCmdDraw(Frame->CmdBuffer, VertexCount, 1, 0, 0);
     }

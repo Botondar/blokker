@@ -10,14 +10,6 @@
 #include <Chunk.hpp>
 #include <Camera.hpp>
 
-extern PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR_;
-extern PFN_vkCmdEndRenderingKHR   vkCmdEndRenderingKHR_;
-extern PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT_;
-
-#define vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR_
-#define vkCmdEndRenderingKHR vkCmdEndRenderingKHR_
-#define vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT_
-
 struct vulkan_renderer;
 
 struct vulkan_physical_device_desc 
