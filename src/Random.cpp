@@ -133,12 +133,35 @@ void Perlin3_Init(perlin3* Perlin, u32 Seed)
 
 f32 Perlin3_Sample(const perlin3* Perlin, vec3 P)
 {
+#define PERLIN_PRECOMPUTE_GDOTV 1
     vec3 LatticeP = Floor(P);
     vec3 P0 = P - LatticeP;
     vec3i Pi = (vec3i)LatticeP;
 
+    vec3 V[2][2][2] = 
+    {
+        // x = 0
+        {
+            // y = 0
+            { { P0.x, P0.y, P0.z }, { P0.x, P0.y, P0.z - 1.0f }, },
+                // y = 1
+            { { P0.x, P0.y - 1.0f, P0.z }, { P0.x, P0.y - 1.0f, P0.z - 1.0f }, },
+        },
+        // x = 1
+        {
+            // y = 0
+            { { P0.x - 1.0f, P0.y, P0.z }, { P0.x - 1.0f, P0.y, P0.z - 1.0f }, },
+                // y = 1
+            { { P0.x - 1.0f, P0.y - 1.0f, P0.z }, { P0.x - 1.0f, P0.y - 1.0f, P0.z - 1.0f }, },
+        },
+    };
+
     constexpr u32 Mod = perlin2::TableCount;
+#if PERLIN_PRECOMPUTE_GDOTV
+    f32 GdotV[2][2][2];
+#else
     vec3 G[2][2][2];
+#endif
     for (u32 x = 0; x < 2; x++)
     {
         for (u32 y = 0; y < 2; y++)
@@ -151,9 +174,27 @@ f32 Perlin3_Sample(const perlin3* Perlin, vec3 P)
                 u32 IndexX = Perlin->Permutation[((Pi.x + x) + IndexY) % Mod];
                 u32 Permutation = IndexX;
 
+                // Extend the table size to 16 so that we can bitwise AND instead of mod
                 switch (Permutation & 15u)
                 {
-                    // Extend the table size to 16 so that we can bitwise AND instead of mod
+#if PERLIN_PRECOMPUTE_GDOTV
+                    case 12:
+                    case 0:  GdotV[x][y][z] = +V[x][y][z].x + V[x][y][z].y; break;
+                    case 13:
+                    case 1:  GdotV[x][y][z] = -V[x][y][z].x + V[x][y][z].y; break;
+                    case 14:
+                    case 2:  GdotV[x][y][z] = +V[x][y][z].x - V[x][y][z].y; break;
+                    case 15:
+                    case 3:  GdotV[x][y][z] = -V[x][y][z].x - V[x][y][z].y; break;
+                    case 4:  GdotV[x][y][z] = +V[x][y][z].x + V[x][y][z].z; break;
+                    case 5:  GdotV[x][y][z] = -V[x][y][z].x + V[x][y][z].z; break;
+                    case 6:  GdotV[x][y][z] = +V[x][y][z].x - V[x][y][z].z; break;
+                    case 7:  GdotV[x][y][z] = -V[x][y][z].x - V[x][y][z].z; break;
+                    case 8:  GdotV[x][y][z] = +V[x][y][z].y + V[x][y][z].z; break;
+                    case 9:  GdotV[x][y][z] = -V[x][y][z].y + V[x][y][z].z; break;
+                    case 10: GdotV[x][y][z] = +V[x][y][z].y - V[x][y][z].z; break;
+                    case 11: GdotV[x][y][z] = -V[x][y][z].y - V[x][y][z].z; break;
+#else
                     case 12:
                     case 0:  G[x][y][z] = { 1.0f, 1.0f, 0.0f }; break;
                     case 13:
@@ -170,47 +211,25 @@ f32 Perlin3_Sample(const perlin3* Perlin, vec3 P)
                     case 9:  G[x][y][z] = { 0.0f, -1.0f, 1.0f }; break;
                     case 10: G[x][y][z] = { 0.0f, 1.0f, -1.0f }; break;
                     case 11: G[x][y][z] = { 0.0f, -1.0f, -1.0f }; break;
+#endif
                 }
             }
         }
     }
 
-    vec3 V[2][2][2] = 
-    {
-#if 1
-        // x = 0
-        {
-            // y = 0
-            { { P0.x, P0.y, P0.z }, { P0.x, P0.y, P0.z - 1.0f }, },
-            // y = 1
-            { { P0.x, P0.y - 1.0f, P0.z }, { P0.x, P0.y - 1.0f, P0.z - 1.0f }, },
-        },
-        // x = 1
-        {
-            // y = 0
-            { { P0.x - 1.0f, P0.y, P0.z }, { P0.x - 1.0f, P0.y, P0.z - 1.0f }, },
-            // y = 1
-            { { P0.x - 1.0f, P0.y - 1.0f, P0.z }, { P0.x - 1.0f, P0.y - 1.0f, P0.z - 1.0f }, },
-        },
-#else
-        { { P0.x,        P0.y }, { P0.x,        P0.y - 1.0f } },
-        { { P0.x - 1.0f, P0.y }, { P0.x - 1.0f, P0.y - 1.0f } }, 
-#endif
-    };
-
     vec3 Factor = { Fade5(P0.x), Fade5(P0.y), Fade5(P0.z) };
-#if 1
+
     f32 Result = Trilerp(
+#if PERLIN_PRECOMPUTE_GDOTV
+        GdotV[0][0][0], GdotV[1][0][0], GdotV[0][1][0], GdotV[1][1][0],
+        GdotV[0][0][1], GdotV[1][0][1], GdotV[0][1][1], GdotV[1][1][1],
+#else
         Dot(G[0][0][0], V[0][0][0]), Dot(G[1][0][0], V[1][0][0]), Dot(G[0][1][0], V[0][1][0]), Dot(G[1][1][0], V[1][1][0]),
         Dot(G[0][0][1], V[0][0][1]), Dot(G[1][0][1], V[1][0][1]), Dot(G[0][1][1], V[0][1][1]), Dot(G[1][1][1], V[1][1][1]),
-        Factor);
-#else
-    f32 Result = Blerp(
-        Dot(G[0][0], V[0][0]), Dot(G[1][0], V[1][0]),
-        Dot(G[0][1], V[0][1]), Dot(G[1][1], V[1][1]),
-        Factor);
 #endif
+        Factor);
     return Result;
+#undef PERLIN_PRECOMPUTE_GDOTV
 }
 
 f32 Perlin3_Octave(const perlin3* Perlin, vec3 P0, u32 OctaveCount, f32 Persistence, f32 Lacunarity)
