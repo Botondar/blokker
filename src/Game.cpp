@@ -704,6 +704,20 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
                 Game_ResetPlayer(GameState);
             }
 
+            ImGui::Checkbox("Debug camera", &GameState->Debug.IsDebugCameraEnabled);
+            ImGui::Text("DebugCameraP: { %.1f, %.1f, %.1f }", 
+                GameState->Debug.DebugCamera.P.x,
+                GameState->Debug.DebugCamera.P.y,
+                GameState->Debug.DebugCamera.P.z);
+            if (ImGui::Button("Teleport debug camera to player"))
+            {
+                GameState->Debug.DebugCamera = Player_GetCamera(&GameState->Player);
+            }
+            if (ImGui::Button("Teleport player to debug camera"))
+            {
+                GameState->Player.P = GameState->Debug.DebugCamera.P;
+            }
+
         }
         ImGui::End();
 
@@ -728,18 +742,82 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
 
     Game_LoadChunks(GameState);
 
-    Game_PreUpdatePlayer(GameState, Input);
-
-    constexpr f32 MinPhysicsResolution = 16.6667e-3f;
-
-    f32 RemainingTime = DeltaTime;
-    while (RemainingTime > 0.0f)
+    if (GameState->Debug.IsDebugCameraEnabled)
     {
-        f32 dt = Min(RemainingTime, MinPhysicsResolution);
-        Game_UpdatePlayer(GameState, Input, dt);
-        RemainingTime -= dt;
-    }
+        // Debug camera update
+        if (!Input->IsCursorEnabled)
+        {
+            const f32 dt = DeltaTime;
+            constexpr f32 CameraSpeed = 2.5e-3f;
 
+            camera* Camera = &GameState->Debug.DebugCamera;
+            Camera->Yaw -= Input->MouseDelta.x * CameraSpeed;
+            Camera->Pitch -= Input->MouseDelta.y * CameraSpeed;
+
+            constexpr f32 PitchClamp = PI - 1e-3;
+            Camera->Pitch = Clamp(Camera->Pitch, -PitchClamp, +PitchClamp);
+
+            mat4 CameraTransform = Camera->GetGlobalTransform();
+
+            vec3 Forward = { 0.0f, 1.0f, 0.0f };
+            vec3 Right = { 1.0f, 0.0f, 0.0f };
+            Forward = TransformDirection(CameraTransform, Forward);
+            Right = TransformDirection(CameraTransform, Right);
+
+            vec3 Up = { 0.0f, 0.0f, 1.0f };
+
+            f32 MoveSpeed = 3.0f;
+            if (Input->LeftShift)
+            {
+                MoveSpeed = 10.0f;
+            }
+            if (Input->LeftAlt)
+            {
+                MoveSpeed = 50.0f;
+            }
+
+            if (Input->Forward)
+            {
+                Camera->P += Forward * MoveSpeed * dt;
+            }
+            if (Input->Back)
+            {
+                Camera->P -= Forward * MoveSpeed * dt;
+            }
+            if (Input->Right)
+            {
+                Camera->P += Right * MoveSpeed * dt;
+            }
+            if (Input->Left)
+            {
+                Camera->P -= Right * MoveSpeed * dt;
+            }
+
+            if (Input->Space)
+            {
+                Camera->P += Up * MoveSpeed * dt;
+            }
+            if (Input->LeftControl)
+            {
+                Camera->P -= Up * MoveSpeed * dt;
+            }
+        }
+    }
+    else
+    {
+        // Player update
+        Game_PreUpdatePlayer(GameState, Input);
+
+        constexpr f32 MinPhysicsResolution = 16.6667e-3f;
+
+        f32 RemainingTime = DeltaTime;
+        while (RemainingTime > 0.0f)
+        {
+            f32 dt = Min(RemainingTime, MinPhysicsResolution);
+            Game_UpdatePlayer(GameState, Input, dt);
+            RemainingTime -= dt;
+        }
+    }
     // Chunk update
     // TODO: move this
     {
@@ -1182,7 +1260,10 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
 
     renderer_frame_params* FrameParams = Renderer_NewFrame(Renderer, GameState->FrameIndex);
 
-    FrameParams->Camera = Player_GetCamera(&GameState->Player);
+    FrameParams->Camera = 
+        GameState->Debug.IsDebugCameraEnabled ? 
+        GameState->Debug.DebugCamera : 
+        Player_GetCamera(&GameState->Player);
     FrameParams->ViewTransform = FrameParams->Camera.GetInverseTransform();
 
     const f32 AspectRatio = (f32)FrameParams->Renderer->SwapchainSize.width / (f32)FrameParams->Renderer->SwapchainSize.height;
@@ -1350,6 +1431,8 @@ bool Game_Initialize(game_state* GameState)
     GameState->Player.P = { (0.5f * CHUNK_DIM_X + 0.5f), 0.5f * CHUNK_DIM_Y + 0.5f, 100.0f };
     GameState->Player.CurrentFov = GameState->Player.DefaultFov;
     GameState->Player.TargetFov = GameState->Player.TargetFov;
+
+    GameState->Debug.DebugCamera.FieldOfView = ToRadians(90.0f);
 
     Perlin2_Init(&GameState->Perlin2, 0);
     Perlin3_Init(&GameState->Perlin3, 0);

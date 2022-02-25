@@ -97,6 +97,8 @@ struct game_state
     {
         bool IsDebuggingEnabled;
         bool IsHitboxEnabled;
+        bool IsDebugCameraEnabled;
+        camera DebugCamera;
     } Debug;
 
     u64 FrameIndex;
