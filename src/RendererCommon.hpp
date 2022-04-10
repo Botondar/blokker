@@ -43,12 +43,16 @@ constexpr packed_texcoord TEXCOORD_V_MASK = 0x1000u;
 constexpr u32 TEXCOORD_U_SHIFT = 11;
 constexpr u32 TEXCOORD_V_SHIFT = 12;
 
-inline constexpr packed_texcoord PackTexCoord(u32 u, u32 v, u32 Layer)
+constexpr u32 TEXCOORD_AO_MASK = 0xC000;
+constexpr u32 TEXCOORD_AO_SHIFT = 14;
+
+inline constexpr packed_texcoord PackTexCoord(u32 u, u32 v, u32 Layer, u32 AO = 0x00)
 {
     u32 Result = 
         ((u << TEXCOORD_U_SHIFT) & TEXCOORD_U_MASK) |
         ((v << TEXCOORD_V_SHIFT) & TEXCOORD_V_MASK) |
-        (Layer & TEXCOORD_LAYER_MASK);
+        (Layer & TEXCOORD_LAYER_MASK) |
+        ((AO << TEXCOORD_AO_SHIFT) & TEXCOORD_AO_MASK);
     return Result;
 }
 

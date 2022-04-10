@@ -34,14 +34,14 @@ f32 Perlin2_Sample(const perlin2* Perlin, vec2 P)
     vec2 P0 = P - LatticeP;
     vec2i Pi = { (s32)LatticeP.x, (s32)LatticeP.y };
 
-    constexpr u32 Mod = perlin2::TableCount;
+    constexpr u32 Mask = perlin2::TableCount - 1;
     vec2 G[2][2];
     for (u32 x = 0; x < 2; x++)
     {
         for (u32 y = 0; y < 2; y++)
         {
             // Hash
-            u32 Index = (((Pi.x + x) % Mod) + Perlin->Permutation[(Pi.y + y) % Mod]) % Mod;
+            u32 Index = (((Pi.x + x) & Mask) + Perlin->Permutation[(Pi.y + y) & Mask]) & Mask;
             u32 Permutation = Perlin->Permutation[Index];
 #if 0
             switch (Permutation & 3u)
@@ -156,7 +156,7 @@ f32 Perlin3_Sample(const perlin3* Perlin, vec3 P)
         },
     };
 
-    constexpr u32 Mod = perlin2::TableCount;
+    constexpr u32 Mask = perlin2::TableCount - 1;
 #if PERLIN_PRECOMPUTE_GDOTV
     f32 GdotV[2][2][2];
 #else
@@ -169,9 +169,9 @@ f32 Perlin3_Sample(const perlin3* Perlin, vec3 P)
             for (u32 z = 0; z < 2; z++)
             {
                 // Hash
-                u32 IndexZ = Perlin->Permutation[(Pi.z + z) % Mod];
-                u32 IndexY = Perlin->Permutation[((Pi.y + y) + IndexZ) % Mod];
-                u32 IndexX = Perlin->Permutation[((Pi.x + x) + IndexY) % Mod];
+                u32 IndexZ = Perlin->Permutation[(Pi.z + z) & Mask];
+                u32 IndexY = Perlin->Permutation[((Pi.y + y) + IndexZ) & Mask];
+                u32 IndexX = Perlin->Permutation[((Pi.x + x) + IndexY) & Mask];
                 u32 Permutation = IndexX;
 
                 // Extend the table size to 16 so that we can bitwise AND instead of mod

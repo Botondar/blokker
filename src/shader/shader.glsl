@@ -2,6 +2,7 @@
 
 // SHARED
 layout(location = 0) vs_out vec3 TexCoord;
+layout(location = 1) vs_out float AO;
 
 layout(push_constant) uniform PushConstants
 {
@@ -13,11 +14,16 @@ layout(push_constant) uniform PushConstants
 layout(location = ATTRIB_POS) in vec3 v_Position;
 layout(location = ATTRIB_TEXCOORD) in uint v_PackedTexCoord;
 
-vec3 UnpackTexCoord(in uint Packed)
+const float AOTable[4] = { 1.0, 0.75, 0.75, 0.5 };
+
+vec3 UnpackTexCoord(in uint Packed, out float AO)
 {
     uint Layer = Packed & 0x07FF;
     uint u = (Packed & 0x0800) >> 11;
     uint v = (Packed & 0x1000) >> 12;
+    uint AOType = (Packed & 0xC000) >> 14;
+
+    AO = AOTable[AOType];
 
     vec3 Result = vec3(float(u), float(v), float(Layer));
     return Result;
@@ -26,7 +32,7 @@ vec3 UnpackTexCoord(in uint Packed)
 void main()
 {
     gl_Position = Transform * vec4(v_Position, 1);
-    TexCoord = UnpackTexCoord(v_PackedTexCoord);
+    TexCoord = UnpackTexCoord(v_PackedTexCoord, AO);
 }
 
 #elif defined(FRAGMENT_SHADER)
@@ -38,7 +44,9 @@ layout(location = 0) out vec4 FS_Out0;
 
 void main()
 {
-    FS_Out0 = vec4((texture(sampler2DArray(Texture, Sampler), TexCoord).rgb), 1);
+    vec3 Color = texture(sampler2DArray(Texture, Sampler), TexCoord).rgb;
+    Color *= AO;
+    FS_Out0 = vec4(Color, 1);
 }
 
 #endif

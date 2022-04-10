@@ -56,12 +56,24 @@ static void Chunk_Generate(chunk* Chunk, game_state* GameState)
                 }
 
                 // Generate caves
-                constexpr f32 CaveScale = 1.0f / 12.0f;
-                f32 CaveSample = Perlin3_Octave(&GameState->Perlin3, CaveScale*P, 3, 0.5f, 2.0f);
+                constexpr f32 CaveScale = 1.0f / 16.0f;
+                f32 CaveSample = Perlin3_Octave(&GameState->Perlin3, CaveScale*P, 1, 0.5f, 2.0f);
+#if 0
+                CaveSample = Abs(CaveSample);
+                if (CaveSample < 0.01f)
+                {
+                    Chunk->Data->Voxels[z][y][x] = VOXEL_AIR;
+                }
+                else
+                {
+                    Chunk->Data->Voxels[z][y][x] = VOXEL_GROUND;
+                }
+#else
                 if (CaveSample < -0.5f && ((z < 80) || ((s32)z < Height)))
                 {
                     Chunk->Data->Voxels[z][y][x] = VOXEL_AIR;
                 }
+#endif
             }
         }
     }
@@ -148,8 +160,12 @@ static std::vector<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, game_stat
 
                     for (u32 Direction = DIRECTION_First; Direction < DIRECTION_Count; Direction++)
                     {
+                        // Delta in the direction of the surface normal
+                        vec3i NormalDelta = GlobalDirections[Direction];
+
                         bool IsOccluded = false;
-                        vec3i NeighborP = vec3i{(s32)x, (s32)y, (s32)z} + vec3i{Chunk->P.x * CHUNK_DIM_X, Chunk->P.y * CHUNK_DIM_Y, 0 } + GlobalDirections[Direction];
+                        vec3i WorldVoxelP = vec3i{(s32)x, (s32)y, (s32)z} + vec3i{Chunk->P.x * CHUNK_DIM_X, Chunk->P.y * CHUNK_DIM_Y, 0 };
+                        vec3i NeighborP = WorldVoxelP + NormalDelta;
                         u16 NeighborType = Game_GetVoxelType(GameState, NeighborP);
                         const voxel_desc* NeighborDesc = &VoxelDescs[NeighborType];
 
@@ -158,10 +174,72 @@ static std::vector<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, game_stat
                             for (u32 i = 0; i < 6; i++)
                             {
                                 vertex CubeVertex = Cube[Direction*DIRECTION_Count + i];
+
+                                // DeltaP in the plane of the normal to check neighboring voxels for ambient occlusion
+                                vec3i PlaneDeltaP[2];
+                                switch (Direction)
+                                {
+                                    case DIRECTION_POS_X:
+                                    case DIRECTION_NEG_X:
+                                        PlaneDeltaP[0] = { 0, 2 * ((s32)CubeVertex.P.y) - 1, 0 };
+                                        PlaneDeltaP[1] = { 0, 0, 2 * ((s32)CubeVertex.P.z) - 1 };
+                                        break;
+                                    case DIRECTION_POS_Y:
+                                    case DIRECTION_NEG_Y:
+                                        PlaneDeltaP[0] = { 2 * ((s32)CubeVertex.P.x) - 1, 0, 0 };
+                                        PlaneDeltaP[1] = { 0, 0, 2 * ((s32)CubeVertex.P.z) - 1 };
+                                        break;
+                                    case DIRECTION_POS_Z:
+                                    case DIRECTION_NEG_Z:
+                                        PlaneDeltaP[0] = { 2 * ((s32)CubeVertex.P.x) - 1, 0, 0, };
+                                        PlaneDeltaP[1] = { 0, 2 * ((s32)CubeVertex.P.y) - 1, 0 };
+                                        break;
+                                }
+
+                                // Calculate ambient occlusion
+                                // TODO: there's gotta be a smarter way to do this
+                                u32 AO = 0;
+                                {
+                                    u32 bSideAO[2];
+                                    for (u32 j = 0; j < 2; j++)
+                                    {
+                                        vec3i DeltaP = PlaneDeltaP[j] + NormalDelta;
+                                        u16 AONeighborType = Game_GetVoxelType(GameState, WorldVoxelP + DeltaP);
+                                        const voxel_desc* AONeighborDesc = &VoxelDescs[AONeighborType];
+                                        if (!(AONeighborDesc->Flags & VOXEL_FLAGS_NO_MESH) && !(AONeighborDesc->Flags & VOXEL_FLAGS_TRANSPARENT))
+                                        {
+                                            bSideAO[j] = 1;
+                                        }
+                                        else
+                                        {
+                                            bSideAO[j] = 0;
+                                        }
+                                    }
+
+                                    u32 bCornerAO = 0;
+                                    {
+                                        vec3i DeltaP = PlaneDeltaP[0] + PlaneDeltaP[1] + NormalDelta;
+                                        u16 AONeighborType = Game_GetVoxelType(GameState, WorldVoxelP + DeltaP);
+                                        const voxel_desc* AONeighborDesc = &VoxelDescs[AONeighborType];
+                                        if (!(AONeighborDesc->Flags & VOXEL_FLAGS_NO_MESH) && !(AONeighborDesc->Flags & VOXEL_FLAGS_TRANSPARENT))
+                                        {
+                                            bCornerAO = 1;
+                                        }
+                                    }
+
+                                    if (bSideAO[0] || bSideAO[1])
+                                    {
+                                        AO = 1 + bSideAO[0] + bSideAO[1];
+                                    }
+                                    else if (bCornerAO)
+                                    {
+                                        AO = 1;
+                                    }
+                                }
                                 terrain_vertex Vertex = 
                                 {
                                     .P = CubeVertex.P + VoxelP,
-                                    .TexCoord = PackTexCoord((u32)CubeVertex.UVW.x, (u32)CubeVertex.UVW.y, (u32)Desc->FaceTextureIndices[Direction]),
+                                    .TexCoord = PackTexCoord((u32)CubeVertex.UVW.x, (u32)CubeVertex.UVW.y, (u32)Desc->FaceTextureIndices[Direction], AO),
                                 };
                                 VertexList.push_back(Vertex);
                             }
