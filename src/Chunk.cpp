@@ -227,13 +227,13 @@ static std::vector<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, game_stat
                                         }
                                     }
 
-                                    if (bSideAO[0] || bSideAO[1])
+                                    if (bSideAO[0] && bSideAO[1])
                                     {
-                                        AO = 1 + bSideAO[0] + bSideAO[1];
+                                        AO = 3;
                                     }
-                                    else if (bCornerAO)
+                                    else
                                     {
-                                        AO = 1;
+                                        AO = bSideAO[0] + bSideAO[1] + bCornerAO;
                                     }
                                 }
                                 terrain_vertex Vertex = 

@@ -14,7 +14,7 @@ layout(push_constant) uniform PushConstants
 layout(location = ATTRIB_POS) in vec3 v_Position;
 layout(location = ATTRIB_TEXCOORD) in uint v_PackedTexCoord;
 
-const float AOTable[4] = { 1.0, 0.75, 0.75, 0.5 };
+const float AOTable[4] = { 1.0, 0.75, 0.5, 0.25 };
 
 vec3 UnpackTexCoord(in uint Packed, out float AO)
 {
