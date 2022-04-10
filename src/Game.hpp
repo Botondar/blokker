@@ -135,6 +135,8 @@ static chunk* Game_GetChunkFromP(game_state* GameState, vec2i P);
 static chunk* Game_GetChunkFromP(game_state* GameState, vec3i P, vec3i* RelP);
 static u16 Game_GetVoxelType(game_state* GameState, vec3i P);
 static bool Game_SetVoxelType(game_state* GameState, vec3i P, u16 Type);
+static voxel_neighborhood Game_GetVoxelNeighborhood(game_state* GameState, vec3i P);
+
 
 static bool Game_RayCast(
     game_state* GameState, 

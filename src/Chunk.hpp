@@ -133,6 +133,21 @@ struct chunk_render_data
     u64* LastRenderedInFrameIndex;
 };
 
+struct voxel_neighborhood
+{
+    u16 VoxelTypes[27];
+
+    u32 IndexFromP(vec3i P) const
+    {
+        vec3i Index3 = P + vec3i{ 1, 1, 1 };
+        u32 Index = 9*Index3.z + 3*Index3.y + Index3.x;
+        return Index;
+    };
+
+    u16& GetVoxel(vec3i P) { return VoxelTypes[IndexFromP(P)]; };
+    const u16& GetVoxel(vec3i P) const { return VoxelTypes[IndexFromP(P)]; };
+};
+
 static void Chunk_Generate(chunk* Chunk, game_state* GameState);
 static std::vector<terrain_vertex> Chunk_Mesh(const chunk* Chunk, game_state* GameState);
 

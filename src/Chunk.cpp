@@ -158,15 +158,16 @@ static std::vector<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, game_stat
                     };
                     constexpr u32 CubeVertexCount = CountOf(Cube);
 
+                    vec3i WorldVoxelP = vec3i{(s32)x, (s32)y, (s32)z} + vec3i{Chunk->P.x * CHUNK_DIM_X, Chunk->P.y * CHUNK_DIM_Y, 0 };
+                    voxel_neighborhood Neighborhood = Game_GetVoxelNeighborhood(GameState, WorldVoxelP);
+
                     for (u32 Direction = DIRECTION_First; Direction < DIRECTION_Count; Direction++)
                     {
                         // Delta in the direction of the surface normal
                         vec3i NormalDelta = GlobalDirections[Direction];
 
                         bool IsOccluded = false;
-                        vec3i WorldVoxelP = vec3i{(s32)x, (s32)y, (s32)z} + vec3i{Chunk->P.x * CHUNK_DIM_X, Chunk->P.y * CHUNK_DIM_Y, 0 };
-                        vec3i NeighborP = WorldVoxelP + NormalDelta;
-                        u16 NeighborType = Game_GetVoxelType(GameState, NeighborP);
+                        u16 NeighborType = Neighborhood.GetVoxel(NormalDelta);
                         const voxel_desc* NeighborDesc = &VoxelDescs[NeighborType];
 
                         if ((NeighborDesc->Flags & VOXEL_FLAGS_NO_MESH) || (NeighborDesc->Flags & VOXEL_FLAGS_TRANSPARENT))
@@ -197,14 +198,13 @@ static std::vector<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, game_stat
                                 }
 
                                 // Calculate ambient occlusion
-                                // TODO: there's gotta be a smarter way to do this
                                 u32 AO = 0;
                                 {
                                     u32 bSideAO[2];
                                     for (u32 j = 0; j < 2; j++)
                                     {
                                         vec3i DeltaP = PlaneDeltaP[j] + NormalDelta;
-                                        u16 AONeighborType = Game_GetVoxelType(GameState, WorldVoxelP + DeltaP);
+                                        u16 AONeighborType = Neighborhood.GetVoxel(DeltaP);
                                         const voxel_desc* AONeighborDesc = &VoxelDescs[AONeighborType];
                                         if (!(AONeighborDesc->Flags & VOXEL_FLAGS_NO_MESH) && !(AONeighborDesc->Flags & VOXEL_FLAGS_TRANSPARENT))
                                         {
@@ -219,7 +219,7 @@ static std::vector<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, game_stat
                                     u32 bCornerAO = 0;
                                     {
                                         vec3i DeltaP = PlaneDeltaP[0] + PlaneDeltaP[1] + NormalDelta;
-                                        u16 AONeighborType = Game_GetVoxelType(GameState, WorldVoxelP + DeltaP);
+                                        u16 AONeighborType = Neighborhood.GetVoxel(DeltaP);
                                         const voxel_desc* AONeighborDesc = &VoxelDescs[AONeighborType];
                                         if (!(AONeighborDesc->Flags & VOXEL_FLAGS_NO_MESH) && !(AONeighborDesc->Flags & VOXEL_FLAGS_TRANSPARENT))
                                         {

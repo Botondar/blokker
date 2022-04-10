@@ -239,6 +239,24 @@ static bool Game_SetVoxelType(game_state* GameState, vec3i P, u16 Type)
     return Result;
 }
 
+static voxel_neighborhood Game_GetVoxelNeighborhood(game_state* GameState, vec3i P)
+{
+    voxel_neighborhood Result = {};
+
+    for (s32 z = -1; z <= 1; z++)
+    {
+        for (s32 y = -1; y <= 1; y++)
+        {
+            for (s32 x = -1; x <= 1; x++)
+            {
+                Result.GetVoxel(vec3i{ x, y, z }) = Game_GetVoxelType(GameState, P + vec3i{ x, y, z });
+            }
+        }
+    }
+
+    return Result;
+}
+
 static chunk* Game_ReserveChunk(game_state* GameState, vec2i P)
 {
     chunk* Result = nullptr;
