@@ -2,7 +2,7 @@
 #include <Common.hpp>
 #include <Math.hpp>
 #include <Random.hpp>
-#include <RendererCommon.hpp>
+#include <Renderer/RendererCommon.hpp>
 
 // TODO: remove stl
 #include <vector>

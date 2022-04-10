@@ -14,7 +14,7 @@
 #include <Platform.hpp>
 
 #include <Common.hpp>
-#include <Renderer.hpp>
+#include <Renderer/Renderer.hpp>
 #include <Game.hpp>
 #include <Profiler.hpp>
 

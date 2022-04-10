@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Common.hpp>
+
 inline constexpr u32 PackColor(u32 R, u32 G, u32 B, u32 A = 0xFF)
 {
     R &= 0xFF;

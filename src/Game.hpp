@@ -3,7 +3,7 @@
 #include <Common.hpp>
 #include <Math.hpp>
 #include <Random.hpp>
-#include <Renderer.hpp>
+#include <Renderer/Renderer.hpp>
 #include <Camera.hpp>
 #include <Chunk.hpp>
 

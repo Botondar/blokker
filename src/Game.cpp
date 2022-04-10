@@ -6,7 +6,8 @@
 
 #include <vector>
 
-#include "Renderer.cpp"
+#include "Renderer/Renderer.cpp"
+
 #include "Math.cpp"
 #include "Random.cpp"
 #include "Common.cpp"
