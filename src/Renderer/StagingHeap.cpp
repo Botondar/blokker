@@ -3,7 +3,7 @@
 bool StagingHeap_Create(
     vulkan_staging_heap* Heap,
     u64 Size,
-    vulkan_renderer* Renderer)
+    renderer* Renderer)
 {
     assert(Heap);
 
@@ -23,12 +23,12 @@ bool StagingHeap_Create(
     };
 
     VkBuffer Buffer;
-    if (vkCreateBuffer(Renderer->Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
+    if (vkCreateBuffer(Renderer->RenderDevice.Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
     {
         VkMemoryRequirements MemoryRequirements = {};
-        vkGetBufferMemoryRequirements(Renderer->Device, Buffer, &MemoryRequirements);
+        vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
 
-        u32 MemoryTypes = Renderer->HostVisibleMemoryTypes & MemoryRequirements.memoryTypeBits;
+        u32 MemoryTypes = Renderer->RenderDevice.MemoryTypes.HostVisible & MemoryRequirements.memoryTypeBits;
         u32 MemoryTypeIndex;
         if (BitScanForward(&MemoryTypeIndex, MemoryTypes) != 0)
         {
@@ -41,9 +41,9 @@ bool StagingHeap_Create(
             };
 
             VkDeviceMemory Memory;
-            if (vkAllocateMemory(Renderer->Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+            if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
             {
-                if (vkBindBufferMemory(Renderer->Device, Buffer, Memory, 0) == VK_SUCCESS)
+                if (vkBindBufferMemory(Renderer->RenderDevice.Device, Buffer, Memory, 0) == VK_SUCCESS)
                 {
                     VkSemaphore Semaphores[64];
                     bool SemaphoreCreationFailed = false;
@@ -56,12 +56,12 @@ bool StagingHeap_Create(
                             .flags = 0,
                         };
 
-                        if (vkCreateSemaphore(Renderer->Device, &SemaphoreInfo, nullptr, Semaphores + i) != VK_SUCCESS)
+                        if (vkCreateSemaphore(Renderer->RenderDevice.Device, &SemaphoreInfo, nullptr, Semaphores + i) != VK_SUCCESS)
                         {
                             SemaphoreCreationFailed = true;
                             for (u32 j = ((i != 0) ? i - 1 : 0); j > 0; j--)
                             {
-                                vkDestroySemaphore(Renderer->Device, Semaphores[i], nullptr);
+                                vkDestroySemaphore(Renderer->RenderDevice.Device, Semaphores[i], nullptr);
                             }
                             break;
                         }
@@ -69,11 +69,11 @@ bool StagingHeap_Create(
 
                     if (!SemaphoreCreationFailed)
                     {
-                        Heap->Device = Renderer->Device;
+                        Heap->Device = Renderer->RenderDevice.Device;
                         
                         Heap->HeapSize = Size;
                         Heap->HeapOffset = 0;
-                        Heap->Granularity = Renderer->NonCoherentAtomSize;
+                        Heap->Granularity = Renderer->RenderDevice.NonCoherentAtomSize;
                         Heap->Heap = Memory;
                         Heap->Buffer = Buffer;
 
@@ -86,24 +86,24 @@ bool StagingHeap_Create(
                     }
                     else 
                     {
-                        vkFreeMemory(Renderer->Device, Memory, nullptr);
-                        vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
+                        vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                        vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
                     }
                 }
                 else
                 {
-                    vkFreeMemory(Renderer->Device, Memory, nullptr);
-                    vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
+                    vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                    vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
                 }
             }
             else 
             {
-                vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
+                vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
             }
         }
         else 
         {
-            vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
+            vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
         }
     }
 

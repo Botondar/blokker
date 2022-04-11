@@ -5,35 +5,22 @@
 
 #include <imgui/imgui.h>
 
+#include "RenderDevice.cpp"
 #include "RTHeap.cpp"
 #include "StagingHeap.cpp"
 #include "VertexBuffer.cpp"
 
-
-static PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT_ = nullptr;
-#define vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT_
-
-static VkBool32 VKAPI_PTR VulkanDebugCallback(
-    VkDebugUtilsMessageSeverityFlagBitsEXT Severity,
-    VkDebugUtilsMessageTypeFlagsEXT Type,
-    const VkDebugUtilsMessengerCallbackDataEXT* CallbackData,
-    void* UserData)
-{
-    DebugPrint("%s\n", CallbackData->pMessage);
-    return VK_FALSE;
-}
-
-bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
+bool Renderer_ResizeRenderTargets(renderer* Renderer)
 {
     assert(Renderer);
-    assert(Renderer->Device);
+    assert(Renderer->RenderDevice.Device);
 
     bool Result = false;
 
-    vkDeviceWaitIdle(Renderer->Device);
+    vkDeviceWaitIdle(Renderer->RenderDevice.Device);
 
     VkSurfaceCapabilitiesKHR SurfaceCaps = {};
-    if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(Renderer->PhysicalDevice, Renderer->Surface, &SurfaceCaps) == VK_SUCCESS)
+    if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(Renderer->RenderDevice.PhysicalDevice, Renderer->Surface, &SurfaceCaps) == VK_SUCCESS)
     {
         VkExtent2D CurrentExtent = SurfaceCaps.currentExtent;
 
@@ -70,21 +57,21 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
             .clipped = VK_FALSE,
             .oldSwapchain = OldSwapchain,
         };
-        if (vkCreateSwapchainKHR(Renderer->Device, &SwapchainInfo, nullptr, &Renderer->Swapchain) == VK_SUCCESS)
+        if (vkCreateSwapchainKHR(Renderer->RenderDevice.Device, &SwapchainInfo, nullptr, &Renderer->Swapchain) == VK_SUCCESS)
         {
             // NOTE: this is safe because we waited for device idle
-            vkDestroySwapchainKHR(Renderer->Device, OldSwapchain, nullptr);
+            vkDestroySwapchainKHR(Renderer->RenderDevice.Device, OldSwapchain, nullptr);
             Renderer->SwapchainSize = CurrentExtent;
 
             vkGetSwapchainImagesKHR(
-                Renderer->Device, 
+                Renderer->RenderDevice.Device, 
                 Renderer->Swapchain, 
                 &Renderer->SwapchainImageCount, 
                 nullptr);
             assert(Renderer->SwapchainImageCount <= 16);
 
             vkGetSwapchainImagesKHR(
-                Renderer->Device, 
+                Renderer->RenderDevice.Device, 
                 Renderer->Swapchain, 
                 &Renderer->SwapchainImageCount,
                 Renderer->SwapchainImages);
@@ -94,7 +81,7 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
             {
                 if (Renderer->SwapchainImageViews[i]) 
                 {
-                    vkDestroyImageView(Renderer->Device, Renderer->SwapchainImageViews[i], nullptr);
+                    vkDestroyImageView(Renderer->RenderDevice.Device, Renderer->SwapchainImageViews[i], nullptr);
                     Renderer->SwapchainImageViews[i] = VK_NULL_HANDLE;
                 }
 
@@ -117,7 +104,7 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
                     },
                 };
 
-                if (vkCreateImageView(Renderer->Device, &ImageViewInfo, nullptr, &Renderer->SwapchainImageViews[i]) == VK_SUCCESS)
+                if (vkCreateImageView(Renderer->RenderDevice.Device, &ImageViewInfo, nullptr, &Renderer->SwapchainImageViews[i]) == VK_SUCCESS)
                 {
                 }
                 else
@@ -137,7 +124,7 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
                 u32 RTMemoryRequirementCount = 0;
                 VkMemoryRequirements RTMemoryRequirements[RTMemoryRequirementsMaxCount];
                 
-                u32 RenderTargetSuitableMemoryTypes = Renderer->DeviceLocalMemoryTypes;
+                u32 RenderTargetSuitableMemoryTypes = Renderer->RenderDevice.MemoryTypes.DeviceLocal;
                 // Depth buffers
                 for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
                 {
@@ -159,7 +146,7 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
                         .pQueueFamilyIndices = nullptr,
                         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                     };
-                    if (vkCreateImage(Renderer->Device, &Info, nullptr, &Renderer->DepthBuffers[i]) == VK_SUCCESS)
+                    if (vkCreateImage(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->DepthBuffers[i]) == VK_SUCCESS)
                     {
                         Renderer->FrameParams[i].DepthBuffer = Renderer->DepthBuffers[i];
                     }
@@ -171,16 +158,16 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
                     }
                     
                     assert(RTMemoryRequirementCount < 32);
-                    vkGetImageMemoryRequirements(Renderer->Device, Renderer->DepthBuffers[i], &RTMemoryRequirements[RTMemoryRequirementCount++]);
+                    vkGetImageMemoryRequirements(Renderer->RenderDevice.Device, Renderer->DepthBuffers[i], &RTMemoryRequirements[RTMemoryRequirementCount++]);
                 }
 
                 if (!ImageCreationFailed)
                 {
                     if ((Renderer->RTHeap.Heap != VK_NULL_HANDLE) ||
                         (RTHeap_Create(&Renderer->RTHeap, 64*1024*1024,
-                                       Renderer->DeviceLocalMemoryTypes,
+                                       Renderer->RenderDevice.MemoryTypes.DeviceLocal,
                                        RTMemoryRequirementCount, RTMemoryRequirements,
-                                       Renderer->Device)))
+                                       Renderer->RenderDevice.Device)))
                     {
                         // Reset the RT heap
                         Renderer->RTHeap.HeapOffset = 0;
@@ -197,7 +184,7 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
                             
                             if (Renderer->DepthBufferViews[i] != VK_NULL_HANDLE)
                             {
-                                vkDestroyImageView(Renderer->Device, Renderer->DepthBufferViews[i], nullptr);
+                                vkDestroyImageView(Renderer->RenderDevice.Device, Renderer->DepthBufferViews[i], nullptr);
                                 Renderer->DepthBufferViews[i] = VK_NULL_HANDLE;
                             }
 
@@ -219,7 +206,7 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
                                     .layerCount = 1,
                                 },
                             };
-                            if (vkCreateImageView(Renderer->Device, &ViewInfo, nullptr, &Renderer->DepthBufferViews[i]) == VK_SUCCESS)
+                            if (vkCreateImageView(Renderer->RenderDevice.Device, &ViewInfo, nullptr, &Renderer->DepthBufferViews[i]) == VK_SUCCESS)
                             {
                                 Renderer->FrameParams[i].DepthBufferView = Renderer->DepthBufferViews[i];
                             }
@@ -244,10 +231,18 @@ bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer)
     return Result;
 }
 
-bool Renderer_Initialize(vulkan_renderer* Renderer)
+bool Renderer_Initialize(renderer* Renderer)
 {
     assert(Renderer);
-    memset(Renderer, 0, sizeof(vulkan_renderer));
+    memset(Renderer, 0, sizeof(renderer));
+#if 1
+
+    if (!CreateRenderDevice(&Renderer->RenderDevice))
+    {
+        return false;
+    }
+
+#else
     Renderer->GraphicsFamilyIndex = INVALID_INDEX_U32;
     Renderer->TransferFamilyIndex = INVALID_INDEX_U32;
 
@@ -634,16 +629,18 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         vkGetDeviceQueue(Renderer->Device, Renderer->GraphicsFamilyIndex, 0, &Renderer->GraphicsQueue);
         vkGetDeviceQueue(Renderer->Device, Renderer->TransferFamilyIndex, 0, &Renderer->TransferQueue);
     }
+#endif
 
-    Renderer->Surface = CreateVulkanSurface(Renderer->Instance);
+    Renderer->Surface = CreateVulkanSurface(Renderer->RenderDevice.Instance);
     if (Renderer->Surface == VK_NULL_HANDLE)
     {
         return false;
     }
 
+    VkResult Result = VK_SUCCESS;
     {
         VkSurfaceCapabilitiesKHR SurfaceCaps;
-        Result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(Renderer->PhysicalDevice, Renderer->Surface, &SurfaceCaps);
+        Result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(Renderer->RenderDevice.PhysicalDevice, Renderer->Surface, &SurfaceCaps);
         if (Result != VK_SUCCESS)
         {
             return false;
@@ -658,12 +655,12 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
         u32 SurfaceFormatCount = 0;
         VkSurfaceFormatKHR SurfaceFormats[64];
         {
-            vkGetPhysicalDeviceSurfaceFormatsKHR(Renderer->PhysicalDevice, Renderer->Surface, &SurfaceFormatCount, nullptr);
+            vkGetPhysicalDeviceSurfaceFormatsKHR(Renderer->RenderDevice.PhysicalDevice, Renderer->Surface, &SurfaceFormatCount, nullptr);
             if (SurfaceFormatCount > 64)
             {
                 return false;
             }
-            vkGetPhysicalDeviceSurfaceFormatsKHR(Renderer->PhysicalDevice, Renderer->Surface, &SurfaceFormatCount, SurfaceFormats);
+            vkGetPhysicalDeviceSurfaceFormatsKHR(Renderer->RenderDevice.PhysicalDevice, Renderer->Surface, &SurfaceFormatCount, SurfaceFormats);
         }
         
         // NOTE: the order of this array defines which formats are preferred over others
@@ -700,10 +697,10 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
             .pNext = nullptr,
             .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-            .queueFamilyIndex = Renderer->TransferFamilyIndex,
+            .queueFamilyIndex = Renderer->RenderDevice.TransferFamilyIndex,
         };
 
-        Result = vkCreateCommandPool(Renderer->Device, &CmdPoolInfo, nullptr, &Renderer->TransferCmdPool);
+        Result = vkCreateCommandPool(Renderer->RenderDevice.Device, &CmdPoolInfo, nullptr, &Renderer->TransferCmdPool);
         if (Result != VK_SUCCESS)
         {
             return false;
@@ -717,7 +714,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
             .commandBufferCount = 1,
         };
-        Result = vkAllocateCommandBuffers(Renderer->Device, &AllocInfo, &Renderer->TransferCmdBuffer);
+        Result = vkAllocateCommandBuffers(Renderer->RenderDevice.Device, &AllocInfo, &Renderer->TransferCmdBuffer);
         if (Result != VK_SUCCESS)
         {
             return false;
@@ -732,10 +729,10 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
                 .pNext = nullptr,
                 .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-                .queueFamilyIndex = Renderer->GraphicsFamilyIndex,
+                .queueFamilyIndex = Renderer->RenderDevice.GraphicsFamilyIndex,
             };
         
-            Result = vkCreateCommandPool(Renderer->Device, &Info, nullptr, &Renderer->FrameParams[i].CmdPool);
+            Result = vkCreateCommandPool(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->FrameParams[i].CmdPool);
             if (Result != VK_SUCCESS)
             {
                 return false;
@@ -751,7 +748,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
                 .commandBufferCount = 1,
             };
-            Result = vkAllocateCommandBuffers(Renderer->Device, &Info, &Renderer->FrameParams[i].CmdBuffer);
+            Result = vkAllocateCommandBuffers(Renderer->RenderDevice.Device, &Info, &Renderer->FrameParams[i].CmdBuffer);
             if (Result != VK_SUCCESS)
             {
                 return false;
@@ -766,7 +763,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .flags = VK_FENCE_CREATE_SIGNALED_BIT,
             };
 
-            Result = vkCreateFence(Renderer->Device, &Info, nullptr, &Renderer->FrameParams[i].RenderFinishedFence);
+            Result = vkCreateFence(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->FrameParams[i].RenderFinishedFence);
             if (Result != VK_SUCCESS)
             {
                 return false;
@@ -780,12 +777,12 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .flags = 0,
             };
 
-            Result = vkCreateSemaphore(Renderer->Device, &Info, nullptr, &Renderer->FrameParams[i].ImageAcquiredSemaphore);
+            Result = vkCreateSemaphore(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->FrameParams[i].ImageAcquiredSemaphore);
             if (Result != VK_SUCCESS)
             {
                 return false;
             }
-            Result = vkCreateSemaphore(Renderer->Device, &Info, nullptr, &Renderer->FrameParams[i].RenderFinishedSemaphore);
+            Result = vkCreateSemaphore(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->FrameParams[i].RenderFinishedSemaphore);
         }
     }
 
@@ -796,7 +793,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
     }
 
     // Vertex buffer
-    if (!VB_Create(&Renderer->VB, Renderer->DeviceLocalMemoryTypes, 1024*1024*1024, Renderer->Device))
+    if (!VB_Create(&Renderer->VB, Renderer->RenderDevice.MemoryTypes.DeviceLocal, 1024*1024*1024, Renderer->RenderDevice.Device))
     {
         return false;
     }
@@ -819,14 +816,14 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .pQueueFamilyIndices = nullptr,
         };
         VkBuffer Buffer;
-        if (vkCreateBuffer(Renderer->Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
+        if (vkCreateBuffer(Renderer->RenderDevice.Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
         {
             VkMemoryRequirements MemoryRequirements = {};
-            vkGetBufferMemoryRequirements(Renderer->Device, Buffer, &MemoryRequirements);
+            vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
 
             assert(MemoryRequirements.size == VertexStackSize);
 
-            u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->HostVisibleCoherentMemoryTypes;
+            u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.HostVisibleCoherent;
             u32 MemoryType = 0;
             if (BitScanForward(&MemoryType, MemoryTypes) != 0)
             {
@@ -839,13 +836,13 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 };
 
                 VkDeviceMemory Memory;
-                if (vkAllocateMemory(Renderer->Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+                if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
                 {
-                    if (vkBindBufferMemory(Renderer->Device, Buffer, Memory, 0) == VK_SUCCESS)
+                    if (vkBindBufferMemory(Renderer->RenderDevice.Device, Buffer, Memory, 0) == VK_SUCCESS)
                     {
                         // NOTE(boti): persistent mapping
                         void* Mapping = nullptr;
-                        if (vkMapMemory(Renderer->Device, Memory, 0, VK_WHOLE_SIZE, 0, &Mapping) == VK_SUCCESS)
+                        if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, VK_WHOLE_SIZE, 0, &Mapping) == VK_SUCCESS)
                         {
                             Frame->VertexStack.Memory = Memory;
                             Frame->VertexStack.Buffer = Buffer;
@@ -855,27 +852,27 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                         }
                         else
                         {
-                            vkFreeMemory(Renderer->Device, Memory, nullptr);
-                            vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
+                            vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                            vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
                             return false;
                         }
                     }
                     else
                     {
-                        vkFreeMemory(Renderer->Device, Memory, nullptr);
-                        vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
+                        vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                        vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
                         return false;
                     }
                 }
                 else
                 {
-                    vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
+                    vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
                     return false;
                 }
             }
             else
             {
-                vkDestroyBuffer(Renderer->Device, Buffer, nullptr);
+                vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
                 return false;
             }
         }
@@ -911,7 +908,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .unnormalizedCoordinates = VK_FALSE,
             };
             VkSampler Sampler = VK_NULL_HANDLE;
-            if (vkCreateSampler(Renderer->Device, &SamplerInfo, nullptr, &Sampler) == VK_SUCCESS)
+            if (vkCreateSampler(Renderer->RenderDevice.Device, &SamplerInfo, nullptr, &Sampler) == VK_SUCCESS)
             {
                 Renderer->Sampler = Sampler;
             }
@@ -951,7 +948,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .pBindings = Bindings,
             };
             VkDescriptorSetLayout Layout = VK_NULL_HANDLE;
-            if (vkCreateDescriptorSetLayout(Renderer->Device, &CreateInfo, nullptr, &Layout) == VK_SUCCESS)
+            if (vkCreateDescriptorSetLayout(Renderer->RenderDevice.Device, &CreateInfo, nullptr, &Layout) == VK_SUCCESS)
             {
                 Renderer->DescriptorSetLayout = Layout;
             }
@@ -981,7 +978,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             };
 
             VkDescriptorPool Pool = VK_NULL_HANDLE;
-            if (vkCreateDescriptorPool(Renderer->Device, &PoolInfo, nullptr, &Pool) == VK_SUCCESS)
+            if (vkCreateDescriptorPool(Renderer->RenderDevice.Device, &PoolInfo, nullptr, &Pool) == VK_SUCCESS)
             {
                 VkDescriptorSetAllocateInfo AllocInfo =
                 {
@@ -993,14 +990,14 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 };
 
                 VkDescriptorSet DescriptorSet = VK_NULL_HANDLE;
-                if (vkAllocateDescriptorSets(Renderer->Device, &AllocInfo, &DescriptorSet) == VK_SUCCESS)
+                if (vkAllocateDescriptorSets(Renderer->RenderDevice.Device, &AllocInfo, &DescriptorSet) == VK_SUCCESS)
                 {
                     Renderer->DescriptorPool = Pool;
                     Renderer->DescriptorSet = DescriptorSet;
                 }
                 else
                 {
-                    vkDestroyDescriptorPool(Renderer->Device, Pool, nullptr);
+                    vkDestroyDescriptorPool(Renderer->RenderDevice.Device, Pool, nullptr);
                     return false;
                 }
             }
@@ -1181,13 +1178,13 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             };
 
             VkImage Image = VK_NULL_HANDLE;
-            if (vkCreateImage(Renderer->Device, &CreateInfo, nullptr, &Image) == VK_SUCCESS)
+            if (vkCreateImage(Renderer->RenderDevice.Device, &CreateInfo, nullptr, &Image) == VK_SUCCESS)
             {
                 VkMemoryRequirements MemoryRequirements = {};
-                vkGetImageMemoryRequirements(Renderer->Device, Image, &MemoryRequirements);
+                vkGetImageMemoryRequirements(Renderer->RenderDevice.Device, Image, &MemoryRequirements);
 
                 u32 MemoryType = 0;
-                if (BitScanForward(&MemoryType, MemoryRequirements.memoryTypeBits & Renderer->DeviceLocalMemoryTypes))
+                if (BitScanForward(&MemoryType, MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.DeviceLocal))
                 {
                     VkMemoryAllocateInfo AllocInfo = 
                     {
@@ -1198,12 +1195,12 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                     };
 
                     VkDeviceMemory Memory;
-                    if (vkAllocateMemory(Renderer->Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+                    if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
                     {
-                        if (vkBindImageMemory(Renderer->Device, Image, Memory, 0) == VK_SUCCESS)
+                        if (vkBindImageMemory(Renderer->RenderDevice.Device, Image, Memory, 0) == VK_SUCCESS)
                         {
                             if (StagingHeap_CopyImage(&Renderer->StagingHeap, 
-                                Renderer->TransferQueue,
+                                Renderer->RenderDevice.TransferQueue,
                                 Renderer->TransferCmdBuffer,
                                 Image, 
                                 TexWidth, TexHeight, TexMipCount, TextureCount,
@@ -1230,7 +1227,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                                 };
 
                                 VkImageView ImageView = VK_NULL_HANDLE;
-                                if (vkCreateImageView(Renderer->Device, &ViewInfo, nullptr, &ImageView) == VK_SUCCESS)
+                                if (vkCreateImageView(Renderer->RenderDevice.Device, &ViewInfo, nullptr, &ImageView) == VK_SUCCESS)
                                 {
                                     VkDescriptorImageInfo ImageInfo = 
                                     {
@@ -1251,7 +1248,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                                         .pBufferInfo = nullptr,
                                         .pTexelBufferView = nullptr,
                                     };
-                                    vkUpdateDescriptorSets(Renderer->Device, 1, &DescriptorWrite, 0, nullptr);
+                                    vkUpdateDescriptorSets(Renderer->RenderDevice.Device, 1, &DescriptorWrite, 0, nullptr);
 
                                     Renderer->Tex = Image;
                                     Renderer->TexView = ImageView;
@@ -1259,35 +1256,35 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                                 }
                                 else
                                 {
-                                    vkFreeMemory(Renderer->Device, Memory, nullptr);
-                                    vkDestroyImage(Renderer->Device, Image, nullptr);
+                                    vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                                    vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
                                     return false;
                                 }
 
                             }
                             else
                             {
-                                vkFreeMemory(Renderer->Device, Memory, nullptr);
-                                vkDestroyImage(Renderer->Device, Image, nullptr);
+                                vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                                vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
                                 return false;
                             }
                         }
                         else
                         {
-                            vkFreeMemory(Renderer->Device, Memory, nullptr);
-                            vkDestroyImage(Renderer->Device, Image, nullptr);
+                            vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                            vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
                             return false;
                         }
                     }
                     else
                     {
-                        vkDestroyImage(Renderer->Device, Image, nullptr);
+                        vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
                         return false;
                     }
                 }
                 else
                 {
-                    vkDestroyImage(Renderer->Device, Image, nullptr);
+                    vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
                     return false;
                 }
             }
@@ -1321,7 +1318,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .pPushConstantRanges = &PushConstants,
             };
             
-            Result = vkCreatePipelineLayout(Renderer->Device, &Info, nullptr, &Renderer->PipelineLayout);
+            Result = vkCreatePipelineLayout(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->PipelineLayout);
             if (Result != VK_SUCCESS)
             {
                 return false;
@@ -1353,12 +1350,12 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .pCode = (u32*)FSBin.Data,
             };
             
-            Result = vkCreateShaderModule(Renderer->Device, &VSInfo, nullptr, &VSModule);
+            Result = vkCreateShaderModule(Renderer->RenderDevice.Device, &VSInfo, nullptr, &VSModule);
             if (Result != VK_SUCCESS)
             {
                 return false;
             }
-            Result = vkCreateShaderModule(Renderer->Device, &FSInfo, nullptr, &FSModule);
+            Result = vkCreateShaderModule(Renderer->RenderDevice.Device, &FSInfo, nullptr, &FSModule);
             if (Result != VK_SUCCESS)
             {
                 return false;
@@ -1596,14 +1593,14 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .basePipelineIndex = 0,
         };
         
-        Result = vkCreateGraphicsPipelines(Renderer->Device, VK_NULL_HANDLE, 1, &Info, nullptr, &Renderer->Pipeline);
+        Result = vkCreateGraphicsPipelines(Renderer->RenderDevice.Device, VK_NULL_HANDLE, 1, &Info, nullptr, &Renderer->Pipeline);
         if (Result != VK_SUCCESS)
         {
             return false;
         }
 
-        vkDestroyShaderModule(Renderer->Device, VSModule, nullptr);
-        vkDestroyShaderModule(Renderer->Device, FSModule, nullptr);
+        vkDestroyShaderModule(Renderer->RenderDevice.Device, VSModule, nullptr);
+        vkDestroyShaderModule(Renderer->RenderDevice.Device, FSModule, nullptr);
     }
 
     // ImGui pipeline
@@ -1633,7 +1630,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             };
 
             VkSampler Sampler;
-            if (vkCreateSampler(Renderer->Device, &SamplerInfo, nullptr, &Sampler) == VK_SUCCESS)
+            if (vkCreateSampler(Renderer->RenderDevice.Device, &SamplerInfo, nullptr, &Sampler) == VK_SUCCESS)
             {
                 Renderer->ImGuiSampler = Sampler;
             }
@@ -1665,7 +1662,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .pBindings = &Binding,
             };
             VkDescriptorSetLayout SetLayout;
-            if (vkCreateDescriptorSetLayout(Renderer->Device, &SetLayoutInfo, nullptr, &SetLayout) == VK_SUCCESS)
+            if (vkCreateDescriptorSetLayout(Renderer->RenderDevice.Device, &SetLayoutInfo, nullptr, &SetLayout) == VK_SUCCESS)
             {
                 Renderer->ImGuiSetLayout = SetLayout;
             }
@@ -1690,7 +1687,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .pPoolSizes = &PoolSize,
             };
             VkDescriptorPool Pool;
-            if (vkCreateDescriptorPool(Renderer->Device, &PoolInfo, nullptr, &Pool) == VK_SUCCESS)
+            if (vkCreateDescriptorPool(Renderer->RenderDevice.Device, &PoolInfo, nullptr, &Pool) == VK_SUCCESS)
             {
                 VkDescriptorSetAllocateInfo AllocInfo = 
                 {
@@ -1701,7 +1698,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                     .pSetLayouts = &Renderer->ImGuiSetLayout,
                 };
                 VkDescriptorSet DescriptorSet;
-                if (vkAllocateDescriptorSets(Renderer->Device, &AllocInfo, &DescriptorSet) == VK_SUCCESS)
+                if (vkAllocateDescriptorSets(Renderer->RenderDevice.Device, &AllocInfo, &DescriptorSet) == VK_SUCCESS)
                 {
                     Renderer->ImGuiDescriptorPool = Pool;
                     Renderer->ImGuiDescriptorSet = DescriptorSet;
@@ -1736,7 +1733,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .pPushConstantRanges = &PushConstants,
             };
             
-            Result = vkCreatePipelineLayout(Renderer->Device, &Info, nullptr, &Renderer->ImGuiPipelineLayout);
+            Result = vkCreatePipelineLayout(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->ImGuiPipelineLayout);
             if (Result != VK_SUCCESS)
             {
                 return false;
@@ -1768,12 +1765,12 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .pCode = (u32*)FSBin.Data,
             };
             
-            Result = vkCreateShaderModule(Renderer->Device, &VSInfo, nullptr, &VSModule);
+            Result = vkCreateShaderModule(Renderer->RenderDevice.Device, &VSInfo, nullptr, &VSModule);
             if (Result != VK_SUCCESS)
             {
                 return false;
             }
-            Result = vkCreateShaderModule(Renderer->Device, &FSInfo, nullptr, &FSModule);
+            Result = vkCreateShaderModule(Renderer->RenderDevice.Device, &FSInfo, nullptr, &FSModule);
             if (Result != VK_SUCCESS)
             {
                 return false;
@@ -2018,14 +2015,14 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .basePipelineIndex = 0,
         };
         
-        Result = vkCreateGraphicsPipelines(Renderer->Device, VK_NULL_HANDLE, 1, &Info, nullptr, &Renderer->ImGuiPipeline);
+        Result = vkCreateGraphicsPipelines(Renderer->RenderDevice.Device, VK_NULL_HANDLE, 1, &Info, nullptr, &Renderer->ImGuiPipeline);
         if (Result != VK_SUCCESS)
         {
             return false;
         }
 
-        vkDestroyShaderModule(Renderer->Device, VSModule, nullptr);
-        vkDestroyShaderModule(Renderer->Device, FSModule, nullptr);
+        vkDestroyShaderModule(Renderer->RenderDevice.Device, VSModule, nullptr);
+        vkDestroyShaderModule(Renderer->RenderDevice.Device, FSModule, nullptr);
     }
 
     // ImPipeline
@@ -2049,7 +2046,7 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .pPushConstantRanges = &PushConstants,
             };
             
-            Result = vkCreatePipelineLayout(Renderer->Device, &Info, nullptr, &Renderer->ImPipelineLayout);
+            Result = vkCreatePipelineLayout(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->ImPipelineLayout);
             if (Result != VK_SUCCESS)
             {
                 return false;
@@ -2081,12 +2078,12 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
                 .pCode = (u32*)FSBin.Data,
             };
             
-            Result = vkCreateShaderModule(Renderer->Device, &VSInfo, nullptr, &VSModule);
+            Result = vkCreateShaderModule(Renderer->RenderDevice.Device, &VSInfo, nullptr, &VSModule);
             if (Result != VK_SUCCESS)
             {
                 return false;
             }
-            Result = vkCreateShaderModule(Renderer->Device, &FSInfo, nullptr, &FSModule);
+            Result = vkCreateShaderModule(Renderer->RenderDevice.Device, &FSInfo, nullptr, &FSModule);
             if (Result != VK_SUCCESS)
             {
                 return false;
@@ -2335,20 +2332,20 @@ bool Renderer_Initialize(vulkan_renderer* Renderer)
             .basePipelineIndex = 0,
         };
         
-        Result = vkCreateGraphicsPipelines(Renderer->Device, VK_NULL_HANDLE, 1, &Info, nullptr, &Renderer->ImPipeline);
+        Result = vkCreateGraphicsPipelines(Renderer->RenderDevice.Device, VK_NULL_HANDLE, 1, &Info, nullptr, &Renderer->ImPipeline);
         if (Result != VK_SUCCESS)
         {
             return false;
         }
 
-        vkDestroyShaderModule(Renderer->Device, VSModule, nullptr);
-        vkDestroyShaderModule(Renderer->Device, FSModule, nullptr);
+        vkDestroyShaderModule(Renderer->RenderDevice.Device, VSModule, nullptr);
+        vkDestroyShaderModule(Renderer->RenderDevice.Device, FSModule, nullptr);
     }
 
     return true;
 }
 
-bool Renderer_CreateImGuiTexture(vulkan_renderer* Renderer, u32 Width, u32 Height, const u8* Data)
+bool Renderer_CreateImGuiTexture(renderer* Renderer, u32 Width, u32 Height, const u8* Data)
 {
     assert(Renderer);
     bool Result = false;
@@ -2372,12 +2369,12 @@ bool Renderer_CreateImGuiTexture(vulkan_renderer* Renderer, u32 Width, u32 Heigh
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
     VkImage Image;
-    if (vkCreateImage(Renderer->Device, &ImageInfo, nullptr, &Image) == VK_SUCCESS)
+    if (vkCreateImage(Renderer->RenderDevice.Device, &ImageInfo, nullptr, &Image) == VK_SUCCESS)
     {
         VkMemoryRequirements MemoryRequirements = {};
-        vkGetImageMemoryRequirements(Renderer->Device, Image, &MemoryRequirements);
+        vkGetImageMemoryRequirements(Renderer->RenderDevice.Device, Image, &MemoryRequirements);
 
-        u32 MemoryTypes = Renderer->DeviceLocalMemoryTypes & MemoryRequirements.memoryTypeBits;
+        u32 MemoryTypes = Renderer->RenderDevice.MemoryTypes.DeviceLocal & MemoryRequirements.memoryTypeBits;
         u32 MemoryType = 0;
         if (BitScanForward(&MemoryType, MemoryTypes) != 0)
         {
@@ -2389,9 +2386,9 @@ bool Renderer_CreateImGuiTexture(vulkan_renderer* Renderer, u32 Width, u32 Heigh
                 .memoryTypeIndex = MemoryType,
             };
             VkDeviceMemory Memory;
-            if (vkAllocateMemory(Renderer->Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+            if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
             {
-                if (vkBindImageMemory(Renderer->Device, Image, Memory, 0) == VK_SUCCESS)
+                if (vkBindImageMemory(Renderer->RenderDevice.Device, Image, Memory, 0) == VK_SUCCESS)
                 {
                     VkImageViewCreateInfo ViewInfo = 
                     {
@@ -2420,14 +2417,14 @@ bool Renderer_CreateImGuiTexture(vulkan_renderer* Renderer, u32 Width, u32 Heigh
 
                     if (StagingHeap_CopyImage(
                             &Renderer->StagingHeap, 
-                            Renderer->TransferQueue, 
+                            Renderer->RenderDevice.TransferQueue, 
                             Renderer->TransferCmdBuffer, 
                             Image,
                             Width, Height, 1, 1, VK_FORMAT_R8_UNORM,
                             Data))
                         {
                             VkImageView ImageView;
-                            if (vkCreateImageView(Renderer->Device, &ViewInfo, nullptr, &ImageView) == VK_SUCCESS)
+                            if (vkCreateImageView(Renderer->RenderDevice.Device, &ViewInfo, nullptr, &ImageView) == VK_SUCCESS)
                             {
                                 VkDescriptorImageInfo DescriptorImageInfo = 
                                 {
@@ -2448,7 +2445,7 @@ bool Renderer_CreateImGuiTexture(vulkan_renderer* Renderer, u32 Width, u32 Heigh
                                     .pBufferInfo = nullptr,
                                     .pTexelBufferView = nullptr,
                                 };
-                                vkUpdateDescriptorSets(Renderer->Device, 1, &DescriptorWrite, 0, nullptr);
+                                vkUpdateDescriptorSets(Renderer->RenderDevice.Device, 1, &DescriptorWrite, 0, nullptr);
 
                                 Renderer->ImGuiTex = Image;
                                 Renderer->ImGuiTexMemory = Memory;
@@ -2457,37 +2454,37 @@ bool Renderer_CreateImGuiTexture(vulkan_renderer* Renderer, u32 Width, u32 Heigh
                             }
                             else
                             {
-                                vkFreeMemory(Renderer->Device, Memory, nullptr);
-                                vkDestroyImage(Renderer->Device, Image, nullptr);
+                                vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                                vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
                             }
                         }
                         else
                         {
-                            vkFreeMemory(Renderer->Device, Memory, nullptr);
-                            vkDestroyImage(Renderer->Device, Image, nullptr);
+                            vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                            vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
                         }
                 }
                 else
                 {
-                    vkFreeMemory(Renderer->Device, Memory, nullptr);
-                    vkDestroyImage(Renderer->Device, Image, nullptr);
+                    vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                    vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
                 }
             }
             else
             {
-                vkDestroyImage(Renderer->Device, Image, nullptr);
+                vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
             }
         }
         else
         {
-            vkDestroyImage(Renderer->Device, Image, nullptr);
+            vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
         }
     }
 
     return Result;
 }
 
-renderer_frame_params* Renderer_NewFrame(vulkan_renderer* Renderer, u64 FrameIndex)
+renderer_frame_params* Renderer_NewFrame(renderer* Renderer, u64 FrameIndex)
 {
     TIMED_FUNCTION();
 
@@ -2504,12 +2501,12 @@ renderer_frame_params* Renderer_NewFrame(vulkan_renderer* Renderer, u64 FrameInd
     {
         TIMED_BLOCK("WaitForPreviousFrames");
         
-        vkWaitForFences(Renderer->Device, 1, &Frame->RenderFinishedFence, VK_TRUE, UINT64_MAX);
-        vkResetFences(Renderer->Device, 1, &Frame->RenderFinishedFence);
+        vkWaitForFences(Renderer->RenderDevice.Device, 1, &Frame->RenderFinishedFence, VK_TRUE, UINT64_MAX);
+        vkResetFences(Renderer->RenderDevice.Device, 1, &Frame->RenderFinishedFence);
     }
 
     VkResult Result = vkAcquireNextImageKHR(
-        Renderer->Device, Renderer->Swapchain, 
+        Renderer->RenderDevice.Device, Renderer->Swapchain, 
         0, 
         Frame->ImageAcquiredSemaphore,
         nullptr, 
@@ -2523,11 +2520,11 @@ renderer_frame_params* Renderer_NewFrame(vulkan_renderer* Renderer, u64 FrameInd
     Frame->SwapchainImage = Renderer->SwapchainImages[Frame->SwapchainImageIndex];
     Frame->SwapchainImageView = Renderer->SwapchainImageViews[Frame->SwapchainImageIndex];
 
-    vkResetCommandPool(Renderer->Device, Frame->CmdPool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
+    vkResetCommandPool(Renderer->RenderDevice.Device, Frame->CmdPool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
     return Frame;
 }
 
-void Renderer_SubmitFrame(vulkan_renderer* Renderer, renderer_frame_params* Frame)
+void Renderer_SubmitFrame(renderer* Renderer, renderer_frame_params* Frame)
 {
     TIMED_FUNCTION();
 
@@ -2548,7 +2545,7 @@ void Renderer_SubmitFrame(vulkan_renderer* Renderer, renderer_frame_params* Fram
             .pSignalSemaphores = &Frame->RenderFinishedSemaphore,
         };
 
-        vkQueueSubmit(Renderer->GraphicsQueue, 1, &SubmitInfo, Frame->RenderFinishedFence);
+        vkQueueSubmit(Renderer->RenderDevice.GraphicsQueue, 1, &SubmitInfo, Frame->RenderFinishedFence);
     }
 
     {
@@ -2566,7 +2563,7 @@ void Renderer_SubmitFrame(vulkan_renderer* Renderer, renderer_frame_params* Fram
             .pResults = nullptr,
         };
 
-        vkQueuePresentKHR(Renderer->GraphicsQueue, &PresentInfo);
+        vkQueuePresentKHR(Renderer->RenderDevice.GraphicsQueue, &PresentInfo);
     }
 }
 

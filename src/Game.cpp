@@ -541,7 +541,7 @@ static void Game_LoadChunks(game_state* GameState)
 #if BLOKKER_TINY_RENDER_DISTANCE
     constexpr u32 MeshDistance = 1;
 #else
-    constexpr u32 MeshDistance = 8;
+    constexpr u32 MeshDistance = 24;
 #endif
     constexpr u32 GenerationDistance = MeshDistance + 1;
 
@@ -647,7 +647,7 @@ static void Game_LoadChunks(game_state* GameState)
 
                     if (StagingHeap_Copy(
                         &GameState->Renderer->StagingHeap,
-                        GameState->Renderer->TransferQueue,
+                        GameState->Renderer->RenderDevice.TransferQueue,
                         GameState->Renderer->TransferCmdBuffer,
                         Offset, GameState->Renderer->VB.Buffer,
                         Size, VertexData.data()))
@@ -879,7 +879,7 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
 
                     u64 MemorySize = VertexData.size() * sizeof(terrain_vertex);
                     if (StagingHeap_Copy(&GameState->Renderer->StagingHeap,
-                        GameState->Renderer->TransferQueue,
+                        GameState->Renderer->RenderDevice.TransferQueue,
                         GameState->Renderer->TransferCmdBuffer,
                         Offset, GameState->Renderer->VB.Buffer,
                         MemorySize, VertexData.data()))
@@ -1261,7 +1261,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
 {
     TIMED_FUNCTION();
 
-    vulkan_renderer* Renderer = GameState->Renderer;
+    renderer* Renderer = GameState->Renderer;
     if (GameState->IsMinimized)
     {
         // HACK: Call ImGui rendering here so that we don't crash on the next ImGui::NewFrame();

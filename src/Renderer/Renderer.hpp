@@ -1,7 +1,5 @@
 #pragma once
 
-#include <vulkan/vulkan.h>
-
 #include <Common.hpp>
 #include <Math.hpp>
 #include <Shapes.hpp>
@@ -9,22 +7,14 @@
 #include <Chunk.hpp>
 #include <Camera.hpp>
 
+#include <Renderer/RenderDevice.hpp>
+
 #include <Renderer/RendererCommon.hpp>
 #include <Renderer/RTHeap.hpp>
 #include <Renderer/StagingHeap.hpp>
 #include <Renderer/VertexBuffer.hpp>
 
-struct vulkan_renderer;
-
-struct vulkan_physical_device_desc 
-{
-    static constexpr u32 MaxQueueFamilyCount = 8;
-    
-    u32 QueueFamilyCount;
-    VkQueueFamilyProperties QueueFamilyProps[MaxQueueFamilyCount];
-    VkPhysicalDeviceProperties Props;
-    VkPhysicalDeviceMemoryProperties MemoryProps;
-};
+struct renderer;
 
 struct renderer_frame_params
 {
@@ -61,13 +51,16 @@ struct renderer_frame_params
         void* Mapping;
     } VertexStack;
 
-    vulkan_renderer* Renderer;
+    renderer* Renderer;
 };
 
 u64 Frame_PushToStack(renderer_frame_params* Frame, u64 Alignment, const void* Data, u64 Size);
 
-struct vulkan_renderer 
+struct renderer 
 {
+#if 1
+    vulkan_render_device RenderDevice;
+#else
     VkInstance Instance;
     VkDebugUtilsMessengerEXT DebugMessenger;
 
@@ -85,6 +78,7 @@ struct vulkan_renderer
     u32 TransferFamilyIndex;
     VkQueue GraphicsQueue;
     VkQueue TransferQueue;
+#endif
 
     VkSurfaceFormatKHR SurfaceFormat;
     VkSurfaceKHR Surface;
@@ -143,13 +137,13 @@ struct vulkan_renderer
     static constexpr u32 ImGuiTextureID = 1;
 };
 
-bool Renderer_ResizeRenderTargets(vulkan_renderer* Renderer);
-bool Renderer_Initialize(vulkan_renderer* Renderer);
+bool Renderer_ResizeRenderTargets(renderer* Renderer);
+bool Renderer_Initialize(renderer* Renderer);
 
-bool Renderer_CreateImGuiTexture(vulkan_renderer* Renderer, u32 Width, u32 Height, const u8* Data);
+bool Renderer_CreateImGuiTexture(renderer* Renderer, u32 Width, u32 Height, const u8* Data);
 
-renderer_frame_params* Renderer_NewFrame(vulkan_renderer* Renderer);
-void Renderer_SubmitFrame(vulkan_renderer* Renderer, renderer_frame_params* Frame);
+renderer_frame_params* Renderer_NewFrame(renderer* Renderer);
+void Renderer_SubmitFrame(renderer* Renderer, renderer_frame_params* Frame);
 
 void Renderer_BeginRendering(renderer_frame_params* Frame);
 void Renderer_EndRendering(renderer_frame_params* Frame);

@@ -427,7 +427,7 @@ static bool win32_ProcessInput(game_input* Input)
 }
 
 // Put these into global memory so we don't blow out the stack
-static vulkan_renderer Renderer;
+static renderer Renderer;
 static game_state GameState;
 
 int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int CommandShow)

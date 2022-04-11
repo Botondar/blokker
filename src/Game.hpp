@@ -87,7 +87,7 @@ struct game_input
 
 struct game_state
 {
-    vulkan_renderer* Renderer;
+    renderer* Renderer;
 
     // TODO: this maybe shouldn't be here
     bool NeedRendererResize;

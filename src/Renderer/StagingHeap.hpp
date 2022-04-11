@@ -43,7 +43,7 @@ struct vulkan_staging_heap
 bool StagingHeap_Create(
     vulkan_staging_heap* Heap,
     u64 Size,
-    struct vulkan_renderer* Renderer);
+    struct renderer* Renderer);
 
 bool StagingHeap_Copy(
     vulkan_staging_heap* Heap,
