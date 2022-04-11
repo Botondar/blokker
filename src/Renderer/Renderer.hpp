@@ -42,6 +42,8 @@ struct renderer_frame_params
 
     struct 
     {
+        static constexpr u64 VertexStackSize = 64*1024*1024;
+
         VkDeviceMemory Memory;
         VkBuffer Buffer;
 
@@ -50,6 +52,18 @@ struct renderer_frame_params
 
         void* Mapping;
     } VertexStack;
+
+    struct 
+    {
+        static constexpr u64 MaxDrawCount = 128 * 1024;
+        static constexpr u64 MemorySize = MaxDrawCount * sizeof(VkDrawIndirectCommand);
+
+        VkDeviceMemory Memory;
+        VkBuffer Buffer;
+
+        u64 DrawIndex;
+        VkDrawIndirectCommand* Commands;
+    } DrawCommands;
 
     renderer* Renderer;
 };

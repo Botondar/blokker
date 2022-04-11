@@ -411,7 +411,6 @@ bool Renderer_Initialize(renderer* Renderer)
     // Create per frame vertex stack
     for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
     {
-        constexpr u64 VertexStackSize = 64*1024*1024;
         renderer_frame_params* Frame = Renderer->FrameParams + i;
 
         VkBufferCreateInfo BufferInfo = 
@@ -419,7 +418,7 @@ bool Renderer_Initialize(renderer* Renderer)
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .pNext = nullptr,
             .flags = 0,
-            .size = VertexStackSize,
+            .size = Frame->VertexStack.VertexStackSize,
             .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
             .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
             .queueFamilyIndexCount = 0,
@@ -431,7 +430,7 @@ bool Renderer_Initialize(renderer* Renderer)
             VkMemoryRequirements MemoryRequirements = {};
             vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
 
-            assert(MemoryRequirements.size == VertexStackSize);
+            assert(MemoryRequirements.size == Frame->VertexStack.VertexStackSize);
 
             u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.HostVisibleCoherent;
             u32 MemoryType = 0;
@@ -441,7 +440,7 @@ bool Renderer_Initialize(renderer* Renderer)
                 {
                     .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                     .pNext = nullptr,
-                    .allocationSize = VertexStackSize,
+                    .allocationSize = Frame->VertexStack.VertexStackSize,
                     .memoryTypeIndex = MemoryType,
                 };
 
@@ -456,9 +455,92 @@ bool Renderer_Initialize(renderer* Renderer)
                         {
                             Frame->VertexStack.Memory = Memory;
                             Frame->VertexStack.Buffer = Buffer;
-                            Frame->VertexStack.Size = VertexStackSize;
+                            Frame->VertexStack.Size = Frame->VertexStack.VertexStackSize;
                             Frame->VertexStack.At = 0;
                             Frame->VertexStack.Mapping = Mapping;
+                        }
+                        else
+                        {
+                            vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                            vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                        vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
+                        return false;
+                    }
+                }
+                else
+                {
+                    vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
+                    return false;
+                }
+            }
+            else
+            {
+                vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
+                return false;
+            }
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    // Create per frame (indirect) command buffer
+    for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
+    {
+        renderer_frame_params* Frame = Renderer->FrameParams + i;
+
+        VkBufferCreateInfo BufferInfo = 
+        {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .size = Frame->DrawCommands.MemorySize,
+            .usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
+            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            .queueFamilyIndexCount = 0,
+            .pQueueFamilyIndices = nullptr,
+        };
+
+        VkBuffer Buffer = VK_NULL_HANDLE;
+        if (vkCreateBuffer(Renderer->RenderDevice.Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
+        {
+            VkMemoryRequirements MemoryRequirements = {};
+            vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
+
+            assert(MemoryRequirements.size == Frame->DrawCommands.MemorySize);
+
+            u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.HostVisibleCoherent;
+            u32 MemoryType = 0;
+            if (BitScanForward(&MemoryType, MemoryTypes) != 0)
+            {
+                VkMemoryAllocateInfo AllocInfo = 
+                {
+                    .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                    .pNext = nullptr,
+                    .allocationSize = Frame->DrawCommands.MemorySize,
+                    .memoryTypeIndex = MemoryType,
+                };
+
+                VkDeviceMemory Memory = VK_NULL_HANDLE;
+                if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+                {
+                    if (vkBindBufferMemory(Renderer->RenderDevice.Device, Buffer, Memory, 0) == VK_SUCCESS)
+                    {
+                        void* Mapping = nullptr;
+                        if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, Frame->DrawCommands.MemorySize, 0, &Mapping) == VK_SUCCESS)
+                        {
+                            Frame->DrawCommands.Memory = Memory;
+                            Frame->DrawCommands.Buffer = Buffer;
+
+                            Frame->DrawCommands.DrawIndex = 0;
+                            Frame->DrawCommands.Commands = (VkDrawIndirectCommand*)Mapping;
                         }
                         else
                         {
@@ -2107,6 +2189,7 @@ renderer_frame_params* Renderer_NewFrame(renderer* Renderer, u64 FrameIndex)
     Frame->Renderer = Renderer;
     Frame->SwapchainImageIndex = INVALID_INDEX_U32;
     Frame->VertexStack.At = 0;
+    Frame->DrawCommands.DrawIndex = 0;
 
     {
         TIMED_BLOCK("WaitForPreviousFrames");
@@ -2379,6 +2462,44 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
 {
     TIMED_FUNCTION();
 
+#if 0
+    VkDeviceSize DrawBufferOffset = Frame->DrawCommands.DrawIndex * sizeof(VkDrawIndirectCommand);
+    u32 DrawCount = 0;
+
+    VkDrawIndirectCommand* FirstCommand = Frame->DrawCommands.Commands + Frame->DrawCommands.DrawIndex;
+    for (u32 i = 0; i < Count; i++)
+    {
+        chunk_render_data* Chunk = Chunks + i;
+        if (Chunk->AllocationIndex == INVALID_INDEX_U32)
+        {
+            continue;
+        }
+
+        vulkan_vertex_buffer_allocation Allocation = Frame->Renderer->VB.Allocations[Chunk->AllocationIndex];
+        if (Allocation.BlockIndex == INVALID_INDEX_U32)
+        {
+            assert(!"Invalid code path");
+            continue;
+        }
+
+        *Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
+
+        vulkan_vertex_buffer_block Block = Frame->Renderer->VB.Blocks[Allocation.BlockIndex];
+        FirstCommand[Frame->DrawCommands.DrawIndex++] = VkDrawIndirectCommand{ Block.VertexCount, 1, Block.VertexOffset, 0, };
+        DrawCount++;
+    }
+
+    vkCmdBindPipeline(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->Pipeline);
+    vkCmdBindDescriptorSets(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->PipelineLayout, 
+        0, 1, &Frame->Renderer->DescriptorSet, 0, nullptr);
+
+    VkDeviceSize VertexBufferOffset = 0;
+    vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->Renderer->VB.Buffer, &VertexBufferOffset);
+
+    vkCmdDrawIndirect(Frame->CmdBuffer, Frame->DrawCommands.Buffer, DrawBufferOffset, DrawCount, sizeof(VkDrawIndirectCommand));
+
+#else
+
     vkCmdBindPipeline(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->Pipeline);
     vkCmdBindDescriptorSets(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->PipelineLayout, 
         0, 1, &Frame->Renderer->DescriptorSet, 0, nullptr);
@@ -2422,6 +2543,7 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
         vulkan_vertex_buffer_block Block = Frame->Renderer->VB.Blocks[Allocation.BlockIndex];
         vkCmdDraw(Frame->CmdBuffer, Block.VertexCount, 1, Block.VertexOffset, 0);
     }
+#endif
 }
 
 u64 Frame_PushToStack(renderer_frame_params* Frame, u64 Alignment, const void* Data, u64 Size)
