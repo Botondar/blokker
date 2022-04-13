@@ -13,13 +13,21 @@ static void Chunk_Generate(chunk* Chunk, world* World)
     {
         for (u32 x = 0; x < CHUNK_DIM_X; x++)
         {
-            constexpr f32 TerrainScale = 1.0f / 32.0f;
+            constexpr f32 TerrainBaseFrequency = 1.0f / 64.0f;
+            constexpr f32 TerrainBaseScale = 32.0f;
+            constexpr u32 TerrainBaseHeight = 80;
 
             vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
-            vec2 TerrainP = TerrainScale * (vec2{ (f32)x, (f32)y } + ChunkP);
+            vec2 TerrainP = TerrainBaseFrequency * (vec2{ (f32)x, (f32)y } + ChunkP);
 
-            f32 TerrainSample = 16.0f * Perlin2_Octave(&World->Perlin2, TerrainP, 2, 0.5f, 1.5f);
-            s32 Height = (s32)Round(TerrainSample) + 80;
+#if 1
+            const f32 Sqrt2Over2 = 0.5f * Sqrt(2.0f);
+            TerrainP = Mat2(Sqrt2Over2, Sqrt2Over2, -Sqrt2Over2, Sqrt2Over2) * TerrainP;
+#endif
+            f32 TerrainSample = Perlin2_Octave(&World->Perlin2, TerrainP, 8, 0.5f, 2.0f);
+            TerrainSample = 0.5f * (TerrainSample + 1.0f);
+            TerrainSample = Fade3(TerrainSample*TerrainSample);
+            s32 Height = (s32)Round(TerrainBaseScale * TerrainSample) + TerrainBaseHeight;
 
             for (u32 z = 0; z < CHUNK_DIM_Z; z++)
             {
@@ -69,7 +77,7 @@ static void Chunk_Generate(chunk* Chunk, world* World)
                     Chunk->Data->Voxels[z][y][x] = VOXEL_GROUND;
                 }
 #else
-                if (CaveSample < -0.5f && ((z < 80) || ((s32)z < Height)))
+                if (CaveSample < -0.5f && ((z < (TerrainBaseHeight + (s32)TerrainBaseScale)) || ((s32)z < Height)))
                 {
                     Chunk->Data->Voxels[z][y][x] = VOXEL_AIR;
                 }

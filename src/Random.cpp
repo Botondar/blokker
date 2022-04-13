@@ -90,6 +90,18 @@ f32 Perlin2_Octave(const perlin2* Perlin, vec2 P0, u32 OctaveCount, f32 Persiste
     f32 Result = 0.0f;
     f32 Amplitude = 1.0f;
     f32 Frequency = 1.0f;
+
+#if 0
+    mat2 DomainTransform = Identity2();
+#else
+    constexpr f32 C = 84.0f / 85.0f;
+    constexpr f32 S = 13.0f / 85.0f;
+
+    mat2 DomainTransform = Mat2(
+        C, S,
+        -S, C
+    );
+#endif
     for (u32 i = 0; i < OctaveCount; i++)
     {
         vec2 P = Frequency * P0;
@@ -97,6 +109,8 @@ f32 Perlin2_Octave(const perlin2* Perlin, vec2 P0, u32 OctaveCount, f32 Persiste
 
         Frequency *= Lacunarity;
         Amplitude *= Persistence;
+
+        P0 = DomainTransform * P0;
     }
     return Result;
 }
