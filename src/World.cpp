@@ -892,6 +892,10 @@ static void World_LoadChunks(world* World)
         Stack[StackAt++] = PlayerChunk;
     }
     
+    // Keep track of closest rings around the player that have been fully generated or meshed
+    u32 ClosestNotGeneratedDistance = GenerationDistance + 1;
+    u32 ClosestNotMeshedDistance = GenerationDistance + 1;
+
     for (u32 i = 0; i <= GenerationDistance; i++)
     {
         u32 Diameter = 2*i + 1;
@@ -916,6 +920,15 @@ static void World_LoadChunks(world* World)
                     (Chunk->Flags & CHUNK_STATE_MESH_DIRTY_BIT))
                 {
                     Stack[StackAt++] = Chunk;
+
+                    if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
+                    {
+                        ClosestNotGeneratedDistance = Min(i, ClosestNotGeneratedDistance);
+                    }
+                    if (!(Chunk->Flags & CHUNK_STATE_MESHED_BIT))
+                    {
+                        ClosestNotMeshedDistance = Min(i, ClosestNotMeshedDistance);
+                    }
                 }
             }
         }
@@ -925,19 +938,25 @@ static void World_LoadChunks(world* World)
     constexpr u32 ProcessedChunkLimit = 1;
     u32 ProcessedChunkCount = 0;
 
-    // Generate the chunks in the stack
-    for (u32 i = 0; i < StackAt; i++)
+    
+    if ((ClosestNotGeneratedDistance <= ImmediateGenerationDistance) ||
+        (ClosestNotMeshedDistance + 1) >= ClosestNotGeneratedDistance)
     {
-        chunk* Chunk = Stack[i];
-
-        s32 Distance = ChebyshevDistance(Chunk->P, PlayerChunkP);
-        if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
+        // Generate the chunks in the stack
+        for (u32 i = 0; i < StackAt; i++)
         {
-            if ((Distance <= ImmediateGenerationDistance) || (ProcessedChunkCount < ProcessedChunkLimit))
+            chunk* Chunk = Stack[i];
+
+            s32 Distance = ChebyshevDistance(Chunk->P, PlayerChunkP);
+            if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
             {
-                Chunk_Generate(Chunk, World);
-                Chunk->Flags |= CHUNK_STATE_GENERATED_BIT;
-                ProcessedChunkCount++;
+                if ((Distance <= ImmediateGenerationDistance) ||
+                    (ProcessedChunkCount < ProcessedChunkLimit))
+                {
+                    Chunk_Generate(Chunk, World);
+                    Chunk->Flags |= CHUNK_STATE_GENERATED_BIT;
+                    ProcessedChunkCount++;
+                }
             }
         }
     }
