@@ -101,7 +101,7 @@ struct mat3
     };
 
     f32& operator()(int i, int j);
-    const f32& operator(int i, int j) const;
+    const f32& operator()(int i, int j) const;
 };
 
 struct mat4
