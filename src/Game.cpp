@@ -107,7 +107,7 @@ static u32 Game_HashChunkP(const game_state* GameState, vec2i P, vec2i* Coords =
 static void Game_LoadChunks(game_state* GameState);
 
 static void Game_PreUpdatePlayer(game_state* GameState, game_input* Input);
-static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 DeltaTime);
+static void Game_UpdatePlayer(game_state* GameState, f32 DeltaTime);
 static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime);
 
 static void Game_Render(game_state* GameState, f32 DeltaTime);
@@ -833,7 +833,7 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
         while (RemainingTime > 0.0f)
         {
             f32 dt = Min(RemainingTime, MinPhysicsResolution);
-            Game_UpdatePlayer(GameState, Input, dt);
+            Game_UpdatePlayer(GameState, dt);
             RemainingTime -= dt;
         }
     }
@@ -948,23 +948,37 @@ static void Game_PreUpdatePlayer(game_state* GameState, game_input* Input)
 
     player* Player = &GameState->Player;
 
+    Player->Control.PrimaryAction = false;
+    Player->Control.SecondaryAction = false;
+    // Disable mouse input when there's a cursor on the screen
     if (!Input->IsCursorEnabled)
     {
         Player->Yaw -= Input->MouseDelta.x * MouseTurnSpeed;
         Player->Pitch -= Input->MouseDelta.y * MouseTurnSpeed;
+
+        Player->Control.PrimaryAction = Input->MouseButtons[MOUSE_LEFT];
+        Player->Control.SecondaryAction = Input->MouseButtons[MOUSE_RIGHT];
     }
     constexpr f32 CameraClamp = 0.5f * PI - 1e-3f;
     Player->Pitch = Clamp(Player->Pitch, -CameraClamp, CameraClamp);
+
+    Player->Control.DesiredMoveDirection = { 0.0f, 0.0f };
+    if (Input->Forward) Player->Control.DesiredMoveDirection.x += 1.0f;
+    if (Input->Back) Player->Control.DesiredMoveDirection.x -= 1.0f;
+    if (Input->Right) Player->Control.DesiredMoveDirection.y += 1.0f;
+    if (Input->Left) Player->Control.DesiredMoveDirection.y -= 1.0f;
+
+    Player->Control.IsJumping = Input->Space;
+    Player->Control.IsRunning = Input->LeftShift;
 }
 
-static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
+static void Game_UpdatePlayer(game_state* GameState, f32 dt)
 {
     TIMED_FUNCTION();
     
     player* Player = &GameState->Player;
 
     // Block breaking
-    if (!Input->IsCursorEnabled)
     {
         vec3 Forward = Player_GetForward(Player);
 
@@ -977,7 +991,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         if (Player->HasTargetBlock)
         {
             // Breaking
-            if ((OldTargetBlock == Player->TargetBlock) && Input->MouseButtons[MOUSE_LEFT])
+            if ((OldTargetBlock == Player->TargetBlock) && Player->Control.PrimaryAction)
             {
                 u16 VoxelType = Game_GetVoxelType(GameState, Player->TargetBlock);
                 const voxel_desc* VoxelDesc = &VoxelDescs[VoxelType];
@@ -997,7 +1011,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
 
             // Placing
             Player->TimeSinceLastBlockPlacement += dt;
-            if (Input->MouseButtons[MOUSE_RIGHT] && (Player->TimeSinceLastBlockPlacement > Player->MaxBlockPlacementFrequency))
+            if (Player->Control.SecondaryAction && (Player->TimeSinceLastBlockPlacement > Player->MaxBlockPlacementFrequency))
             {
                 vec3i DeltaP = {};
                 switch (Player->TargetDirection)
@@ -1037,24 +1051,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     Player_GetHorizontalAxes(Player, Forward, Right);
     vec3 Up = { 0.0f, 0.0f, 1.0f };
 
-    vec3 DesiredMoveDirection = {};
-    if (Input->Forward)
-    {
-        DesiredMoveDirection += Forward;
-    }
-    if (Input->Back)
-    {
-        DesiredMoveDirection -= Forward;
-    }
-    if (Input->Right)
-    {
-        DesiredMoveDirection += Right;
-    }
-    if (Input->Left)
-    {
-        DesiredMoveDirection -= Right;
-    }
-    DesiredMoveDirection = SafeNormalize(DesiredMoveDirection);
+    vec3 DesiredMoveDirection = SafeNormalize(Player->Control.DesiredMoveDirection.x * Forward + Player->Control.DesiredMoveDirection.y * Right);
 
     constexpr f32 WalkSpeed = 4.0f;
     constexpr f32 RunSpeed = 7.75f;
@@ -1063,7 +1060,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
     if (Player->WasGroundedLastFrame)
     {
         // Walk/Run controls
-        f32 DesiredSpeed = Input->LeftShift ? RunSpeed : WalkSpeed;
+        f32 DesiredSpeed = Player->Control.IsRunning ? RunSpeed : WalkSpeed;
 
         vec3 DesiredVelocity = DesiredMoveDirection * DesiredSpeed;
         vec3 VelocityXY = { Player->Velocity.x, Player->Velocity.y, 0.0f };
@@ -1073,7 +1070,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         constexpr f32 Accel = 10.0f;
         Acceleration += Accel * DiffV;
 
-        if (Input->Space)
+        if (Player->Control.IsJumping)
         {
             constexpr f32 DesiredJumpHeight = 1.2f; // This is here just for reference
             constexpr f32 JumpVelocity = 7.7459667f; // sqrt(2 * Gravity * DesiredJumpHeight)
@@ -1105,7 +1102,7 @@ static void Game_UpdatePlayer(game_state* GameState, game_input* Input, f32 dt)
         // Clear velocity if the user is trying to move
         if (Dot(DesiredMoveDirection, DesiredMoveDirection) != 0.0f)
         {
-            f32 DesiredSpeed = Input->LeftShift ? RunSpeed : WalkSpeed;
+            f32 DesiredSpeed = Player->Control.IsRunning ? RunSpeed : WalkSpeed;
 
             vec3 DesiredVelocity = DesiredMoveDirection * DesiredSpeed;
             vec3 VelocityXY = { Player->Velocity.x, Player->Velocity.y, 0.0f };

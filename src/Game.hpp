@@ -11,6 +11,15 @@
 
 #define BLOKKER_TINY_RENDER_DISTANCE 0
 
+struct player_control
+{
+    vec2 DesiredMoveDirection; // Local space, unnormalized
+    bool IsJumping;
+    bool IsRunning;
+    bool PrimaryAction;
+    bool SecondaryAction;
+};
+
 struct player
 {
     vec3 P;
@@ -47,6 +56,8 @@ struct player
 
     static constexpr f32 MaxBlockPlacementFrequency = 0.2f;
     f32 TimeSinceLastBlockPlacement;
+
+    player_control Control;
 };
 
 static camera Player_GetCamera(const player* Player);
