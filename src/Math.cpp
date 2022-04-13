@@ -563,6 +563,18 @@ const f32& mat2::operator()(int i, int j) const
     return m[j][i];
 }
 
+mat2 Mat2(
+    f32 m00, f32 m01,
+    f32 m10, f32 m11)
+{
+    mat2 Result = 
+    {
+        m00, m10,
+        m01, m11,
+    };
+    return Result;
+}
+
 vec2 operator*(const mat2& M, const vec2& v)
 {
     vec2 Result = 
@@ -594,6 +606,20 @@ f32& mat3::operator()(int i, int j)
 const f32& mat3::operator()(int i, int j) const 
 {
     return m[j][i];
+}
+
+mat3 Mat3(
+    f32 m00, f32 m01, f32 m02,
+    f32 m10, f32 m11, f32 m12,
+    f32 m20, f32 m21, f32 m22)
+{
+    mat3 Result = 
+    {
+        m00, m10, m20,
+        m01, m11, m21,
+        m02, m12, m22,
+    };
+    return Result;
 }
 
 vec3 operator*(const mat3& M, const vec3& v)
