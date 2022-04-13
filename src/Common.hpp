@@ -78,6 +78,15 @@ inline u32 BitScanReverse(u32* ScanResult, u32 Value)
     return Result;
 }
 
+// TODO(boti): Figure out if this is correct.
+//             The idea is to try and force to
+//             generate a load for the a variable that's not marked as volatile
+template<typename T>
+void AtomicLoad(const volatile T& Value)
+{
+    return Value;
+}
+
 class CBuffer
 {
 public:
