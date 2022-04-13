@@ -864,7 +864,7 @@ static void World_LoadChunks(world* World)
 #if BLOKKER_TINY_RENDER_DISTANCE
     constexpr u32 MeshDistance = 1;
 #else
-    constexpr u32 MeshDistance = 12;
+    constexpr u32 MeshDistance = 32;
 #endif
     constexpr u32 GenerationDistance = MeshDistance + 1;
 
@@ -935,7 +935,7 @@ static void World_LoadChunks(world* World)
     }
 
     // Limit the number of chunks that can be processed in a single frame so that we don't hitch
-    constexpr u32 ProcessedChunkLimit = 1;
+    constexpr u32 ProcessedChunkLimit = 2;
     u32 ProcessedChunkCount = 0;
 
     
