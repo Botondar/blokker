@@ -550,6 +550,77 @@ vec4 Normalize(const vec4& v)
     return Result;
 }
 
+//
+// mat2
+//
+
+f32& mat2::operator()(int i, int j)
+{
+    return m[j][i];
+}
+const f32& mat2::operator()(int i, int j) const 
+{
+    return m[j][i];
+}
+
+vec2 operator*(const mat2& M, const vec2& v)
+{
+    vec2 Result = 
+    {
+        M(0, 0) * v.x + M(0, 1) * v.y,
+        M(1, 0) * v.x + M(1, 1) * v.y,
+    };
+    return Result;
+}
+
+mat2 Identity2()
+{
+    mat2 Result = 
+    {
+        1.0f, 0.0f,
+        0.0f, 1.0f,
+    };
+    return Result;
+}
+
+//
+// mat3
+//
+
+f32& mat3::operator()(int i, int j)
+{
+    return m[j][i];
+}
+const f32& mat3::operator()(int i, int j) const 
+{
+    return m[j][i];
+}
+
+vec3 operator*(const mat3& M, const vec3& v)
+{
+    vec3 Result = 
+    {
+        M(0, 0) * v.x + M(0, 1) * v.y + M(0, 2) * v.z,
+        M(1, 0) * v.x + M(1, 1) * v.y + M(1, 2) * v.z,
+        M(2, 0) * v.x + M(2, 1) * v.y + M(2, 2) * v.z,
+    };
+    return Result;
+}
+
+mat3 Identity3()
+{
+    mat3 Result = 
+    {
+        1.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 1.0f,
+    };
+    return Result;
+}
+
+//
+// mat4
+// 
 
 f32& mat4::operator()(int i, int j)
 {

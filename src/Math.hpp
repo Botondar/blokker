@@ -3,16 +3,26 @@
 #include <Common.hpp>
 #include <cmath>
 
-/* Constants */
+//
+// Constants
+//
 constexpr f32 PI = 3.14159265358979323846f;
 
-/* Types */
+//
+// Types
+//
 struct vec2;
 struct vec2i;
 struct vec3;
 struct vec3i;
 struct vec4;
+struct mat2;
+struct mat3;
 struct mat4;
+
+//
+// Type definitions
+//
 
 struct vec2 
 {
@@ -70,6 +80,30 @@ struct vec4
     const f32& operator[](int idx) const;
 };
 
+struct mat2
+{
+    union
+    {
+        f32 m[2][2];
+        f32 mm[4];
+    };
+
+    f32& operator()(int i, int j);
+    const f32& operator()(int i, int j) const;
+};
+
+struct mat3
+{
+    union
+    {
+        f32 m[3][3];
+        f32 mm[9];
+    };
+
+    f32& operator()(int i, int j);
+    const f32& operator(int i, int j) const;
+};
+
 struct mat4
 {
     union
@@ -82,7 +116,9 @@ struct mat4
     const f32& operator()(int i, int j) const;
 };
 
-/* Common functions */
+// 
+// Common functions
+// 
 
 inline s32 FloorDiv(s32 a, s32 b)
 {
@@ -187,7 +223,9 @@ inline T Trilerp(
 inline constexpr f32 Fade3(f32 t) { return (3.0f - 2.0f*t)*t*t; }
 inline constexpr f32 Fade5(f32 t) { return ((6.0f*t - 15.0f) * t + 10.0f)*t*t*t; }
 
-/* Vector and matrix functions */
+// 
+// Vector and matrix functions
+// 
 vec2 operator-(const vec2& v);
 vec2& operator*=(vec2& v, f32 s);
 vec2& operator+=(vec2& v, const vec2& Other);
@@ -288,6 +326,21 @@ vec4& operator*=(vec4& v, f32 s);
 f32 Dot(const vec4& a, const vec4& b);
 f32 Length(const vec4& v);
 vec4 Normalize(const vec4& v);
+
+mat2 Mat2(f32 m00, f32 m01,
+          f32 m10, f32 m11);
+
+vec2 operator*(const mat2& M, const vec2& v);
+
+mat2 Identity2();
+
+mat3 Mat3(f32 m00, f32 m01, f32 m02,
+          f32 m10, f32 m11, f32 m12,
+          f32 m20, f32 m21, f32 m22);
+
+vec3 operator*(const mat3& M, const vec3& v);
+
+mat3 Identity3();
 
 mat4 Mat4(f32 m00, f32 m01, f32 m02, f32 m03,
           f32 m10, f32 m11, f32 m12, f32 m13,
