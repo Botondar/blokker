@@ -72,27 +72,7 @@ u64 Frame_PushToStack(renderer_frame_params* Frame, u64 Alignment, const void* D
 
 struct renderer 
 {
-#if 1
     vulkan_render_device RenderDevice;
-#else
-    VkInstance Instance;
-    VkDebugUtilsMessengerEXT DebugMessenger;
-
-    VkPhysicalDevice PhysicalDevice;
-    vulkan_physical_device_desc DeviceDesc;
-    u32 DeviceLocalMemoryTypes;
-    u32 HostVisibleMemoryTypes;
-    u32 HostVisibleCoherentMemoryTypes;
-    u32 DeviceLocalAndHostVisibleMemoryTypes;
-    
-    u64 NonCoherentAtomSize;
-    VkDevice Device;
-    
-    u32 GraphicsFamilyIndex;
-    u32 TransferFamilyIndex;
-    VkQueue GraphicsQueue;
-    VkQueue TransferQueue;
-#endif
 
     VkSurfaceFormatKHR SurfaceFormat;
     VkSurfaceKHR Surface;
