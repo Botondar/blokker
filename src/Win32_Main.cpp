@@ -505,9 +505,9 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
     // Allocate memory
     {
-        u64 ChunkHeadersSize = (u64)game_state::MaxChunkCount * sizeof(chunk);
-        GameState.Chunks = (chunk*)VirtualAlloc(nullptr, ChunkHeadersSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-        if (!GameState.Chunks)
+        u64 ChunkHeadersSize = (u64)world::MaxChunkCount * sizeof(chunk);
+        GameState.World.Chunks = (chunk*)VirtualAlloc(nullptr, ChunkHeadersSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+        if (!GameState.World.Chunks)
         {
             DWORD ErrorCode = GetLastError();
             DebugPrint("Memory allocation failed: %x\n", ErrorCode);
@@ -515,9 +515,9 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         }
 
         // TODO: large pages
-        u64 ChunkDataSize = (u64)game_state::MaxChunkCount * sizeof(chunk_data);
-        GameState.ChunkData = (chunk_data*)VirtualAlloc(nullptr, ChunkDataSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-        if (!GameState.ChunkData)
+        u64 ChunkDataSize = (u64)world::MaxChunkCount * sizeof(chunk_data);
+        GameState.World.ChunkData = (chunk_data*)VirtualAlloc(nullptr, ChunkDataSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+        if (!GameState.World.ChunkData)
         {
             DWORD ErrorCode = GetLastError();
             DebugPrint("Memory allocation failed: %x\n", ErrorCode);

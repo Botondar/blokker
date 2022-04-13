@@ -7,7 +7,7 @@
 // TODO: remove stl
 #include <vector>
 
-struct game_state;
+struct world;
 
 constexpr s32 CHUNK_DIM_X = 16;
 constexpr s32 CHUNK_DIM_Y = 16;
@@ -148,8 +148,8 @@ struct voxel_neighborhood
     const u16& GetVoxel(vec3i P) const { return VoxelTypes[IndexFromP(P)]; };
 };
 
-static void Chunk_Generate(chunk* Chunk, game_state* GameState);
-static std::vector<terrain_vertex> Chunk_Mesh(const chunk* Chunk, game_state* GameState);
+static void Chunk_Generate(chunk* Chunk, world* World);
+static std::vector<terrain_vertex> Chunk_Mesh(const chunk* Chunk, world* World);
 
 /* Implementations */
 inline constexpr u32 CardinalOpposite(u32 Cardinal)

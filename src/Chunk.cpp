@@ -2,7 +2,7 @@
 
 #include <Game.hpp>
 
-static void Chunk_Generate(chunk* Chunk, game_state* GameState)
+static void Chunk_Generate(chunk* Chunk, world* World)
 {
     TIMED_FUNCTION();
 
@@ -18,7 +18,7 @@ static void Chunk_Generate(chunk* Chunk, game_state* GameState)
             vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
             vec2 TerrainP = TerrainScale * (vec2{ (f32)x, (f32)y } + ChunkP);
 
-            f32 TerrainSample = 16.0f * Perlin2_Octave(&GameState->Perlin2, TerrainP, 2, 0.5f, 1.5f);
+            f32 TerrainSample = 16.0f * Perlin2_Octave(&World->Perlin2, TerrainP, 2, 0.5f, 1.5f);
             s32 Height = (s32)Round(TerrainSample) + 80;
 
             for (u32 z = 0; z < CHUNK_DIM_Z; z++)
@@ -41,7 +41,7 @@ static void Chunk_Generate(chunk* Chunk, game_state* GameState)
 
                 // Generate ores
                 constexpr f32 OreScale = 1.0f / 8.0f;
-                f32 OreSample = Perlin3_Octave(&GameState->Perlin3, OreScale*P, 3, 0.5f, 2.0f);
+                f32 OreSample = Perlin3_Octave(&World->Perlin3, OreScale*P, 3, 0.5f, 2.0f);
                 // Only replace stone with ores
                 if (Chunk->Data->Voxels[z][y][x] == VOXEL_STONE)
                 {
@@ -57,7 +57,7 @@ static void Chunk_Generate(chunk* Chunk, game_state* GameState)
 
                 // Generate caves
                 constexpr f32 CaveScale = 1.0f / 16.0f;
-                f32 CaveSample = Perlin3_Octave(&GameState->Perlin3, CaveScale*P, 1, 0.5f, 2.0f);
+                f32 CaveSample = Perlin3_Octave(&World->Perlin3, CaveScale*P, 1, 0.5f, 2.0f);
 #if 0
                 CaveSample = Abs(CaveSample);
                 if (CaveSample < 0.01f)
@@ -79,7 +79,7 @@ static void Chunk_Generate(chunk* Chunk, game_state* GameState)
     }
 }
 
-static std::vector<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, game_state* GameState)
+static std::vector<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, world* World)
 {
     TIMED_FUNCTION();
 
@@ -159,7 +159,7 @@ static std::vector<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, game_stat
                     constexpr u32 CubeVertexCount = CountOf(Cube);
 
                     vec3i WorldVoxelP = vec3i{(s32)x, (s32)y, (s32)z} + vec3i{Chunk->P.x * CHUNK_DIM_X, Chunk->P.y * CHUNK_DIM_Y, 0 };
-                    voxel_neighborhood Neighborhood = Game_GetVoxelNeighborhood(GameState, WorldVoxelP);
+                    voxel_neighborhood Neighborhood = World_GetVoxelNeighborhood(World, WorldVoxelP);
 
                     for (u32 Direction = DIRECTION_First; Direction < DIRECTION_Count; Direction++)
                     {
