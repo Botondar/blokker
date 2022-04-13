@@ -160,10 +160,12 @@ constexpr f32 ToRadians(f32 Degrees) { return PI * Degrees / 180.0f; }
 constexpr f32 ToDegrees(f32 Radians) { return 180.0f * Radians / PI; }
 
 inline s32 Abs(s32 x) { return abs(x); }
-inline s32 Min(s32 a, s32 b) { return (a < b) ? a : b; }
-inline s32 Max(s32 a, s32 b) { return (a < b) ? b : a; }
 
-inline u64 Max(u64 a, u64 b) { return (a < b) ? a : b; }
+template<typename T>
+inline T Min(T a, T b) { return (a < b) ? a : b; }
+
+template<typename T>
+inline T Max(T a, T b) { return (a < b) ? b : a; }
 
 inline f32 Signum(f32 x) 
 {  
