@@ -864,7 +864,7 @@ static void World_LoadChunks(world* World)
 #if BLOKKER_TINY_RENDER_DISTANCE
     constexpr u32 MeshDistance = 1;
 #else
-    constexpr u32 MeshDistance = 32;
+    constexpr u32 MeshDistance = 20;
 #endif
     constexpr u32 GenerationDistance = MeshDistance + 1;
 
@@ -891,7 +891,7 @@ static void World_LoadChunks(world* World)
     {
         Stack[StackAt++] = PlayerChunk;
     }
-    
+
     // Keep track of closest rings around the player that have been fully generated or meshed
     u32 ClosestNotGeneratedDistance = GenerationDistance + 1;
     u32 ClosestNotMeshedDistance = GenerationDistance + 1;
@@ -935,7 +935,7 @@ static void World_LoadChunks(world* World)
     }
 
     // Limit the number of chunks that can be processed in a single frame so that we don't hitch
-    constexpr u32 ProcessedChunkLimit = 2;
+    constexpr u32 ProcessedChunkLimit = 1;
     u32 ProcessedChunkCount = 0;
 
     
@@ -969,7 +969,8 @@ static void World_LoadChunks(world* World)
 
         if (!(Chunk->Flags & CHUNK_STATE_MESHED_BIT) && (Distance <= MeshDistance))
         {
-            if ((Distance <= ImmediateMeshDistance) || (ProcessedChunkCount < ProcessedChunkLimit))
+            if (((Distance <= ImmediateMeshDistance) || (ProcessedChunkCount < ProcessedChunkLimit)) && 
+                ((Distance + 1) < (s32)ClosestNotGeneratedDistance))
             {
                 assert(Chunk->Flags & CHUNK_STATE_GENERATED_BIT);
                 assert(!(Chunk->Flags & CHUNK_STATE_UPLOADED_BIT));
