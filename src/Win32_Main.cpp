@@ -156,6 +156,8 @@ void DebugPrint_(const char* Format, ...)
 
     vsnprintf(Buff, BufferSize, Format, ArgList);
 
+    va_end(ArgList);
+
     if (Win32State.HasDebugger)
     {
         OutputDebugStringA(Buff);
@@ -164,7 +166,31 @@ void DebugPrint_(const char* Format, ...)
     {
         fputs(Buff, stdout);
     }
+}
+
+void PlatformLog_(const char* Function, int Line, const char* Format, ...)
+{
+    constexpr size_t BufferSize = 768;
+    char Message[BufferSize];
+    char Output[BufferSize];
+
+    va_list ArgList;
+    va_start(ArgList, Format);
+
+    vsnprintf(Message, BufferSize, Format, ArgList);
+
     va_end(ArgList);
+
+    snprintf(Output, BufferSize, "%s:%d: %s\n", Function, Line, Message);
+
+    if (Win32State.HasDebugger)
+    {
+        OutputDebugStringA(Output);
+    }
+    else
+    {
+        fputs(Output, stdout);
+    }
 }
 
 CBuffer LoadEntireFile(const char* Path)

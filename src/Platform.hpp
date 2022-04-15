@@ -13,6 +13,9 @@ void DebugPrint_(const char* Format, ...);
 #define DebugPrint(...)
 #endif
 
+void PlatformLog_(const char* Function, int Line, const char* Format, ...);
+#define LogMsg(fmt, ...) PlatformLog_(__FUNCTION__, __LINE__, fmt, __VA_ARGS__)
+
 CBuffer LoadEntireFile(const char* Path);
 bool WriteEntireFile(const char* Path, u64 Size, const void* Data);
 
