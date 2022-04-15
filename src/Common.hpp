@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <immintrin.h>
+#include <intrin.h>
 
 typedef uint8_t  u8;
 typedef int8_t   s8;
