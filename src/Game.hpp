@@ -21,9 +21,10 @@ enum mouse_button : u32
 struct game_input
 {
     bool IsCursorEnabled;
+    bool MouseButtons[MOUSE_ButtonCount];
     vec2 MouseP;
     vec2 MouseDelta;
-    bool MouseButtons[MOUSE_ButtonCount];
+    f32 WheelDelta;
 
     bool EscapePressed;
     bool BacktickPressed;

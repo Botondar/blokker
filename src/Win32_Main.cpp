@@ -327,6 +327,7 @@ static bool win32_ProcessInput(game_input* Input)
 {
     // Clear non-sticky input
     Input->MouseDelta = {};
+    Input->WheelDelta = 0.0f;
     Input->EscapePressed = false;
     Input->BacktickPressed = false;
     Input->MPressed = false;
@@ -441,6 +442,11 @@ static bool win32_ProcessInput(game_input* Input)
             {
                 vec2i P = { GET_X_LPARAM(Message.lParam), GET_Y_LPARAM(Message.lParam) };
                 Input->MouseP = (vec2)P;
+            } break;
+            case WM_MOUSEWHEEL:
+            {
+                short iWheelDelta = GET_WHEEL_DELTA_WPARAM(Message.wParam);
+                Input->WheelDelta = (f32)iWheelDelta / (f32)WHEEL_DELTA;
             } break;
 
             case WM_QUIT: return true;
