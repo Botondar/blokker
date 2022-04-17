@@ -17,6 +17,7 @@
 #include "Profiler.cpp"
 
 #include "World.cpp"
+#include "Player.cpp"
 
 static bool Game_InitImGui(game_state* GameState);
 
