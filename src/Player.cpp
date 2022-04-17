@@ -278,26 +278,16 @@ void Player_Update(player* Player, world* World, f32 dt)
     Acceleration += vec3{ 0.0f, 0.0f, -Gravity };
     Player->Velocity += Acceleration * dt;
 
-#if 1
-    Player->CurrentFov = Player->DefaultFov;
-#else
     // Fov animation
     {
         f32 PlayerSpeed = Length(Player->Velocity);
-        vec3 MoveDirection = SafeNormalize(Player->Velocity);
-        vec3 FacingDirection = { Forward.x * Cos(Player->Pitch), Forward.y * Cos(Player->Pitch), Sin(Player->Pitch) };
-        
-        f32 t = (PlayerSpeed - WalkSpeed) / (RunSpeed - WalkSpeed);
-        t *= Max(Dot(MoveDirection, FacingDirection), 0.0f);
-        t = Fade3(Clamp(t, 0.0f, 1.0f));
-        Player->TargetFov = Lerp(Player->DefaultFov, ToRadians(90.0f), t);
-        
-        constexpr f32 dFov = ToRadians(1000.0f);
-        f32 FovDiff = Player->TargetFov - Player->CurrentFov;
+        f32 Mul = Max(Dot(Forward, DesiredMoveDirection), 0.0f);
 
-        Player->CurrentFov += Signum(FovDiff) * Min(Abs(dFov * FovDiff * dt), Abs(FovDiff));
+        f32 t = Mul * Clamp((PlayerSpeed - WalkSpeed) / (RunSpeed - WalkSpeed), 0.0f, 1.0f);
+        Player->TargetFov = Lerp(Player->DefaultFov, ToRadians(95.0f), t);
+        Player->CurrentFov = Lerp(Player->CurrentFov, Player->TargetFov, Clamp(1.0f - Exp(-15.0f*dt), 0.0f, 1.0f));
     }
-#endif
+
     vec3 dP = (Player->Velocity + 0.5f * Acceleration * dt) * dt;
 
     // Collision
