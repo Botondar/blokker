@@ -1,5 +1,7 @@
 #include "Shapes.hpp"
 
+#include <World.hpp>
+
 aabb MakeAABB(const vec3& a, const vec3& b)
 {
     aabb Result = 
@@ -43,3 +45,150 @@ bool AABB_Intersect(const aabb& A, const aabb& B, vec3& Overlap, int& MinCoord)
 
     return IsCollision;
 }
+
+
+bool IntersectRayPlane(vec3 P, vec3 v, vec4 Plane, f32 tMin, f32 tMax, f32* tOut)
+{
+    bool Result = false;
+
+    vec3 N = { Plane.x, Plane.y, Plane.z };
+    f32 NdotV = Dot(N, v);
+
+    if (NdotV != 0.0f)
+    {
+        f32 t = (-Dot(P, N) - Plane.w) / NdotV;
+        if ((tMin <= t) && (t < tMax))
+        {
+            *tOut = t;
+            Result = true;
+        }
+    }
+
+    return Result;
+};
+
+bool IntersectRayAABB(vec3 P, vec3 v, aabb Box, f32 tMin, f32 tMax, f32* tOut, direction* OutDir)
+{
+    bool Result = false;
+
+    bool AnyIntersection = false;
+    f32 tIntersection = -1.0f;
+    u32 IntersectionDir = (u32)-1;
+    for (u32 i = DIRECTION_First; i < DIRECTION_Count; i++)
+    {
+        switch (i)
+        {
+            case DIRECTION_POS_X: 
+            {
+                vec4 Plane = { +1.0f, 0.0f, 0.0f, -Box.Max.x };
+                f32 t;
+                if (IntersectRayPlane(P, v, Plane, tMin, tMax, &t))
+                {
+                    vec3 P0 = P + t*v;
+                    if ((Box.Min.y <= P0.y) && (P0.y <= Box.Max.y) &&
+                        (Box.Min.z <= P0.z) && (P0.z <= Box.Max.z))
+                    {
+                        AnyIntersection = true;
+                        tIntersection = t;
+                        IntersectionDir = i;
+                        tMax = Min(tMax, t);
+                    }
+                }
+            } break;
+            case DIRECTION_NEG_X: 
+            {
+                vec4 Plane = { -1.0f, 0.0f, 0.0f, +Box.Min.x };
+                f32 t;
+                if (IntersectRayPlane(P, v, Plane, tMin, tMax, &t))
+                {
+                    vec3 P0 = P + t*v;
+                    if ((Box.Min.y <= P0.y) && (P0.y <= Box.Max.y) &&
+                        (Box.Min.z <= P0.z) && (P0.z <= Box.Max.z))
+                    {
+                        AnyIntersection = true;
+                        tIntersection = t;
+                        IntersectionDir = i;
+                        tMax = Min(tMax, t);
+                    }
+                }
+            } break;
+            case DIRECTION_POS_Y: 
+            {
+                vec4 Plane = { 0.0f, +1.0f, 0.0f, -Box.Max.y };
+                f32 t;
+                if (IntersectRayPlane(P, v, Plane, tMin, tMax, &t))
+                {
+                    vec3 P0 = P + t*v;
+                    if ((Box.Min.x <= P0.x) && (P0.x <= Box.Max.x) &&
+                        (Box.Min.z <= P0.z) && (P0.z <= Box.Max.z))
+                    {
+                        AnyIntersection = true;
+                        tIntersection = t;
+                        IntersectionDir = i;
+                        tMax = Min(tMax, t);
+                    }
+                }
+            } break;
+            case DIRECTION_NEG_Y: 
+            {
+                vec4 Plane = { 0.0f, -1.0f, 0.0f, +Box.Min.y };
+                f32 t;
+                if (IntersectRayPlane(P, v, Plane, tMin, tMax, &t))
+                {
+                    vec3 P0 = P + t*v;
+                    if ((Box.Min.x <= P0.x) && (P0.x <= Box.Max.x) &&
+                        (Box.Min.z <= P0.z) && (P0.z <= Box.Max.z))
+                    {
+                        AnyIntersection = true;
+                        tIntersection = t;
+                        IntersectionDir = i;
+                        tMax = Min(tMax, t);
+                    }
+                }
+            } break;
+            case DIRECTION_POS_Z:
+            {
+                vec4 Plane = { 0.0f, 0.0f, +1.0f, -Box.Max.z };
+                f32 t;
+                if (IntersectRayPlane(P, v, Plane, tMin, tMax, &t))
+                {
+                    vec3 P0 = P + t*v;
+                    if ((Box.Min.x <= P0.x) && (P0.x <= Box.Max.x) &&
+                        (Box.Min.y <= P0.y) && (P0.y <= Box.Max.y))
+                    {
+                        AnyIntersection = true;
+                        tIntersection = t;
+                        IntersectionDir = i;
+                        tMax = Min(tMax, t);
+                    }
+                }
+            } break;
+            case DIRECTION_NEG_Z:
+            {
+                vec4 Plane = { 0.0f, 0.0f, -1.0f, +Box.Min.z };
+                f32 t;
+                if (IntersectRayPlane(P, v, Plane, tMin, tMax, &t))
+                {
+                    vec3 P0 = P + t*v;
+                    if ((Box.Min.x <= P0.x) && (P0.x <= Box.Max.x) &&
+                        (Box.Min.y <= P0.y) && (P0.y <= Box.Max.y))
+                    {
+                        AnyIntersection = true;
+                        tIntersection = t;
+                        IntersectionDir = i;
+                        tMax = Min(tMax, t);
+                    }
+                }
+            } break;
+        }
+    }
+
+    if (AnyIntersection)
+    {
+        *tOut = tIntersection;
+        *OutDir = (direction)IntersectionDir;
+        Result = true;
+    }
+
+    return Result;
+};
