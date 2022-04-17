@@ -2509,6 +2509,10 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
 
     mat4 VP = Frame->ProjectionTransform * Frame->ViewTransform;
 
+    mat3 CameraAxes = Frame->Camera.GetAxes();
+    vec3 CameraForward3 = { CameraAxes(0, 0), CameraAxes(1, 0), CameraAxes(2, 0) };
+    vec2 CameraForward = Normalize((vec2)CameraForward3);
+
     for (u32 i = 0; i < Count; i++)
     {
         chunk_render_data* Chunk = Chunks + i;
@@ -2525,23 +2529,28 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
             continue;
         }
 
-        *Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
+        vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
 
-        mat4 WorldTransform = Mat4(
-            1.0f, 0.0f, 0.0f, (f32)Chunk->P.x * CHUNK_DIM_X,
-            0.0f, 1.0f, 0.0f, (f32)Chunk->P.y * CHUNK_DIM_Y,
-            0.0f, 0.0f, 1.0f, 0.0f,
-            0.0f, 0.0f, 0.0f, 1.0f);
-        mat4 Transform = VP * WorldTransform;
-        
-        vkCmdPushConstants(
-            Frame->CmdBuffer,
-            Frame->Renderer->PipelineLayout,
-            VK_SHADER_STAGE_VERTEX_BIT, 0,
-            sizeof(mat4), &Transform);
-        
-        vulkan_vertex_buffer_block Block = Frame->Renderer->VB.Blocks[Allocation.BlockIndex];
-        vkCmdDraw(Frame->CmdBuffer, Block.VertexCount, 1, Block.VertexOffset, 0);
+        //if (Dot(CameraForward, ChunkP - CameraForward) >= 0.0f)
+        {
+            mat4 WorldTransform = Mat4(
+                1.0f, 0.0f, 0.0f, ChunkP.x,
+                0.0f, 1.0f, 0.0f, ChunkP.y,
+                0.0f, 0.0f, 1.0f, 0.0f,
+                0.0f, 0.0f, 0.0f, 1.0f);
+            mat4 Transform = VP * WorldTransform;
+
+            vkCmdPushConstants(
+                Frame->CmdBuffer,
+                Frame->Renderer->PipelineLayout,
+                VK_SHADER_STAGE_VERTEX_BIT, 0,
+                sizeof(mat4), &Transform);
+
+            vulkan_vertex_buffer_block Block = Frame->Renderer->VB.Blocks[Allocation.BlockIndex];
+            vkCmdDraw(Frame->CmdBuffer, Block.VertexCount, 1, Block.VertexOffset, 0);
+
+            *Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
+        }
     }
 #endif
 }
