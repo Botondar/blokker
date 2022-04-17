@@ -65,6 +65,18 @@ struct renderer_frame_params
         VkDrawIndirectCommand* Commands;
     } DrawCommands;
 
+    struct 
+    {
+        static constexpr u64 MemorySize = 4 * 1024 * 1024;
+        static constexpr u64 MaxChunkCount = MemorySize / sizeof(vec2);
+
+        VkDeviceMemory Memory;
+        VkBuffer Buffer;
+
+        u64 ChunkAt;
+        vec2* Mapping;
+    } ChunkPositions;
+
     renderer* Renderer;
 };
 

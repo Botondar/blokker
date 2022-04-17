@@ -80,4 +80,5 @@ enum attrib_location : u32
     ATTRIB_POS = 0,
     ATTRIB_TEXCOORD = 1,
     ATTRIB_COLOR = 2,
+    ATTRIB_CHUNK_P = 3,
 };

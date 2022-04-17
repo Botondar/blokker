@@ -574,6 +574,90 @@ bool Renderer_Initialize(renderer* Renderer)
         }
     }
 
+    // Create per frame instance data
+    for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
+    {
+        renderer_frame_params* Frame = Renderer->FrameParams + i;
+
+        
+        VkBufferCreateInfo BufferInfo = 
+        {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .size = Frame->ChunkPositions.MemorySize,
+            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            .queueFamilyIndexCount = 0,
+            .pQueueFamilyIndices = nullptr,
+        };
+
+        VkBuffer Buffer = VK_NULL_HANDLE;
+        if (vkCreateBuffer(Renderer->RenderDevice.Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
+        {
+            VkMemoryRequirements MemoryRequirements = {};
+            vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
+
+            assert(MemoryRequirements.size == Frame->ChunkPositions.MemorySize);
+
+            u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.HostVisibleCoherent;
+            u32 MemoryType = 0;
+            if (BitScanForward(&MemoryType, MemoryTypes) != 0)
+            {
+                VkMemoryAllocateInfo AllocInfo = 
+                {
+                    .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                    .pNext = nullptr,
+                    .allocationSize = Frame->ChunkPositions.MemorySize,
+                    .memoryTypeIndex = MemoryType,
+                };
+
+                VkDeviceMemory Memory = VK_NULL_HANDLE;
+                if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+                {
+                    if (vkBindBufferMemory(Renderer->RenderDevice.Device, Buffer, Memory, 0) == VK_SUCCESS)
+                    {
+                        void* Mapping = nullptr;
+                        if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, Frame->ChunkPositions.MemorySize, 0, &Mapping) == VK_SUCCESS)
+                        {
+                            Frame->ChunkPositions.Memory = Memory;
+                            Frame->ChunkPositions.Buffer = Buffer;
+
+                            Frame->ChunkPositions.ChunkAt = 0;
+                            Frame->ChunkPositions.Mapping = (vec2*)Mapping;
+                        }
+                        else
+                        {
+                            vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                            vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                        vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
+                        return false;
+                    }
+                }
+                else
+                {
+                    vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
+                    return false;
+                }
+            }
+            else
+            {
+                vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
+                return false;
+            }
+        }
+        else
+        {
+            return false;
+        }
+    }
+
     // Descriptors
     {
         // Static sampler
@@ -1077,13 +1161,24 @@ bool Renderer_Initialize(renderer* Renderer)
         };
         constexpr u32 ShaderStageCount = CountOf(ShaderStages);
         
-        VkVertexInputBindingDescription VertexBinding = 
+        VkVertexInputBindingDescription VertexBindings[]
         {
-            .binding = 0,
-            .stride = sizeof(terrain_vertex),
-            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+            // Vertices
+            {
+                .binding = 0,
+                .stride = sizeof(terrain_vertex),
+                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+            },
+
+            // (instanced) chunk positions
+            {
+                .binding = 1,
+                .stride = sizeof(vec2),
+                .inputRate = VK_VERTEX_INPUT_RATE_INSTANCE,
+            },
         };
-        
+        constexpr u32 VertexBindingCount = CountOf(VertexBindings);
+
         VkVertexInputAttributeDescription VertexAttribs[] = 
         {
             // Pos
@@ -1100,6 +1195,14 @@ bool Renderer_Initialize(renderer* Renderer)
                 .format = VK_FORMAT_R16_UINT,
                 .offset = offsetof(terrain_vertex, TexCoord),
             },
+            // ChunkP
+            {
+                .location = ATTRIB_CHUNK_P,
+                .binding = 1,
+                .format = VK_FORMAT_R32G32_SFLOAT,
+                .offset = 0,
+            },
+
         };
         constexpr u32 VertexAttribCount = CountOf(VertexAttribs);
         
@@ -1108,8 +1211,8 @@ bool Renderer_Initialize(renderer* Renderer)
             .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
             .pNext = nullptr,
             .flags = 0,
-            .vertexBindingDescriptionCount = 1,
-            .pVertexBindingDescriptions = &VertexBinding,
+            .vertexBindingDescriptionCount = VertexBindingCount,
+            .pVertexBindingDescriptions = VertexBindings,
             .vertexAttributeDescriptionCount = VertexAttribCount,
             .pVertexAttributeDescriptions = VertexAttribs,
         };
@@ -2190,6 +2293,7 @@ renderer_frame_params* Renderer_NewFrame(renderer* Renderer, u64 FrameIndex)
     Frame->SwapchainImageIndex = INVALID_INDEX_U32;
     Frame->VertexStack.At = 0;
     Frame->DrawCommands.DrawIndex = 0;
+    Frame->ChunkPositions.ChunkAt = 0;
 
     {
         TIMED_BLOCK("WaitForPreviousFrames");
@@ -2462,7 +2566,7 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
 {
     TIMED_FUNCTION();
 
-#if 0
+#if 1
     VkDeviceSize DrawBufferOffset = Frame->DrawCommands.DrawIndex * sizeof(VkDrawIndirectCommand);
     u32 DrawCount = 0;
 
@@ -2484,8 +2588,13 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
 
         *Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
 
+        vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
+
+        u32 InstanceOffset = (u32)Frame->ChunkPositions.ChunkAt++;
+        memcpy(Frame->ChunkPositions.Mapping + InstanceOffset, &ChunkP, sizeof(ChunkP));
+
         vulkan_vertex_buffer_block Block = Frame->Renderer->VB.Blocks[Allocation.BlockIndex];
-        FirstCommand[Frame->DrawCommands.DrawIndex++] = VkDrawIndirectCommand{ Block.VertexCount, 1, Block.VertexOffset, 0, };
+        FirstCommand[Frame->DrawCommands.DrawIndex++] = VkDrawIndirectCommand{ Block.VertexCount, 1, Block.VertexOffset, InstanceOffset, };
         DrawCount++;
     }
 
@@ -2495,6 +2604,15 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
 
     VkDeviceSize VertexBufferOffset = 0;
     vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->Renderer->VB.Buffer, &VertexBufferOffset);
+    vkCmdBindVertexBuffers(Frame->CmdBuffer, 1, 1, &Frame->ChunkPositions.Buffer, &VertexBufferOffset);
+    
+    mat4 VP = Frame->ProjectionTransform * Frame->ViewTransform;
+
+    vkCmdPushConstants(
+        Frame->CmdBuffer,
+        Frame->Renderer->PipelineLayout,
+        VK_SHADER_STAGE_VERTEX_BIT, 0,
+        sizeof(mat4), &VP);
 
     vkCmdDrawIndirect(Frame->CmdBuffer, Frame->DrawCommands.Buffer, DrawBufferOffset, DrawCount, sizeof(VkDrawIndirectCommand));
 
@@ -2506,8 +2624,15 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
 
     VkDeviceSize Offset = 0;
     vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->Renderer->VB.Buffer, &Offset);
+    vkCmdBindVertexBuffers(Frame->CmdBuffer, 1, 1, &Frame->ChunkPositions.Buffer, &Offset);
 
     mat4 VP = Frame->ProjectionTransform * Frame->ViewTransform;
+
+    vkCmdPushConstants(
+        Frame->CmdBuffer,
+        Frame->Renderer->PipelineLayout,
+        VK_SHADER_STAGE_VERTEX_BIT, 0,
+        sizeof(mat4), &VP);
 
     mat3 CameraAxes = Frame->Camera.GetAxes();
     vec3 CameraForward3 = { CameraAxes(0, 0), CameraAxes(1, 0), CameraAxes(2, 0) };
@@ -2533,21 +2658,11 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
 
         //if (Dot(CameraForward, ChunkP - CameraForward) >= 0.0f)
         {
-            mat4 WorldTransform = Mat4(
-                1.0f, 0.0f, 0.0f, ChunkP.x,
-                0.0f, 1.0f, 0.0f, ChunkP.y,
-                0.0f, 0.0f, 1.0f, 0.0f,
-                0.0f, 0.0f, 0.0f, 1.0f);
-            mat4 Transform = VP * WorldTransform;
-
-            vkCmdPushConstants(
-                Frame->CmdBuffer,
-                Frame->Renderer->PipelineLayout,
-                VK_SHADER_STAGE_VERTEX_BIT, 0,
-                sizeof(mat4), &Transform);
+            u32 InstanceOffset = (u32)Frame->ChunkPositions.ChunkAt++;
+            memcpy(Frame->ChunkPositions.Mapping + InstanceOffset, &ChunkP, sizeof(ChunkP));
 
             vulkan_vertex_buffer_block Block = Frame->Renderer->VB.Blocks[Allocation.BlockIndex];
-            vkCmdDraw(Frame->CmdBuffer, Block.VertexCount, 1, Block.VertexOffset, 0);
+            vkCmdDraw(Frame->CmdBuffer, Block.VertexCount, 1, Block.VertexOffset, InstanceOffset);
 
             *Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
         }

@@ -13,6 +13,7 @@ layout(push_constant) uniform PushConstants
 
 layout(location = ATTRIB_POS) in vec3 v_Position;
 layout(location = ATTRIB_TEXCOORD) in uint v_PackedTexCoord;
+layout(location = ATTRIB_CHUNK_P) in vec2 v_ChunkP;
 
 const float AOTable[4] = { 1.0, 0.75, 0.5, 0.25 };
 
@@ -31,7 +32,8 @@ vec3 UnpackTexCoord(in uint Packed, out float AO)
 
 void main()
 {
-    gl_Position = Transform * vec4(v_Position, 1);
+    vec3 P = v_Position + vec3(v_ChunkP, 0);
+    gl_Position = Transform * vec4(P, 1);
     TexCoord = UnpackTexCoord(v_PackedTexCoord, AO);
 }
 
