@@ -582,6 +582,11 @@ void World_Update(world* World, game_input* Input, f32 DeltaTime)
 
     World_LoadChunks(World);
 
+    if (Input->MPressed)
+    {
+        World->MapView.IsEnabled = !World->MapView.IsEnabled;
+    }
+
     if (World->Debug.IsDebugCameraEnabled)
     {
         // Debug camera update
@@ -747,6 +752,15 @@ void World_Render(world* World, renderer_frame_params* FrameParams)
 
     const f32 AspectRatio = (f32)FrameParams->Renderer->SwapchainSize.width / (f32)FrameParams->Renderer->SwapchainSize.height;
     FrameParams->ProjectionTransform = PerspectiveMat4(FrameParams->Camera.FieldOfView, AspectRatio, 0.005f, 8000.0f);
+
+    if (World->MapView.IsEnabled)
+    {
+        FrameParams->ProjectionTransform = Mat4(
+            2.0f / (AspectRatio*256.0f), 0.0f, 0.0f, 0.0f,
+            0.0f, 2.0f / (256.0f), 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f / 512.0f, +256.0f / 512.0f,
+            0.0f, 0.0f, 0.0f, 1.0f);
+    }
 
     Renderer_BeginRendering(FrameParams);
 

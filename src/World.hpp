@@ -54,6 +54,12 @@ struct world
         bool IsDebugCameraEnabled;
         camera DebugCamera;
     } Debug;
+
+    struct
+    {
+        vec2 P;
+        bool IsEnabled;
+    } MapView;
 };
 
 // From chunk position

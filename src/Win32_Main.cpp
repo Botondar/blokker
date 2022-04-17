@@ -329,6 +329,7 @@ static bool win32_ProcessInput(game_input* Input)
     Input->MouseDelta = {};
     Input->EscapePressed = false;
     Input->BacktickPressed = false;
+    Input->MPressed = false;
 
     // NOTE(boti): Don't use multiple loops to remove only a certain range of messages, 
     //             See: https://docs.microsoft.com/en-us/troubleshoot/windows/win32/application-using-message-filters-unresponsive-win10
@@ -395,6 +396,13 @@ static bool win32_ProcessInput(game_input* Input)
                         if (IsDown && !WasDown)
                         {
                             Input->BacktickPressed = true;
+                        }
+                    } break;
+                    case 'M':
+                    {
+                        if (IsDown && !WasDown)
+                        {
+                            Input->MPressed = true;
                         }
                     } break;
                 }

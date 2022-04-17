@@ -27,6 +27,7 @@ struct game_input
 
     bool EscapePressed;
     bool BacktickPressed;
+    bool MPressed;
 
     bool Forward;
     bool Back;

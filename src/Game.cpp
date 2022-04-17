@@ -109,6 +109,12 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
         }
         ImGui::End();
 
+        ImGui::Begin("Map");
+
+        ImGui::Checkbox("Enable map view", &GameState->World.MapView.IsEnabled);
+
+        ImGui::End();
+
         GlobalProfiler.DoGUI();
     }
 
