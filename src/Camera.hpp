@@ -8,6 +8,8 @@ struct camera
     f32 Yaw, Pitch;
     f32 FieldOfView;
 
+    mat3 GetAxes() const;
+
     mat4 GetGlobalTransform() const;
     mat4 GetLocalTransform() const;
     mat4 GetTransform() const;

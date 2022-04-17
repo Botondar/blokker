@@ -1,5 +1,26 @@
 #include "Camera.hpp"
 
+mat3 camera::GetAxes() const
+{
+    const f32 SinYaw = Sin(Yaw);
+    const f32 CosYaw = Cos(Yaw);
+    const f32 SinPitch = Sin(Pitch);
+    const f32 CosPitch = Cos(Pitch);
+    
+    const vec3 GlobalUp = { 0.0f, 0.0f, 1.0f };
+
+    vec3 Forward = { -SinYaw * CosPitch, CosYaw * CosPitch, SinPitch };
+    vec3 Right = Normalize(Cross(Forward, GlobalUp));
+    vec3 Up = Cross(Right, Forward);
+
+    mat3 Result = Mat3(
+        Forward.x, Right.x, Up.x,
+        Forward.y, Right.y, Up.y,
+        Forward.z, Right.z, Up.z);
+
+    return Result;
+};
+
 mat4 camera::GetGlobalTransform() const 
 {
     const f32 SinYaw = Sin(Yaw);
