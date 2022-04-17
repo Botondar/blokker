@@ -288,15 +288,11 @@ void Player_Update(player* Player, world* World, f32 dt)
         Player->CurrentFov = Lerp(Player->CurrentFov, Player->TargetFov, Clamp(1.0f - Exp(-15.0f*dt), 0.0f, 1.0f));
     }
 
-    vec3 dP = (Player->Velocity + 0.5f * Acceleration * dt) * dt;
-
-    // Collision
+    // Apply movement
     {
-        TIMED_BLOCK("Collision");
-
+        vec3 dP = (Player->Velocity + 0.5f * Acceleration * dt) * dt;
         Player->WasGroundedLastFrame = false;
 
-        // Apply movement and resolve collisions separately on the axes
         vec3 Displacement = World_ApplyEntityMovement(World, Player, Player_GetAABB(Player), dP);
         
         if (Displacement.x != 0.0f)

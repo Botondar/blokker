@@ -309,6 +309,7 @@ vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP)
 {
     vec3 Displacement = {};
 
+    // Moves the entity along an axis, checks for collision with the world and resolves those collisions
     auto ApplyMovement = [&World, &Entity, &AABB](vec3 dP, u32 Direction) -> f32
     {
         Entity->P[Direction] += dP[Direction];
