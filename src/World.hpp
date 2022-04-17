@@ -21,6 +21,27 @@ struct renderer_frame_params;
 // World
 //
 
+struct map_view
+{
+    static constexpr f32 PitchMax = ToRadians(-15.0f);
+    static constexpr f32 PitchMin = ToRadians(-75.0f);
+
+    vec2 CurrentP;
+    vec2 TargetP;
+    f32 CurrentYaw;
+    f32 TargetYaw;
+    f32 CurrentPitch;
+    f32 TargetPitch;
+
+    f32 ZoomTarget;
+    f32 ZoomCurrent;
+    bool IsEnabled;
+
+    void ResetAll(world* World);
+    void Reset(world* World);
+    mat2 GetAxesXY() const;
+};
+
 struct world
 {
     renderer* Renderer;
@@ -55,11 +76,7 @@ struct world
         camera DebugCamera;
     } Debug;
 
-    struct
-    {
-        vec2 P;
-        bool IsEnabled;
-    } MapView;
+    map_view MapView;
 };
 
 // From chunk position
@@ -80,6 +97,9 @@ static bool World_RayCast(
 void World_ResetPlayer(world* World);
 
 bool World_Initialize(world* World);
+
+// TODO(boti): remove dt from HandleInput
+void World_HandleInput(world* World, game_input* Input, f32 DeltaTime);
 void World_Update(world* World, game_input* Input, f32 DeltaTime);
 void World_Render(world* World, renderer_frame_params* Frame);
 

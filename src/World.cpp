@@ -18,6 +18,35 @@ static chunk* World_FindPlayerChunk(world* World);
 // Implementations
 //
 
+void map_view::ResetAll(world* World)
+{
+    CurrentP = { World->Player.P.x, World->Player.P.y };
+    CurrentPitch = ToRadians(-60.0f);
+    ZoomCurrent = 10.0f;
+    CurrentYaw = ToRadians(45.0f);
+
+    Reset(World);
+}
+
+void map_view::Reset(world* World) 
+{
+    ZoomTarget = 1.0f;
+    TargetP = { World->Player.P.x, World->Player.P.y };
+    TargetPitch = ToRadians(-60.0f);
+    TargetYaw = ToRadians(45.0f);
+}
+
+mat2 map_view::GetAxesXY() const
+{
+    f32 SinYaw = Sin(CurrentYaw);
+    f32 CosYaw = Cos(CurrentYaw);
+
+    mat2 Result = Mat2(
+        CosYaw, -SinYaw,
+        SinYaw, CosYaw);
+    return Result;
+}
+
 void World_ResetPlayer(world* World)
 {
     player* Player = &World->Player;
@@ -581,17 +610,8 @@ bool World_Initialize(world* World)
     return true;
 }
 
-void World_Update(world* World, game_input* Input, f32 DeltaTime)
+void World_HandleInput(world* World, game_input* Input, f32 DeltaTime)
 {
-    TIMED_FUNCTION();
-
-    World_LoadChunks(World);
-
-    if (Input->MPressed)
-    {
-        World->MapView.IsEnabled = !World->MapView.IsEnabled;
-    }
-
     if (World->Debug.IsDebugCameraEnabled)
     {
         // Debug camera update
@@ -655,19 +675,69 @@ void World_Update(world* World, game_input* Input, f32 DeltaTime)
     }
     else
     {
-        // Player update
-        Player_HandleInput(&World->Player, Input);
-
-        constexpr f32 MinPhysicsResolution = 16.6667e-3f;
-
-        f32 RemainingTime = DeltaTime;
-        while (RemainingTime > 0.0f)
+        // Toggle map view
+        if (Input->MPressed)
         {
-            f32 dt = Min(RemainingTime, MinPhysicsResolution);
-            Player_Update(&World->Player, World, dt);
-            RemainingTime -= dt;
+            World->MapView.IsEnabled = !World->MapView.IsEnabled;
+            World->MapView.ResetAll(World);
+        }
+
+        if (World->MapView.IsEnabled)
+        {
+            World->MapView.ZoomTarget += 0.1f * Input->WheelDelta * World->MapView.ZoomTarget; // Diff equation hack?
+
+            if (Input->MouseButtons[MOUSE_LEFT])
+            {
+                constexpr f32 MouseSpeed = 3.5e-3f;
+                World->MapView.TargetYaw -= MouseSpeed * Input->MouseDelta.x;
+                World->MapView.TargetPitch -= MouseSpeed * Input->MouseDelta.y;
+                World->MapView.TargetPitch = Clamp(World->MapView.TargetPitch, World->MapView.PitchMin, World->MapView.PitchMax);
+            }
+            else if (Input->MouseButtons[MOUSE_RIGHT])
+            {
+                mat2 Axes = World->MapView.GetAxesXY();
+
+                constexpr f32 MoveSpeed = 2.5e-1f;
+                World->MapView.TargetP += (Axes * vec2{ -Input->MouseDelta.x, Input->MouseDelta.y }) * (MoveSpeed / World->MapView.ZoomTarget);
+            }
+            else if (Input->MouseButtons[MOUSE_MIDDLE])
+            {
+                World->MapView.Reset(World);
+            }
+        }
+        else
+        {
+            // Player update
+            Player_HandleInput(&World->Player, Input);
         }
     }
+}
+
+void World_Update(world* World, game_input* Input, f32 DeltaTime)
+{
+    TIMED_FUNCTION();
+
+    World_LoadChunks(World);
+
+    if (World->MapView.IsEnabled)
+    {
+        World->MapView.CurrentP = Lerp(World->MapView.CurrentP, World->MapView.TargetP, 1.0f - Exp(-50.0f * DeltaTime));
+        World->MapView.CurrentYaw = Lerp(World->MapView.CurrentYaw, World->MapView.TargetYaw, 1.0f - Exp(-30.0f * DeltaTime));
+        World->MapView.CurrentPitch = Lerp(World->MapView.CurrentPitch, World->MapView.TargetPitch, 1.0f - Exp(-30.0f * DeltaTime));
+        World->MapView.ZoomCurrent = Lerp(World->MapView.ZoomCurrent, World->MapView.ZoomTarget, 1.0f - Exp(-20.0f * DeltaTime));
+        
+    }
+
+    constexpr f32 MinPhysicsResolution = 16.6667e-3f;
+
+    f32 RemainingTime = DeltaTime;
+    while (RemainingTime > 0.0f)
+    {
+        f32 dt = Min(RemainingTime, MinPhysicsResolution);
+        Player_Update(&World->Player, World, dt);
+        RemainingTime -= dt;
+    }
+
     // Chunk update
     // TODO: move this
     {
@@ -748,7 +818,6 @@ void World_Render(world* World, renderer_frame_params* FrameParams)
 {
     TIMED_FUNCTION();
 
-    
     FrameParams->Camera = 
         World->Debug.IsDebugCameraEnabled ? 
         World->Debug.DebugCamera : 
@@ -760,9 +829,32 @@ void World_Render(world* World, renderer_frame_params* FrameParams)
 
     if (World->MapView.IsEnabled)
     {
+        f32 SinYaw = Sin(World->MapView.CurrentYaw);
+        f32 CosYaw = Cos(World->MapView.CurrentYaw);
+        f32 SinPitch = Sin(World->MapView.CurrentPitch);
+        f32 CosPitch = Cos(World->MapView.CurrentPitch);
+
+        vec3 WorldUp = { 0.0f, 0.0f, 1.0f };
+        vec3 Forward = 
+        {
+            -SinYaw*CosPitch,
+            CosYaw*CosPitch,
+            SinPitch,
+        };
+        vec3 Right = Normalize(Cross(Forward, WorldUp));
+        vec3 Up = Cross(Right, Forward);
+
+        vec3 P = vec3{ World->MapView.CurrentP.x, World->MapView.CurrentP.y, 80.0f };
+        mat4 ViewTransform = Mat4(
+            Right.x, Right.y, Right.z, -Dot(Right, P),
+            -Up.x, -Up.y, -Up.z, +Dot(Up, P),
+            Forward.x, Forward.y, Forward.z, -Dot(Forward, P),
+            0.0f, 0.0f, 0.0f, 1.0f);
+
+        FrameParams->ViewTransform = ViewTransform;
         FrameParams->ProjectionTransform = Mat4(
-            2.0f / (AspectRatio*256.0f), 0.0f, 0.0f, 0.0f,
-            0.0f, 2.0f / (256.0f), 0.0f, 0.0f,
+            World->MapView.ZoomCurrent * 2.0f / (AspectRatio*256.0f), 0.0f, 0.0f, 0.0f,
+            0.0f, World->MapView.ZoomCurrent * 2.0f / (256.0f), 0.0f, 0.0f,
             0.0f, 0.0f, 1.0f / 512.0f, +256.0f / 512.0f,
             0.0f, 0.0f, 0.0f, 1.0f);
     }
