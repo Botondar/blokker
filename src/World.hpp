@@ -10,6 +10,8 @@
 
 #include <Player.hpp>
 
+#define BLOKKER_TINY_RENDER_DISTANCE 0
+
 // Forward declare
 struct game_input;
 struct renderer;
@@ -28,8 +30,8 @@ struct world
     perlin3 Perlin3;
 
 #if BLOKKER_TINY_RENDER_DISTANCE
-    static constexpr u32 MaxChunkCount = 36;
-    static constexpr u32 MaxChunkCountSqrt = 6;
+    static constexpr u32 MaxChunkCount = 81;
+    static constexpr u32 MaxChunkCountSqrt = 9;
 #else
     static constexpr u32 MaxChunkCount = 16384;
     static constexpr u32 MaxChunkCountSqrt = 128;

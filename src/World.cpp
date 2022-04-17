@@ -316,7 +316,7 @@ void World_LoadChunks(world* World)
     constexpr u32 ImmediateMeshDistance = 1;
     constexpr u32 ImmediateGenerationDistance = ImmediateMeshDistance + 1;
 #if BLOKKER_TINY_RENDER_DISTANCE
-    constexpr u32 MeshDistance = 1;
+    constexpr u32 MeshDistance = 3;
 #else
     constexpr u32 MeshDistance = 20;
 #endif

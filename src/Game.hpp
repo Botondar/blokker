@@ -8,8 +8,6 @@
 
 #include <imgui/imgui.h>
 
-#define BLOKKER_TINY_RENDER_DISTANCE 0
-
 enum mouse_button : u32
 {
     MOUSE_LEFT = 0,
