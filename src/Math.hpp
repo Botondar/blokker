@@ -192,6 +192,10 @@ inline f32 ATan2(f32 y, f32 x) { return atan2f(y, x); }
 
 inline f32 Modulo(f32 x, f32 y) { return fmodf(x, y); }
 
+inline f32 Exp(f32 x) { return expf(x); }
+inline f32 Pow(f32 x, f32 y) { return powf(x, y); }
+
+
 template<typename T>
 inline T Lerp(T a, T b, f32 t) 
 { 
