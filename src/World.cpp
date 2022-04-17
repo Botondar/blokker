@@ -12,6 +12,11 @@
 static u32 World_HashChunkP(const world* World, vec2i P, vec2i* Coords = nullptr);
 static void World_LoadChunks(world* World);
 static chunk* World_ReserveChunk(world* World, vec2i P);
+static chunk* World_FindPlayerChunk(world* World);
+
+//
+// Implementations
+//
 
 void World_ResetPlayer(world* World)
 {
@@ -234,7 +239,7 @@ static chunk* World_ReserveChunk(world* World, vec2i P)
     return Result;
 }
 
-chunk* World_FindPlayerChunk(world* World)
+static chunk* World_FindPlayerChunk(world* World)
 {
     TIMED_FUNCTION();
     chunk* Result = nullptr;

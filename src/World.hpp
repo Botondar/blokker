@@ -77,9 +77,6 @@ static bool World_RayCast(
     f32 tMax, 
     vec3i* OutP, direction* OutDir);
 
-//chunk* World_ReserveChunk(world* World, vec2i P);
-chunk* World_FindPlayerChunk(world* World);
-
 void World_ResetPlayer(world* World);
 
 bool World_Initialize(world* World);

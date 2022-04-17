@@ -127,7 +127,6 @@ void Player_Update(player* Player, world* World, f32 dt)
     {
         vec3 Forward = Player_GetForward(Player);
 
-        chunk* PlayerChunk = World_FindPlayerChunk(World);
         constexpr f32 PlayerReach = 8.0f;
 
         vec3i OldTargetBlock = Player->TargetBlock;
