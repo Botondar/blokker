@@ -12,7 +12,7 @@
 
 camera Player_GetCamera(const player* Player)
 {
-    vec3 CamPDelta = { 0.0f, 0.0f, Player->BobAmplitude * Sin(2.0f * PI * Player->HeadBob) };
+    vec3 CamPDelta = { 0.0f, 0.0f, Player->CurrentHeadBobValue };
     camera Camera =
     {
         .P = Player->P + CamPDelta,
@@ -234,14 +234,12 @@ void Player_Update(player* Player, world* World, f32 dt)
             Player->BobAmplitude = Lerp(Player->WalkBobAmplitude, Player->RunBobAmplitude, t);
             Player->BobFrequency = Lerp(Player->WalkBobFrequency, Player->RunBobFrequency, t);
         }
-        Player->HeadBob += Player->BobFrequency*dt;
-        if (Player->HeadBob >= 1.0f)
-        {
-            Player->HeadBob -= 1.0f;
-        }
     }
     else
     {
+        // No head bob when not on the ground
+        Player->BobAmplitude = 0.0f;
+
         // Clear velocity if the user is trying to move
         if (Dot(DesiredMoveDirection, DesiredMoveDirection) != 0.0f)
         {
@@ -271,6 +269,16 @@ void Player_Update(player* Player, world* World, f32 dt)
         constexpr f32 PlayerMass = 60.0f;
         Acceleration += DragForce * (1.0f / PlayerMass);
     }
+
+    // Update head-bob state based on the amplitude and frequency calculated in the on-ground controls
+    Player->HeadBob += Player->BobFrequency*dt;
+    if (Player->HeadBob >= 1.0f)
+    {
+        Player->HeadBob -= 1.0f;
+    }
+    Player->TargetHeadBobValue = Player->BobAmplitude * Sin(2.0f * PI * Player->HeadBob);
+
+    Player->CurrentHeadBobValue = Lerp(Player->CurrentHeadBobValue, Player->TargetHeadBobValue, 1.0f - Exp(-20.0f * dt));
 
     constexpr f32 Gravity = 25.0f;
     

@@ -40,6 +40,8 @@ struct player : public entity
     f32 HeadBob;
     f32 BobAmplitude = 0.05f;
     f32 BobFrequency = 2.0f;
+    f32 TargetHeadBobValue;
+    f32 CurrentHeadBobValue;
 
     static constexpr f32 WalkBobAmplitude = 0.025f;
     static constexpr f32 WalkBobFrequency = 2.0f;
