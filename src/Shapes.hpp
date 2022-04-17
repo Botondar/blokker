@@ -9,7 +9,7 @@ struct aabb
     vec3 Max;
 };
 
-static aabb MakeAABB(const vec3& a, const vec3& b);
+aabb MakeAABB(const vec3& a, const vec3& b);
 
 // NOTE: Overlap is the amount that A overlaps B. in each direction (B is treated as static)
-static bool AABB_Intersect(const aabb& A, const aabb& B, vec3& Overlap, int& MinCoord);
+bool AABB_Intersect(const aabb& A, const aabb& B, vec3& Overlap, int& MinCoord);

@@ -1,6 +1,6 @@
 #include "Shapes.hpp"
 
-static aabb MakeAABB(const vec3& a, const vec3& b)
+aabb MakeAABB(const vec3& a, const vec3& b)
 {
     aabb Result = 
     {
@@ -10,7 +10,7 @@ static aabb MakeAABB(const vec3& a, const vec3& b)
     return Result;
 }
 
-static bool AABB_Intersect(const aabb& A, const aabb& B, vec3& Overlap, int& MinCoord)
+bool AABB_Intersect(const aabb& A, const aabb& B, vec3& Overlap, int& MinCoord)
 {
     vec3 Overlap_ = {};
     f32 MinOverlap = F32_MAX_NORMAL;
