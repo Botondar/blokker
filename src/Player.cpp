@@ -296,93 +296,24 @@ void Player_Update(player* Player, world* World, f32 dt)
 
         Player->WasGroundedLastFrame = false;
 
-        chunk* PlayerChunk = World_FindPlayerChunk(World);
-        assert(PlayerChunk);
-
-        auto ApplyMovement = [&World, &Player](vec3 dP, u32 Direction) -> f32
-        {
-            TIMED_FUNCTION();
-
-            Player->P[Direction] += dP[Direction];
-
-            aabb PlayerAABB = Player_GetAABB(Player);
-
-            vec3i MinPi = (vec3i)Floor(PlayerAABB.Min);
-            vec3i MaxPi = (vec3i)Ceil(PlayerAABB.Max);
-
-            constexpr u32 AABBStackSize = 64;
-            u32 AABBAt = 0;
-            aabb AABBStack[AABBStackSize];
-
-            for (s32 z = MinPi.z; z <= MaxPi.z; z++)
-            {
-                for (s32 y = MinPi.y; y <= MaxPi.y; y++)
-                {
-                    for (s32 x = MinPi.x; x <= MaxPi.x; x++)
-                    {
-                        u16 VoxelType = World_GetVoxelType(World, vec3i{x, y, z});
-                        const voxel_desc* VoxelDesc = &VoxelDescs[VoxelType];
-                        if (VoxelDesc->Flags & VOXEL_FLAGS_SOLID)
-                        {
-                            assert(AABBAt < AABBStackSize);
-                            aabb VoxelAABB = 
-                            {
-                                .Min = { (f32)x, (f32)y, (f32)z },
-                                .Max = { (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) },
-                            };
-                            AABBStack[AABBAt++] = VoxelAABB;
-                        }
-                    }
-                }
-            }
-            
-            f32 Displacement = 0.0f;
-            bool IsCollision = false;
-            for (u32 i = 0; i < AABBAt; i++)
-            {
-                vec3 Overlap;
-                int MinCoord;
-                if (AABB_Intersect(PlayerAABB, AABBStack[i], Overlap, MinCoord))
-                {
-                    IsCollision = true;
-                    if (Abs(Displacement) < Abs(Overlap[Direction]))
-                    {
-                        Displacement = Overlap[Direction];
-                    }
-                }
-            }
-
-            if (IsCollision)
-            {
-                constexpr f32 Epsilon = 1e-6f;
-                Displacement += Signum(Displacement) * Epsilon;
-                Player->P[Direction] += Displacement;
-                if (Displacement != 0.0f)
-                {
-                    Player->Velocity[Direction] = 0.0f;
-                }
-            }
-            return Displacement;
-        };
-
         // Apply movement and resolve collisions separately on the axes
-        vec3 Displacement = {};
-        Displacement.z = ApplyMovement(dP, AXIS_Z);
+        vec3 Displacement = World_ApplyEntityMovement(World, Player, Player_GetAABB(Player), dP);
         
-        if (Abs(dP.x) > Abs(dP.y))
+        if (Displacement.x != 0.0f)
         {
-            Displacement.x = ApplyMovement(dP, AXIS_X);
-            Displacement.y = ApplyMovement(dP, AXIS_Y);
+            Player->Velocity.x = 0.0f;
         }
-        else
+        if (Displacement.y != 0.0f)
         {
-            Displacement.y = ApplyMovement(dP, AXIS_Y);
-            Displacement.x = ApplyMovement(dP, AXIS_X);
+            Player->Velocity.y = 0.0f;
         }
-        
-        if (Displacement.z > 0.0f)
+        if (Displacement.z != 0.0f)
         {
-            Player->WasGroundedLastFrame = true;
+            Player->Velocity.z = 0.0f;
+            if (Displacement.z > 0.0f)
+            {
+                Player->WasGroundedLastFrame = true;
+            }
         }
     }
 }

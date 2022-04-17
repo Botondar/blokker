@@ -305,6 +305,88 @@ bool World_RayCast(
     return Result;
 }
 
+vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP)
+{
+    vec3 Displacement = {};
+
+    auto ApplyMovement = [&World, &Entity, &AABB](vec3 dP, u32 Direction) -> f32
+    {
+        Entity->P[Direction] += dP[Direction];
+        AABB.Min[Direction] += dP[Direction];
+        AABB.Max[Direction] += dP[Direction];
+
+        vec3i MinPi = (vec3i)Floor(AABB.Min);
+        vec3i MaxPi = (vec3i)Ceil(AABB.Max);
+
+        constexpr u32 AABBStackSize = 64;
+        u32 AABBAt = 0;
+        aabb AABBStack[AABBStackSize];
+
+        for (s32 z = MinPi.z; z <= MaxPi.z; z++)
+        {
+            for (s32 y = MinPi.y; y <= MaxPi.y; y++)
+            {
+                for (s32 x = MinPi.x; x <= MaxPi.x; x++)
+                {
+                    u16 VoxelType = World_GetVoxelType(World, vec3i{x, y, z});
+                    const voxel_desc* VoxelDesc = &VoxelDescs[VoxelType];
+                    if (VoxelDesc->Flags & VOXEL_FLAGS_SOLID)
+                    {
+                        assert(AABBAt < AABBStackSize);
+                        aabb VoxelAABB = 
+                        {
+                            .Min = { (f32)x, (f32)y, (f32)z },
+                            .Max = { (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) },
+                        };
+                        AABBStack[AABBAt++] = VoxelAABB;
+                    }
+                }
+            }
+        }
+            
+        f32 Displacement = 0.0f;
+        bool IsCollision = false;
+        for (u32 i = 0; i < AABBAt; i++)
+        {
+            vec3 Overlap;
+            int MinCoord;
+            if (AABB_Intersect(AABB, AABBStack[i], Overlap, MinCoord))
+            {
+                IsCollision = true;
+                if (Abs(Displacement) < Abs(Overlap[Direction]))
+                {
+                    Displacement = Overlap[Direction];
+                }
+            }
+        }
+
+        if (IsCollision)
+        {
+            constexpr f32 Epsilon = 1e-6f;
+            Displacement += Signum(Displacement) * Epsilon;
+            Entity->P[Direction] += Displacement;
+            AABB.Min[Direction] += Displacement;
+            AABB.Max[Direction] += Displacement;
+        }
+        return Displacement;
+    };
+
+    Displacement.z = ApplyMovement(dP, AXIS_Z);
+        
+    if (Abs(dP.x) > Abs(dP.y))
+    {
+        Displacement.x = ApplyMovement(dP, AXIS_X);
+        Displacement.y = ApplyMovement(dP, AXIS_Y);
+    }
+    else
+    {
+        Displacement.y = ApplyMovement(dP, AXIS_Y);
+        Displacement.x = ApplyMovement(dP, AXIS_X);
+    }
+
+    return Displacement;
+}
+
 // Loads the chunks around the player
 void World_LoadChunks(world* World)
 {

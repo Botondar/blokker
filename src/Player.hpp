@@ -8,6 +8,12 @@
 struct world;
 struct game_input;
 
+struct entity
+{
+    vec3 P;
+    f32 Yaw, Pitch;
+};
+
 //
 // Player
 //
@@ -21,11 +27,9 @@ struct player_control
     bool SecondaryAction;
 };
 
-struct player
+struct player : public entity
 {
-    vec3 P;
     vec3 Velocity;
-    f32 Yaw, Pitch;
     bool WasGroundedLastFrame;
 
     static constexpr f32 Height = 1.8f;

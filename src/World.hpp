@@ -81,3 +81,5 @@ void World_Update(world* World, game_input* Input, f32 DeltaTime);
 void World_Render(world* World, renderer_frame_params* Frame);
 
 bool World_RayCast(world* World, vec3 P, vec3 V, f32 tMax, vec3i* OutP, direction* OutDir);
+
+vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP);
