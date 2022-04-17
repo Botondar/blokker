@@ -679,7 +679,14 @@ void World_HandleInput(world* World, game_input* Input, f32 DeltaTime)
         if (Input->MPressed)
         {
             World->MapView.IsEnabled = !World->MapView.IsEnabled;
-            World->MapView.ResetAll(World);
+            if (World->MapView.IsEnabled)
+            {
+                World->MapView.ResetAll(World);
+            }
+            else
+            {
+                World->Player.CurrentFov = ToRadians(160.0f);
+            }
         }
 
         if (World->MapView.IsEnabled)
