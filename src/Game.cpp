@@ -119,6 +119,8 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
     }
 
     GameState->World.FrameIndex = GameState->FrameIndex;
+    World_HandleInput(&GameState->World, Input, DeltaTime);
+
     World_Update(&GameState->World, Input, DeltaTime);
 }
 
