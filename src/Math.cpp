@@ -697,6 +697,19 @@ mat4 PerspectiveMat4(f32 FieldOfView, f32 AspectRatio, f32 Near, f32 Far)
     return Result;
 }
 
+mat4 PerspectiveReverse(f32 FieldOfView, f32 AspectRatio, f32 Near, f32 Far)
+{
+    const f32 InvTanHalfFov = 1.0f / Tan(0.5f * FieldOfView);
+    const f32 ZRange = Far - Near;
+
+    mat4 Result = Mat4(
+        InvTanHalfFov / AspectRatio, 0.0f, 0.0f, 0.0f,
+        0.0f, InvTanHalfFov, 0.0f, 0.0f,
+        0.0f, 0.0f, -Near / ZRange, Near*Far / ZRange,
+        0.0f, 0.0f, 1.0f, 0.0f);
+    return Result;
+}
+
 vec4 operator*(const mat4& M, const vec4& v)
 {
     vec4 Result = 

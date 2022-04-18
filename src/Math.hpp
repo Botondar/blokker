@@ -360,6 +360,7 @@ mat4 operator*(const mat4& A, const mat4& B);
 mat4 Identity4();
 
 mat4 PerspectiveMat4(f32 FieldOfView, f32 AspectRatio, f32 Near, f32 Far);
+mat4 PerspectiveReverse(f32 FieldOfView, f32 AspectRatio, f32 Near, f32 Far);
 
 vec3 TransformDirection(const mat4& M, const vec3& v);
 vec3 TransformPoint(const mat4& M, const vec3& p);
