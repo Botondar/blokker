@@ -112,7 +112,7 @@ void CBumpArray<T>::PushBack(T Value)
 {
     while (Count + 1 > MaxCount)
     {
-        Bump_Append(Allocator, Data, SizeIncrement);
+        Data = (T*)Bump_Append(Allocator, Data, SizeIncrement);
         MaxCount += SizeIncrement;
     }
 

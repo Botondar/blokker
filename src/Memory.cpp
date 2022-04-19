@@ -137,7 +137,7 @@ void* Bump_Allocate(bump_allocator* Allocator, u64 Size)
 {
     void* Result = nullptr;
 
-    u64 RemainingSize = (u64)Allocator->At - (u64)Allocator->Memory;
+    u64 RemainingSize = Allocator->MemorySize - ((u64)Allocator->At - (u64)Allocator->Memory);
     if (Size <= RemainingSize)
     {
         Result = (void*)Allocator->At;
@@ -158,7 +158,7 @@ void* Bump_Append(bump_allocator* Allocator, void* Allocation, u64 Size)
     {
         assert((u8*)Allocation == Allocator->LastAllocation);
 
-        u64 RemainingSize = (u64)Allocator->At - (u64)Allocator->Memory;
+        u64 RemainingSize = Allocator->MemorySize - ((u64)Allocator->At - (u64)Allocator->Memory);
         if (Size <= RemainingSize)
         {
             Allocator->At += Size;
