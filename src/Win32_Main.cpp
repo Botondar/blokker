@@ -41,7 +41,7 @@ static win32_state Win32State;
 
 void* Platform_VirtualAlloc(void* Pointer, u64 Size)
 {
-    void* Result = VirtualAlloc(Pointer, Size, MEM_COMMIT|MEM_RESERVE, 0);
+    void* Result = VirtualAlloc(Pointer, Size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
     return Result;
 }
 
@@ -554,28 +554,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     }
 
     GameState.Renderer = &Renderer;
-
-    // Allocate memory
-    {
-        u64 ChunkHeadersSize = (u64)world::MaxChunkCount * sizeof(chunk);
-        GameState.World.Chunks = (chunk*)VirtualAlloc(nullptr, ChunkHeadersSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-        if (!GameState.World.Chunks)
-        {
-            DWORD ErrorCode = GetLastError();
-            DebugPrint("Memory allocation failed: %x\n", ErrorCode);
-            return -1;
-        }
-
-        // TODO: large pages
-        u64 ChunkDataSize = (u64)world::MaxChunkCount * sizeof(chunk_data);
-        GameState.World.ChunkData = (chunk_data*)VirtualAlloc(nullptr, ChunkDataSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-        if (!GameState.World.ChunkData)
-        {
-            DWORD ErrorCode = GetLastError();
-            DebugPrint("Memory allocation failed: %x\n", ErrorCode);
-            return -1;
-        }
-    }
 
     if(!Game_Initialize(&GameState))
     {

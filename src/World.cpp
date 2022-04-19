@@ -586,6 +586,23 @@ void World_LoadChunks(world* World)
 
 bool World_Initialize(world* World)
 {
+    // Allocate chunk memory
+    {
+        u64 ChunkHeadersSize = (u64)world::MaxChunkCount * sizeof(chunk);
+        World->Chunks = (chunk*)Platform_VirtualAlloc(nullptr, ChunkHeadersSize);
+        if (!World->Chunks)
+        {
+            return false;
+        }
+
+        u64 ChunkDataSize = (u64)world::MaxChunkCount * sizeof(chunk_data);
+        World->ChunkData = (chunk_data*)Platform_VirtualAlloc(nullptr, ChunkDataSize);
+        if (!World->ChunkData)
+        {
+            return false;
+        }
+    }
+
     // Init chunks
     for (u32 i = 0; i < World->MaxChunkCount; i++)
     {
