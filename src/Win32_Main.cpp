@@ -12,6 +12,7 @@
 #include <vulkan/vulkan_win32.h>
 
 #include <Platform.hpp>
+#include <Thread.hpp>
 
 #include <Common.hpp>
 #include <Renderer/Renderer.hpp>
@@ -20,6 +21,9 @@
 
 static const char* Win32_ClassName = "wndclass_blokker";
 static const char* Win32_WindowTitle = "Blokker";
+
+static thread_context PrimaryThreadContext;
+static DWORD ThreadContextTlsID;
 
 struct win32_state
 {
@@ -48,6 +52,12 @@ void* Platform_VirtualAlloc(void* Pointer, u64 Size)
 bool Platform_VirtualFree(void* Pointer, u64 Size)
 {
     bool Result = (bool)VirtualFree(Pointer, Size, MEM_DECOMMIT|MEM_RELEASE);
+    return Result;
+}
+
+thread_context* Platform_GetThreadContext()
+{
+    thread_context* Result = (thread_context*)TlsGetValue(ThreadContextTlsID);
     return Result;
 }
 
@@ -551,6 +561,17 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         {
             return -1;
         }
+    }
+
+    // Init threading
+    {
+        if (!Bump_Initialize(&PrimaryThreadContext.BumpAllocator))
+        {
+            return -1;
+        }
+
+        ThreadContextTlsID = TlsAlloc();
+        TlsSetValue(ThreadContextTlsID, (void*)&PrimaryThreadContext);
     }
 
     GameState.Renderer = &Renderer;
