@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Common.hpp>
+#include <Intrinsics.hpp>
 #include <Math.hpp>
 #include <Shapes.hpp>
 

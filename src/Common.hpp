@@ -4,8 +4,6 @@
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
-#include <immintrin.h>
-#include <intrin.h>
 
 typedef uint8_t  u8;
 typedef int8_t   s8;
@@ -45,37 +43,6 @@ inline u64 AlignTo(u64 Value, u64 Alignment)
 inline u64 AlignToPow2(u64 Value, u64 Alignment)
 {
     u64 Result = (Value + (Alignment - 1)) & (~(Alignment - 1));
-    return Result;
-}
-
-inline u32 BitScanForward(u32* ScanResult, u32 Value)
-{
-#if defined(_MSC_VER) && !defined(__clang__)
-    u32 Result = _BitScanForward((unsigned long*)ScanResult, Value);
-#elif defined(__clang__)
-    u32 Result = 0;
-    if (Value != 0)
-    {
-        *ScanResult = __builtin_ctz(Value);
-        Result = 1;
-    }
-#endif
-    return Result;
-}
-
-
-inline u32 BitScanReverse(u32* ScanResult, u32 Value)
-{
-#if defined(_MSC_VER) && !defined(__clang__)
-    u32 Result = _BitScanReverse((unsigned long*)ScanResult, Value);
-#elif defined(__clang__)
-    u32 Result = 0;
-    if (Value != 0)
-    {
-        *ScanResult = __builtin_clz(Value);
-        Result = 1;
-    }
-#endif
     return Result;
 }
 
