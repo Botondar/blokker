@@ -39,6 +39,18 @@ struct win32_state
 };
 static win32_state Win32State;
 
+void* Platform_VirtualAlloc(void* Pointer, u64 Size)
+{
+    void* Result = VirtualAlloc(Pointer, Size, MEM_COMMIT|MEM_RESERVE, 0);
+    return Result;
+}
+
+bool Platform_VirtualFree(void* Pointer, u64 Size)
+{
+    bool Result = (bool)VirtualFree(Pointer, Size, MEM_DECOMMIT|MEM_RELEASE);
+    return Result;
+}
+
 static bool SetClipCursorToWindow(bool Clip)
 {
     if (Clip)
