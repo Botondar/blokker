@@ -181,7 +181,7 @@ void* Bump_Append(bump_allocator* Allocator, void* Allocation, u64 Size)
 
 void Bump_Free(bump_allocator* Allocator, void* Allocation)
 {
-    if ((u8*)Allocation == Allocator->LastAllocation)
+    if (Allocation && ((u8*)Allocation == Allocator->LastAllocation))
     {
         Allocator->At = Allocator->LastAllocation;
         Allocator->LastAllocationSize = 0;
