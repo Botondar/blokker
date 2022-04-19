@@ -11,6 +11,7 @@
 #include "Math.cpp"
 #include "Random.cpp"
 #include "Common.cpp"
+#include "Memory.cpp"
 #include "Camera.cpp"
 #include "Chunk.cpp"
 #include "Shapes.cpp"
