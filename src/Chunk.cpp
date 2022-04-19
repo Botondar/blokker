@@ -1,6 +1,7 @@
 #include "Chunk.hpp"
 
 #include <Game.hpp>
+#include <Thread.hpp>
 
 static void Chunk_Generate(chunk* Chunk, world* World)
 {
@@ -87,14 +88,15 @@ static void Chunk_Generate(chunk* Chunk, world* World)
     }
 }
 
-static std::vector<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, world* World)
+static CBumpArray<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, world* World)
 {
     TIMED_FUNCTION();
 
     assert(Chunk);
     assert(Chunk->Data);
 
-    std::vector<terrain_vertex> VertexList;
+    thread_context* ThreadContext = Platform_GetThreadContext();
+    CBumpArray<terrain_vertex> VertexList(&ThreadContext->BumpAllocator);
 
     for (u32 z = 0; z < CHUNK_DIM_Z; z++)
     {
@@ -249,7 +251,7 @@ static std::vector<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, world* Wo
                                     .P = CubeVertex.P + VoxelP,
                                     .TexCoord = PackTexCoord((u32)CubeVertex.UVW.x, (u32)CubeVertex.UVW.y, (u32)Desc->FaceTextureIndices[Direction], AO),
                                 };
-                                VertexList.push_back(Vertex);
+                                VertexList.PushBack(Vertex);
                             }
                         }
                     }

@@ -4,8 +4,7 @@
 #include <Random.hpp>
 #include <Renderer/RendererCommon.hpp>
 
-// TODO: remove stl
-#include <vector>
+#include <Memory.hpp>
 
 struct world;
 
@@ -149,7 +148,7 @@ struct voxel_neighborhood
 };
 
 static void Chunk_Generate(chunk* Chunk, world* World);
-static std::vector<terrain_vertex> Chunk_Mesh(const chunk* Chunk, world* World);
+static CBumpArray<terrain_vertex> Chunk_Mesh(const chunk* Chunk, world* World);
 
 /* Implementations */
 inline constexpr u32 CardinalOpposite(u32 Cardinal)

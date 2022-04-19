@@ -4,8 +4,6 @@
 #include <bmp.hpp>
 #include <Float.hpp>
 
-#include <vector>
-
 #include "Renderer/Renderer.cpp"
 
 #include "Math.cpp"
@@ -27,6 +25,9 @@ static void Game_Render(game_state* GameState, f32 DeltaTime);
 static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
 {
     TIMED_FUNCTION();
+
+    thread_context* ThreadContext = Platform_GetThreadContext();
+    Bump_Reset(&ThreadContext->BumpAllocator);
 
     if (Input->EscapePressed)
     {
