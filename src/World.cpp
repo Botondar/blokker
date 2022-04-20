@@ -557,6 +557,7 @@ void World_LoadChunks(world* World)
                     TIMED_BLOCK("Upload");
 
                     u64 Size = VertexData.GetCount() * sizeof(terrain_vertex);
+                    World->Debug.MaxRecordedVBSize = Max(Size, World->Debug.MaxRecordedVBSize);
                     u64 Offset = VB_GetAllocationMemoryOffset(&World->Renderer->VB, Chunk->AllocationIndex);
 
                     if (StagingHeap_Copy(
@@ -740,6 +741,14 @@ void World_HandleInput(world* World, game_input* Input, f32 DeltaTime)
 void World_Update(world* World, game_input* Input, f32 DeltaTime)
 {
     TIMED_FUNCTION();
+
+    ImGui::Begin("Memory");
+    {
+        ImGui::Text("MaxRecordedVBSize = %llu bytes (%.1f MB)", 
+            World->Debug.MaxRecordedVBSize,
+            World->Debug.MaxRecordedVBSize / (1024.0*1024.0));
+    }
+    ImGui::End();
 
     World_LoadChunks(World);
 
