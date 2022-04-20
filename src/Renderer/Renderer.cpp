@@ -721,6 +721,13 @@ bool Renderer_Initialize(renderer* Renderer)
                     .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
                     .pImmutableSamplers = &Renderer->Sampler,
                 },
+                {
+                    .binding = 2,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .stageFlags = VK_SHADER_STAGE_ALL,
+                    .pImmutableSamplers = nullptr,
+                },
             };
             constexpr u32 BindingCount = CountOf(Bindings);
 
@@ -749,6 +756,7 @@ bool Renderer_Initialize(renderer* Renderer)
             {
                 { .type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount = 1, },
                 { .type = VK_DESCRIPTOR_TYPE_SAMPLER, .descriptorCount = 1, },
+                { .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = 1, },
             };
             constexpr u32 PoolSizeCount = CountOf(PoolSizes);
 
