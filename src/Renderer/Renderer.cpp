@@ -2359,6 +2359,7 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
                     {
                         Renderer->FrameParams[i].FrameUniformBuffer.Memory = Memory;
 
+                        // BUG(boti): we should map the memory _once_ and give offset pointers to the frame params
                         void* Mapping = nullptr;
                         if (vkMapMemory(Renderer->RenderDevice.Device, Memory, Offset, Renderer->FrameParams[i].FrameUniformBuffer.BufferSize, 0, &Mapping) == VK_SUCCESS)
                         {
