@@ -10,7 +10,7 @@
 #include "StagingHeap.cpp"
 #include "VertexBuffer.cpp"
 
-static bool Renderer_InitializeFrameParams(renderer* Renderer, renderer_frame_params* Frame);
+static bool Renderer_InitializeFrameParams(renderer* Renderer);
 
 bool Renderer_ResizeRenderTargets(renderer* Renderer)
 {
@@ -411,13 +411,9 @@ bool Renderer_Initialize(renderer* Renderer)
     }
 
 #if 1
-    for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
+    if (!Renderer_InitializeFrameParams(Renderer))
     {
-        renderer_frame_params* Frame = Renderer->FrameParams + i;
-        if (!Renderer_InitializeFrameParams(Renderer, Frame))
-        {
-            return false;
-        }
+        return false;
     }
 #else
     // Create per frame vertex stack
@@ -2292,55 +2288,66 @@ bool Renderer_CreateImGuiTexture(renderer* Renderer, u32 Width, u32 Height, cons
     return Result;
 }
 
-static bool Renderer_InitializeFrameParams(renderer* Renderer, renderer_frame_params* Frame)
+static bool Renderer_InitializeFrameParams(renderer* Renderer)
 {
-    // Create per frame vertex stack
+    for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
     {
-        VkBufferCreateInfo BufferInfo = 
-        {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0,
-            .size = Frame->VertexStack.VertexStackSize,
-            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            .queueFamilyIndexCount = 0,
-            .pQueueFamilyIndices = nullptr,
-        };
-        VkBuffer Buffer;
-        if (vkCreateBuffer(Renderer->RenderDevice.Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
-        {
-            VkMemoryRequirements MemoryRequirements = {};
-            vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
+        renderer_frame_params* Frame = Renderer->FrameParams + i;
 
-            assert(MemoryRequirements.size == Frame->VertexStack.VertexStackSize);
-
-            u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.HostVisibleCoherent;
-            u32 MemoryType = 0;
-            if (BitScanForward(&MemoryType, MemoryTypes) != 0)
+        // Create per frame vertex stack
+        {
+            VkBufferCreateInfo BufferInfo = 
             {
-                VkMemoryAllocateInfo AllocInfo = 
-                {
-                    .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                    .pNext = nullptr,
-                    .allocationSize = Frame->VertexStack.VertexStackSize,
-                    .memoryTypeIndex = MemoryType,
-                };
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .size = Frame->VertexStack.VertexStackSize,
+                .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                .queueFamilyIndexCount = 0,
+                .pQueueFamilyIndices = nullptr,
+            };
+            VkBuffer Buffer;
+            if (vkCreateBuffer(Renderer->RenderDevice.Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
+            {
+                VkMemoryRequirements MemoryRequirements = {};
+                vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
 
-                VkDeviceMemory Memory;
-                if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+                assert(MemoryRequirements.size == Frame->VertexStack.VertexStackSize);
+
+                u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.HostVisibleCoherent;
+                u32 MemoryType = 0;
+                if (BitScanForward(&MemoryType, MemoryTypes) != 0)
                 {
-                    if (vkBindBufferMemory(Renderer->RenderDevice.Device, Buffer, Memory, 0) == VK_SUCCESS)
+                    VkMemoryAllocateInfo AllocInfo = 
                     {
-                        // NOTE(boti): persistent mapping
-                        void* Mapping = nullptr;
-                        if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, VK_WHOLE_SIZE, 0, &Mapping) == VK_SUCCESS)
+                        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                        .pNext = nullptr,
+                        .allocationSize = Frame->VertexStack.VertexStackSize,
+                        .memoryTypeIndex = MemoryType,
+                    };
+
+                    VkDeviceMemory Memory;
+                    if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+                    {
+                        if (vkBindBufferMemory(Renderer->RenderDevice.Device, Buffer, Memory, 0) == VK_SUCCESS)
                         {
-                            Frame->VertexStack.Memory = Memory;
-                            Frame->VertexStack.Buffer = Buffer;
-                            Frame->VertexStack.Size = Frame->VertexStack.VertexStackSize;
-                            Frame->VertexStack.At = 0;
-                            Frame->VertexStack.Mapping = Mapping;
+                            // NOTE(boti): persistent mapping
+                            void* Mapping = nullptr;
+                            if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, VK_WHOLE_SIZE, 0, &Mapping) == VK_SUCCESS)
+                            {
+                                Frame->VertexStack.Memory = Memory;
+                                Frame->VertexStack.Buffer = Buffer;
+                                Frame->VertexStack.Size = Frame->VertexStack.VertexStackSize;
+                                Frame->VertexStack.At = 0;
+                                Frame->VertexStack.Mapping = Mapping;
+                            }
+                            else
+                            {
+                                vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                                vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
+                                return false;
+                            }
                         }
                         else
                         {
@@ -2351,7 +2358,6 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer, renderer_frame_pa
                     }
                     else
                     {
-                        vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
                         vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
                         return false;
                     }
@@ -2364,63 +2370,64 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer, renderer_frame_pa
             }
             else
             {
-                vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
                 return false;
             }
         }
-        else
+
+        // Create per frame (indirect) command buffer
         {
-            return false;
-        }
-    }
-
-    // Create per frame (indirect) command buffer
-    {
-        VkBufferCreateInfo BufferInfo = 
-        {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0,
-            .size = Frame->DrawCommands.MemorySize,
-            .usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
-            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            .queueFamilyIndexCount = 0,
-            .pQueueFamilyIndices = nullptr,
-        };
-
-        VkBuffer Buffer = VK_NULL_HANDLE;
-        if (vkCreateBuffer(Renderer->RenderDevice.Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
-        {
-            VkMemoryRequirements MemoryRequirements = {};
-            vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
-
-            assert(MemoryRequirements.size == Frame->DrawCommands.MemorySize);
-
-            u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.HostVisibleCoherent;
-            u32 MemoryType = 0;
-            if (BitScanForward(&MemoryType, MemoryTypes) != 0)
+            VkBufferCreateInfo BufferInfo = 
             {
-                VkMemoryAllocateInfo AllocInfo = 
-                {
-                    .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                    .pNext = nullptr,
-                    .allocationSize = Frame->DrawCommands.MemorySize,
-                    .memoryTypeIndex = MemoryType,
-                };
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .size = Frame->DrawCommands.MemorySize,
+                .usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                .queueFamilyIndexCount = 0,
+                .pQueueFamilyIndices = nullptr,
+            };
 
-                VkDeviceMemory Memory = VK_NULL_HANDLE;
-                if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+            VkBuffer Buffer = VK_NULL_HANDLE;
+            if (vkCreateBuffer(Renderer->RenderDevice.Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
+            {
+                VkMemoryRequirements MemoryRequirements = {};
+                vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
+
+                assert(MemoryRequirements.size == Frame->DrawCommands.MemorySize);
+
+                u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.HostVisibleCoherent;
+                u32 MemoryType = 0;
+                if (BitScanForward(&MemoryType, MemoryTypes) != 0)
                 {
-                    if (vkBindBufferMemory(Renderer->RenderDevice.Device, Buffer, Memory, 0) == VK_SUCCESS)
+                    VkMemoryAllocateInfo AllocInfo = 
                     {
-                        void* Mapping = nullptr;
-                        if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, Frame->DrawCommands.MemorySize, 0, &Mapping) == VK_SUCCESS)
-                        {
-                            Frame->DrawCommands.Memory = Memory;
-                            Frame->DrawCommands.Buffer = Buffer;
+                        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                        .pNext = nullptr,
+                        .allocationSize = Frame->DrawCommands.MemorySize,
+                        .memoryTypeIndex = MemoryType,
+                    };
 
-                            Frame->DrawCommands.DrawIndex = 0;
-                            Frame->DrawCommands.Commands = (VkDrawIndirectCommand*)Mapping;
+                    VkDeviceMemory Memory = VK_NULL_HANDLE;
+                    if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+                    {
+                        if (vkBindBufferMemory(Renderer->RenderDevice.Device, Buffer, Memory, 0) == VK_SUCCESS)
+                        {
+                            void* Mapping = nullptr;
+                            if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, Frame->DrawCommands.MemorySize, 0, &Mapping) == VK_SUCCESS)
+                            {
+                                Frame->DrawCommands.Memory = Memory;
+                                Frame->DrawCommands.Buffer = Buffer;
+
+                                Frame->DrawCommands.DrawIndex = 0;
+                                Frame->DrawCommands.Commands = (VkDrawIndirectCommand*)Mapping;
+                            }
+                            else
+                            {
+                                vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                                vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
+                                return false;
+                            }
                         }
                         else
                         {
@@ -2431,7 +2438,6 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer, renderer_frame_pa
                     }
                     else
                     {
-                        vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
                         vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
                         return false;
                     }
@@ -2444,63 +2450,64 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer, renderer_frame_pa
             }
             else
             {
-                vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
                 return false;
             }
         }
-        else
+
+        // Create per frame instance data
         {
-            return false;
-        }
-    }
-
-    // Create per frame instance data
-    {
-        VkBufferCreateInfo BufferInfo = 
-        {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0,
-            .size = Frame->ChunkPositions.MemorySize,
-            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            .queueFamilyIndexCount = 0,
-            .pQueueFamilyIndices = nullptr,
-        };
-
-        VkBuffer Buffer = VK_NULL_HANDLE;
-        if (vkCreateBuffer(Renderer->RenderDevice.Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
-        {
-            VkMemoryRequirements MemoryRequirements = {};
-            vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
-
-            assert(MemoryRequirements.size == Frame->ChunkPositions.MemorySize);
-
-            u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.HostVisibleCoherent;
-            u32 MemoryType = 0;
-            if (BitScanForward(&MemoryType, MemoryTypes) != 0)
+            VkBufferCreateInfo BufferInfo = 
             {
-                VkMemoryAllocateInfo AllocInfo = 
-                {
-                    .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                    .pNext = nullptr,
-                    .allocationSize = Frame->ChunkPositions.MemorySize,
-                    .memoryTypeIndex = MemoryType,
-                };
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .size = Frame->ChunkPositions.MemorySize,
+                .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                .queueFamilyIndexCount = 0,
+                .pQueueFamilyIndices = nullptr,
+            };
 
-                VkDeviceMemory Memory = VK_NULL_HANDLE;
-                if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+            VkBuffer Buffer = VK_NULL_HANDLE;
+            if (vkCreateBuffer(Renderer->RenderDevice.Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
+            {
+                VkMemoryRequirements MemoryRequirements = {};
+                vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
+
+                assert(MemoryRequirements.size == Frame->ChunkPositions.MemorySize);
+
+                u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.HostVisibleCoherent;
+                u32 MemoryType = 0;
+                if (BitScanForward(&MemoryType, MemoryTypes) != 0)
                 {
-                    if (vkBindBufferMemory(Renderer->RenderDevice.Device, Buffer, Memory, 0) == VK_SUCCESS)
+                    VkMemoryAllocateInfo AllocInfo = 
                     {
-                        void* Mapping = nullptr;
-                        if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, Frame->ChunkPositions.MemorySize, 0, &Mapping) == VK_SUCCESS)
-                        {
-                            Frame->ChunkPositions.Memory = Memory;
-                            Frame->ChunkPositions.Buffer = Buffer;
+                        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                        .pNext = nullptr,
+                        .allocationSize = Frame->ChunkPositions.MemorySize,
+                        .memoryTypeIndex = MemoryType,
+                    };
 
-                            Frame->ChunkPositions.ChunkAt = 0;
-                            Frame->ChunkPositions.Mapping = (vec2*)Mapping;
+                    VkDeviceMemory Memory = VK_NULL_HANDLE;
+                    if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+                    {
+                        if (vkBindBufferMemory(Renderer->RenderDevice.Device, Buffer, Memory, 0) == VK_SUCCESS)
+                        {
+                            void* Mapping = nullptr;
+                            if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, Frame->ChunkPositions.MemorySize, 0, &Mapping) == VK_SUCCESS)
+                            {
+                                Frame->ChunkPositions.Memory = Memory;
+                                Frame->ChunkPositions.Buffer = Buffer;
+
+                                Frame->ChunkPositions.ChunkAt = 0;
+                                Frame->ChunkPositions.Mapping = (vec2*)Mapping;
+                            }
+                            else
+                            {
+                                vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+                                vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
+                                return false;
+                            }
                         }
                         else
                         {
@@ -2511,7 +2518,6 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer, renderer_frame_pa
                     }
                     else
                     {
-                        vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
                         vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
                         return false;
                     }
@@ -2524,16 +2530,10 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer, renderer_frame_pa
             }
             else
             {
-                vkDestroyBuffer(Renderer->RenderDevice.Device, Buffer, nullptr);
                 return false;
             }
         }
-        else
-        {
-            return false;
-        }
     }
-
     return true;
 }
 
