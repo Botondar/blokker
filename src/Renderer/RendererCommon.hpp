@@ -82,3 +82,12 @@ enum attrib_location : u32
     ATTRIB_COLOR = 2,
     ATTRIB_CHUNK_P = 3,
 };
+
+struct per_frame_uniform_data
+{
+    mat4 ProjectionTransform;
+    mat4 ViewTransform;
+    mat4 ViewProjectionTransform;
+
+    vec4 SunDirection;
+};

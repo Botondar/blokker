@@ -41,6 +41,16 @@ struct renderer_frame_params
     VkImageView SwapchainImageView;
     u32 SwapchainImageIndex;
 
+    struct
+    {
+        VkBuffer Buffer;
+        u64 BufferSize;
+
+        VkDeviceMemory Memory; // Shared between all the frame params
+        
+        void* Mapping;
+    } FrameUniformBuffer;
+
     struct 
     {
         static constexpr u64 VertexStackSize = 64*1024*1024;

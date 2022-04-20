@@ -2290,6 +2290,94 @@ bool Renderer_CreateImGuiTexture(renderer* Renderer, u32 Width, u32 Height, cons
 
 static bool Renderer_InitializeFrameParams(renderer* Renderer)
 {
+    // Create per frame uniform params
+    {
+        // Memory size of the entire allocation (which contains uniform buffers for each frame in flight)
+        constexpr u64 MemorySize = 64*1024;
+
+        u64 Alignment = 0;
+        u32 MemoryTypes = Renderer->RenderDevice.MemoryTypes.DeviceLocalAndHostVisible;
+        constexpr u64 UniformParamSize = 8 * 1024;
+        for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
+        {
+            VkBufferCreateInfo BufferInfo = 
+            {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .size = UniformParamSize,
+                .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                .queueFamilyIndexCount = 0,
+                .pQueueFamilyIndices = nullptr,
+            };
+
+            VkBuffer Buffer = VK_NULL_HANDLE;
+            if (vkCreateBuffer(Renderer->RenderDevice.Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
+            {
+                VkMemoryRequirements MemoryRequirements = {};
+                vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
+
+                MemoryTypes &= MemoryRequirements.memoryTypeBits;
+                Alignment = Max(Alignment, MemoryRequirements.alignment);
+
+                Renderer->FrameParams[i].FrameUniformBuffer.BufferSize = UniformParamSize;
+                Renderer->FrameParams[i].FrameUniformBuffer.Buffer = Buffer;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        u32 MemoryTypeIndex = 0;
+        if (BitScanForward(&MemoryTypeIndex, MemoryTypes))
+        {
+            VkMemoryAllocateInfo AllocInfo = 
+            {
+                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                .pNext = nullptr,
+                .allocationSize = MemorySize,
+                .memoryTypeIndex = MemoryTypeIndex,
+            };
+
+            VkDeviceMemory Memory = VK_NULL_HANDLE;
+            if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+            {
+                for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
+                {
+                    u64 Offset = i * UniformParamSize;
+                    if (vkBindBufferMemory(Renderer->RenderDevice.Device, Renderer->FrameParams[i].FrameUniformBuffer.Buffer, Memory, Offset) == VK_SUCCESS)
+                    {
+                        Renderer->FrameParams[i].FrameUniformBuffer.Memory = Memory;
+
+                        void* Mapping = nullptr;
+                        if (vkMapMemory(Renderer->RenderDevice.Device, Memory, Offset, Renderer->FrameParams[i].FrameUniformBuffer.BufferSize, 0, &Mapping) == VK_SUCCESS)
+                        {
+                            Renderer->FrameParams[i].FrameUniformBuffer.Mapping = Mapping;
+                        }
+                        else
+                        {
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else
+        {
+            return false;
+        }
+    }
+
     for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
     {
         renderer_frame_params* Frame = Renderer->FrameParams + i;
