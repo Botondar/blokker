@@ -27,6 +27,13 @@ static_assert(sizeof(f64) == 8);
 constexpr u32 INVALID_INDEX_U32 = 0xFFFFFFFFu;
 constexpr u64 INVALID_INDEX_U64 = 0xFFFFFFFFFFFFFFFFu;
 
+template<typename T>
+inline T* PointerByteOffset(T* Base, u64 Offset)
+{
+    T* Result = (T*)((u8*)Base + Offset);
+    return Result;
+}
+
 inline u32 SafeU64ToU32(u64 Value)
 {
     assert(Value <= 0xFFFFFFFFu);

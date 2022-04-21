@@ -2352,28 +2352,28 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
             VkDeviceMemory Memory = VK_NULL_HANDLE;
             if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
             {
-                for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
+                void* MappingBase = nullptr;
+                if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, VK_WHOLE_SIZE, 0, &MappingBase) == VK_SUCCESS)
                 {
-                    u64 Offset = i * UniformParamSize;
-                    if (vkBindBufferMemory(Renderer->RenderDevice.Device, Renderer->FrameParams[i].FrameUniformBuffer.Buffer, Memory, Offset) == VK_SUCCESS)
+                    for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
                     {
-                        Renderer->FrameParams[i].FrameUniformBuffer.Memory = Memory;
-
-                        // BUG(boti): we should map the memory _once_ and give offset pointers to the frame params
-                        void* Mapping = nullptr;
-                        if (vkMapMemory(Renderer->RenderDevice.Device, Memory, Offset, Renderer->FrameParams[i].FrameUniformBuffer.BufferSize, 0, &Mapping) == VK_SUCCESS)
+                        u64 Offset = i * UniformParamSize;
+                        if (vkBindBufferMemory(Renderer->RenderDevice.Device, Renderer->FrameParams[i].FrameUniformBuffer.Buffer, Memory, Offset) == VK_SUCCESS)
                         {
-                            Renderer->FrameParams[i].FrameUniformBuffer.Mapping = Mapping;
+                            Renderer->FrameParams[i].FrameUniformBuffer.Memory = Memory;
+
+                            Renderer->FrameParams[i].FrameUniformBuffer.Mapping = PointerByteOffset(MappingBase, Offset);
+
                         }
                         else
                         {
                             return false;
                         }
                     }
-                    else
-                    {
-                        return false;
-                    }
+                }
+                else
+                {
+                    return false;
                 }
             }
             else
