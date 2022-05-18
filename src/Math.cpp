@@ -112,6 +112,18 @@ vec2 Normalize(const vec2& v)
     return Result;
 }
 
+vec2 SafeNormalize(const vec2& v)
+{
+    vec2 Result = { 0.0f, 0.0f };
+    f32 Len = Length(v);
+    if (Len > 1e-5f)
+    {
+        f32 InvLength = 1.0f / Len;
+        Result = v * InvLength;
+    }
+    return Result;
+}
+
 s32& vec2i::operator[](int idx)
 {
     return (&x)[idx];
