@@ -343,6 +343,10 @@ vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP)
 {
     vec3 Displacement = {};
 
+    DebugPrint("{\n");
+    DebugPrint("  eP = { %.4f %.4f %.4f }\n", Entity->P.x, Entity->P.y, Entity->P.z);
+    DebugPrint("  dP = { %.4f %.4f %.4f }\n", dP.x, dP.y, dP.z);
+
     // Moves the entity along an axis, checks for collision with the world and resolves those collisions
     auto ApplyMovement = [&World, &Entity, &AABB](vec3 dP, u32 Direction) -> f32
     {
@@ -350,64 +354,71 @@ vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP)
         AABB.Min[Direction] += dP[Direction];
         AABB.Max[Direction] += dP[Direction];
 
-        vec3i MinPi = (vec3i)Floor(AABB.Min);
-        vec3i MaxPi = (vec3i)Ceil(AABB.Max);
-
-        constexpr u32 AABBStackSize = 64;
-        u32 AABBAt = 0;
-        aabb AABBStack[AABBStackSize];
-
-        for (s32 z = MinPi.z; z <= MaxPi.z; z++)
+        f32 AccumulatedDisplacement = 0.0f;
+        bool IsCollision = false;
+        do 
         {
-            for (s32 y = MinPi.y; y <= MaxPi.y; y++)
+            vec3i MinPi = (vec3i)Floor(AABB.Min);
+            vec3i MaxPi = (vec3i)Ceil(AABB.Max);
+
+            constexpr u32 AABBStackSize = 64;
+            u32 AABBAt = 0;
+            aabb AABBStack[AABBStackSize];
+
+            for (s32 z = MinPi.z; z <= MaxPi.z; z++)
             {
-                for (s32 x = MinPi.x; x <= MaxPi.x; x++)
+                for (s32 y = MinPi.y; y <= MaxPi.y; y++)
                 {
-                    u16 VoxelType = World_GetVoxelType(World, vec3i{x, y, z});
-                    const voxel_desc* VoxelDesc = &VoxelDescs[VoxelType];
-                    if (VoxelDesc->Flags & VOXEL_FLAGS_SOLID)
+                    for (s32 x = MinPi.x; x <= MaxPi.x; x++)
                     {
-                        assert(AABBAt < AABBStackSize);
-                        aabb VoxelAABB = 
+                        u16 VoxelType = World_GetVoxelType(World, vec3i{x, y, z});
+                        const voxel_desc* VoxelDesc = &VoxelDescs[VoxelType];
+                        if (VoxelDesc->Flags & VOXEL_FLAGS_SOLID)
                         {
-                            .Min = { (f32)x, (f32)y, (f32)z },
-                            .Max = { (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) },
-                        };
-                        AABBStack[AABBAt++] = VoxelAABB;
+                            assert(AABBAt < AABBStackSize);
+                            aabb VoxelAABB = 
+                            {
+                                .Min = { (f32)x, (f32)y, (f32)z },
+                                .Max = { (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) },
+                            };
+                            AABBStack[AABBAt++] = VoxelAABB;
+                        }
                     }
                 }
             }
-        }
-            
-        f32 Displacement = 0.0f;
-        bool IsCollision = false;
-        for (u32 i = 0; i < AABBAt; i++)
-        {
-            vec3 Overlap;
-            int MinCoord;
-            if (AABB_Intersect(AABB, AABBStack[i], Overlap, MinCoord))
+
+            float Displacement = 0.0f;
+            IsCollision = false;
+            for (u32 i = 0; i < AABBAt; i++)
             {
-                IsCollision = true;
-                if (Abs(Displacement) < Abs(Overlap[Direction]))
+                vec3 Overlap;
+                int MinCoord;
+                if (AABB_Intersect(AABB, AABBStack[i], Overlap, MinCoord))
                 {
-                    Displacement = Overlap[Direction];
+                    IsCollision = true;
+                    if (Abs(Displacement) < Abs(Overlap[Direction]))
+                    {
+                        Displacement = Overlap[Direction];
+                    }
                 }
             }
-        }
 
-        if (IsCollision)
-        {
-            constexpr f32 Epsilon = 1e-6f;
-            Displacement += Signum(Displacement) * Epsilon;
-            Entity->P[Direction] += Displacement;
-            AABB.Min[Direction] += Displacement;
-            AABB.Max[Direction] += Displacement;
-        }
-        return Displacement;
+            if (IsCollision)
+            {
+                constexpr f32 Epsilon = 1e-5f;
+                Displacement += Signum(Displacement) * Epsilon;
+                Entity->P[Direction] += Displacement;
+                AABB.Min[Direction] += Displacement;
+                AABB.Max[Direction] += Displacement;
+
+                AccumulatedDisplacement += Displacement;
+            }
+        } while (IsCollision);
+        return AccumulatedDisplacement;
     };
 
     Displacement.z = ApplyMovement(dP, AXIS_Z);
-        
+
     if (Abs(dP.x) > Abs(dP.y))
     {
         Displacement.x = ApplyMovement(dP, AXIS_X);
@@ -418,6 +429,9 @@ vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP)
         Displacement.y = ApplyMovement(dP, AXIS_Y);
         Displacement.x = ApplyMovement(dP, AXIS_X);
     }
+    DebugPrint("  Di = { %.4f %.4f %.4f }\n", Displacement.x, Displacement.y, Displacement.z);
+    DebugPrint("  eP = { %.4f %.4f %.4f }\n", Entity->P.x, Entity->P.y, Entity->P.z);;
+    DebugPrint("}\n");
 
     return Displacement;
 }
@@ -435,7 +449,7 @@ void World_LoadChunks(world* World)
 #if BLOKKER_TINY_RENDER_DISTANCE
     constexpr u32 MeshDistance = 3;
 #else
-    constexpr u32 MeshDistance = 20;
+    constexpr u32 MeshDistance = 4;
 #endif
     constexpr u32 GenerationDistance = MeshDistance + 1;
 
