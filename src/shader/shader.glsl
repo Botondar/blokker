@@ -29,7 +29,6 @@ vec3 UnpackPosition(in uint PackedPosition)
         float((PackedPosition & 0xF8000000u) >> 27u),
         float((PackedPosition & 0x07C00000u) >> 22u),
         float(PackedPosition & 0x003FFFFFu));
-    //Result.z = 0;
     return Result;
 }
 
