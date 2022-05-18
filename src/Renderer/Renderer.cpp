@@ -2922,6 +2922,10 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
     TIMED_FUNCTION();
 
 #if 1
+    vec2 CameraP = { Frame->Camera.P.x, Frame->Camera.P.y };
+    mat3 CameraAxes = Frame->Camera.GetAxes();
+    vec2 CameraForward = SafeNormalize(vec2{ CameraAxes(0, 0), CameraAxes(1, 0) });
+
     VkDeviceSize DrawBufferOffset = Frame->DrawCommands.DrawIndex * sizeof(VkDrawIndirectCommand);
     u32 DrawCount = 0;
 
@@ -2941,9 +2945,23 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
             continue;
         }
 
-        *Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
-
+        
         vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
+#if 0
+        vec2 V00 = ChunkP + vec2{ -1.0f, -1.0f } - CameraP;
+        vec2 V10 = ChunkP + vec2{ (f32)CHUNK_DIM_X + 1.0f, -1.0f } - CameraP;
+        vec2 V01 = ChunkP + vec2{ -1.0f, (f32)CHUNK_DIM_Y + 1.0f } - CameraP;
+        vec2 V11 = ChunkP + vec2{ (f32)CHUNK_DIM_X + 1.0f, (f32)CHUNK_DIM_Y + 1.0f } - CameraP;
+
+        if ((Dot(CameraForward, V00) < 0.0f) &&
+            (Dot(CameraForward, V10) < 0.0f) &&
+            (Dot(CameraForward, V01) < 0.0f) &&
+            (Dot(CameraForward, V11) < 0.0f))
+        {
+            continue;
+        }
+#endif
+        *Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
 
         u32 InstanceOffset = (u32)Frame->ChunkPositions.ChunkAt++;
         memcpy(Frame->ChunkPositions.Mapping + InstanceOffset, &ChunkP, sizeof(ChunkP));
