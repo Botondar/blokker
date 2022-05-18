@@ -246,9 +246,10 @@ static CBumpArray<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, world* Wor
                                         AO = bSideAO[0] + bSideAO[1] + bCornerAO;
                                     }
                                 }
+
                                 terrain_vertex Vertex = 
                                 {
-                                    .P = CubeVertex.P + VoxelP,
+                                    .P = PackPosition(CubeVertex.P + VoxelP),
                                     .TexCoord = PackTexCoord((u32)CubeVertex.UVW.x, (u32)CubeVertex.UVW.y, (u32)Desc->FaceTextureIndices[Direction], AO),
                                 };
                                 VertexList.PushBack(Vertex);

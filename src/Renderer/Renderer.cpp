@@ -1159,21 +1159,21 @@ bool Renderer_Initialize(renderer* Renderer)
         {
             {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                    .pNext = nullptr,
-                    .flags = 0,
-                    .stage = VK_SHADER_STAGE_VERTEX_BIT,
-                    .module = VSModule,
-                    .pName = "main",
-                    .pSpecializationInfo = nullptr,
+                .pNext = nullptr,
+                .flags = 0,
+                .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                .module = VSModule,
+                .pName = "main",
+                .pSpecializationInfo = nullptr,
             },
             {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                    .pNext = nullptr,
-                    .flags = 0,
-                    .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-                    .module = FSModule,
-                    .pName = "main",
-                    .pSpecializationInfo = nullptr,
+                .pNext = nullptr,
+                .flags = 0,
+                .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .module = FSModule,
+                .pName = "main",
+                .pSpecializationInfo = nullptr,
             },
         };
         constexpr u32 ShaderStageCount = CountOf(ShaderStages);
@@ -1202,14 +1202,14 @@ bool Renderer_Initialize(renderer* Renderer)
             {
                 .location = ATTRIB_POS,
                 .binding = 0,
-                .format = VK_FORMAT_R32G32B32_SFLOAT,
+                .format = VK_FORMAT_R32_UINT,
                 .offset = offsetof(terrain_vertex, P),
             },
             // UVW
             {
                 .location = ATTRIB_TEXCOORD,
                 .binding = 0,
-                .format = VK_FORMAT_R16_UINT,
+                .format = VK_FORMAT_R32_UINT,
                 .offset = offsetof(terrain_vertex, TexCoord),
             },
             // ChunkP

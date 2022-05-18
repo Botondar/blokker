@@ -11,11 +11,27 @@ layout(push_constant) uniform PushConstants
 
 #if defined(VERTEX_SHADER)
 
-layout(location = ATTRIB_POS) in vec3 v_Position;
+layout(location = ATTRIB_POS) in uint v_PackedPosition;
 layout(location = ATTRIB_TEXCOORD) in uint v_PackedTexCoord;
 layout(location = ATTRIB_CHUNK_P) in vec2 v_ChunkP;
 
 const float AOTable[4] = { 1.0, 0.75, 0.5, 0.25 };
+
+vec3 UnpackPosition(in uint PackedPosition)
+{
+    //constexpr packed_position POSITION_X_MASK = 0xF8000000;
+    //constexpr packed_position POSITION_Y_MASK = 0x07C00000;
+    //constexpr packed_position POSITION_Z_MASK = 0x003FFFFF;
+    //constexpr packed_position POSITION_X_SHIFT = 27;
+    //constexpr packed_position POSITION_Y_SHIFT = 22;
+
+    vec3 Result = vec3(
+        float((PackedPosition & 0xF8000000u) >> 27u),
+        float((PackedPosition & 0x07C00000u) >> 22u),
+        float(PackedPosition & 0x003FFFFFu));
+    //Result.z = 0;
+    return Result;
+}
 
 vec3 UnpackTexCoord(in uint Packed, out float AO)
 {
@@ -32,7 +48,7 @@ vec3 UnpackTexCoord(in uint Packed, out float AO)
 
 void main()
 {
-    vec3 P = v_Position + vec3(v_ChunkP, 0);
+    vec3 P = UnpackPosition(v_PackedPosition) + vec3(v_ChunkP, 0);
     gl_Position = Transform * vec4(P, 1);
     TexCoord = UnpackTexCoord(v_PackedTexCoord, AO);
 }
