@@ -270,6 +270,11 @@ void Player_Update(player* Player, world* World, f32 dt)
         Acceleration += DragForce * (1.0f / PlayerMass);
     }
 
+    constexpr f32 Gravity = 25.0f;
+    
+    Acceleration += vec3{ 0.0f, 0.0f, -Gravity };
+    Player->Velocity += Acceleration * dt;
+
     // Update head-bob state based on the amplitude and frequency calculated in the on-ground controls
     Player->HeadBob += Player->BobFrequency*dt;
     if (Player->HeadBob >= 1.0f)
@@ -280,20 +285,27 @@ void Player_Update(player* Player, world* World, f32 dt)
 
     Player->CurrentHeadBobValue = Lerp(Player->CurrentHeadBobValue, Player->TargetHeadBobValue, 1.0f - Exp(-20.0f * dt));
 
-    constexpr f32 Gravity = 25.0f;
-    
-    Acceleration += vec3{ 0.0f, 0.0f, -Gravity };
-    Player->Velocity += Acceleration * dt;
-
     // Fov animation
+#if 1
+    Player->CurrentFov = Player->TargetFov = Player->DefaultFov;
+#else
     {
-        f32 PlayerSpeed = Length(Player->Velocity);
-        f32 Mul = Max(Dot(Forward, DesiredMoveDirection), 0.0f);
+        if (Player->WasGroundedLastFrame)
+        {
+            f32 PlayerSpeed = Length(Player->Velocity);
+            f32 Mul = Max(Dot(Forward, DesiredMoveDirection), 0.0f);
 
-        f32 t = Mul * Clamp((PlayerSpeed - WalkSpeed) / (RunSpeed - WalkSpeed), 0.0f, 1.0f);
-        Player->TargetFov = Lerp(Player->DefaultFov, ToRadians(95.0f), t);
-        Player->CurrentFov = Lerp(Player->CurrentFov, Player->TargetFov, Clamp(1.0f - Exp(-15.0f*dt), 0.0f, 1.0f));
+            f32 t = Mul * Clamp((PlayerSpeed - WalkSpeed) / (RunSpeed - WalkSpeed), 0.0f, 1.0f);
+            Player->TargetFov = Lerp(Player->DefaultFov, ToRadians(95.0f), t);
+        }
+        else
+        {
+            Player->TargetFov = Player->DefaultFov;
+        }
+
+        Player->CurrentFov = Lerp(Player->CurrentFov, Player->TargetFov, Clamp(1.0f - Exp(-5.0f*dt), 0.0f, 1.0f));
     }
+#endif
 
     // Apply movement
     {
