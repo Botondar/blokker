@@ -343,10 +343,6 @@ vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP)
 {
     vec3 Displacement = {};
 
-    DebugPrint("{\n");
-    DebugPrint("  eP = { %.4f %.4f %.4f }\n", Entity->P.x, Entity->P.y, Entity->P.z);
-    DebugPrint("  dP = { %.4f %.4f %.4f }\n", dP.x, dP.y, dP.z);
-
     // Moves the entity along an axis, checks for collision with the world and resolves those collisions
     auto ApplyMovement = [&World, &Entity, &AABB](vec3 dP, u32 Direction) -> f32
     {
@@ -429,10 +425,7 @@ vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP)
         Displacement.y = ApplyMovement(dP, AXIS_Y);
         Displacement.x = ApplyMovement(dP, AXIS_X);
     }
-    DebugPrint("  Di = { %.4f %.4f %.4f }\n", Displacement.x, Displacement.y, Displacement.z);
-    DebugPrint("  eP = { %.4f %.4f %.4f }\n", Entity->P.x, Entity->P.y, Entity->P.z);;
-    DebugPrint("}\n");
-
+    
     return Displacement;
 }
 
