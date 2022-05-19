@@ -112,3 +112,25 @@ mat4 camera::GetInverseTransform() const
         0.0f, 0.0f, 0.0f, 1.0f);
     return InverseTransform;
 }
+
+frustum camera::GetFrustum(f32 AspectRatio) const
+{
+    frustum Frustum = {};
+
+    constexpr f32 Near = 0.01f;
+    constexpr f32 Far = 8000.0f;
+    const f32 ProjectionPlaneZ = 1.0f / Tan(0.5f * FieldOfView);
+
+    const f32 SideMul = 1.0f / Sqrt(ProjectionPlaneZ*ProjectionPlaneZ + AspectRatio*AspectRatio);
+    const f32 TopMul = 1.0f / Sqrt(ProjectionPlaneZ*ProjectinoPlaneZ + 1.0f);
+
+    mat4 InverseTransform = GetInverseTransform();
+    Frustum.Near = vec4{ 0.0f, 0.0f, 1.0f, -Near } * InverseTransform;
+    Frustum.Far = vec4{ 0.0f, 0.0f, -1.0f, Far } * InverseTransform;
+    Frustum.Left = (vec4{ ProjectionPlaneZ, 0.0f, AspectRatio, 0.0f } * InverseTransform) * SideMul;
+    Frustum.Right = (vec4{ -ProjectionPlaneZ, 0.0f, AspectRatio, 0.0f } * InverseTransform) * Sidemul;
+    Frustum.Top = (vec4{ 0.0f, ProjectionPlaneZ, 1.0f, 0.0f } * InverseTransform) * TopMul;
+    Frustum.Bottom = (vec4{ 0.0f, -ProjectionPlaneZ, 1.0f, 0.0f }) * InverseTransform * TopMul;
+
+    return Frustum;
+}
