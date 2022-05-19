@@ -2922,9 +2922,7 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
     TIMED_FUNCTION();
 
 #if 1
-    vec2 CameraP = { Frame->Camera.P.x, Frame->Camera.P.y };
-    mat3 CameraAxes = Frame->Camera.GetAxes();
-    vec2 CameraForward = SafeNormalize(vec2{ CameraAxes(0, 0), CameraAxes(1, 0) });
+    frustum ViewFrustum = Frame->Camera.GetFrustum((f32)Frame->Renderer->SwapchainSize.width / Frame->Renderer->SwapchainSize.height);
 
     VkDeviceSize DrawBufferOffset = Frame->DrawCommands.DrawIndex * sizeof(VkDrawIndirectCommand);
     u32 DrawCount = 0;
@@ -2947,28 +2945,22 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
 
         
         vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
-#if 0
-        vec2 V00 = ChunkP + vec2{ -1.0f, -1.0f } - CameraP;
-        vec2 V10 = ChunkP + vec2{ (f32)CHUNK_DIM_X + 1.0f, -1.0f } - CameraP;
-        vec2 V01 = ChunkP + vec2{ -1.0f, (f32)CHUNK_DIM_Y + 1.0f } - CameraP;
-        vec2 V11 = ChunkP + vec2{ (f32)CHUNK_DIM_X + 1.0f, (f32)CHUNK_DIM_Y + 1.0f } - CameraP;
 
-        if ((Dot(CameraForward, V00) < 0.0f) &&
-            (Dot(CameraForward, V10) < 0.0f) &&
-            (Dot(CameraForward, V01) < 0.0f) &&
-            (Dot(CameraForward, V11) < 0.0f))
+        vec3 ChunkP3 = { ChunkP.x, ChunkP.y, 0.0f };
+
+        aabb ChunkBox = MakeAABB(ChunkP3, ChunkP3 + vec3{ CHUNK_DIM_X, CHUNK_DIM_Y, CHUNK_DIM_Z });
+
+        if (IntersectFrustumAABB(ViewFrustum, ChunkBox))
         {
-            continue;
+            *Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
+
+            u32 InstanceOffset = (u32)Frame->ChunkPositions.ChunkAt++;
+            memcpy(Frame->ChunkPositions.Mapping + InstanceOffset, &ChunkP, sizeof(ChunkP));
+
+            vulkan_vertex_buffer_block Block = Frame->Renderer->VB.Blocks[Allocation.BlockIndex];
+            FirstCommand[Frame->DrawCommands.DrawIndex++] = VkDrawIndirectCommand{ Block.VertexCount, 1, Block.VertexOffset, InstanceOffset, };
+            DrawCount++;
         }
-#endif
-        *Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
-
-        u32 InstanceOffset = (u32)Frame->ChunkPositions.ChunkAt++;
-        memcpy(Frame->ChunkPositions.Mapping + InstanceOffset, &ChunkP, sizeof(ChunkP));
-
-        vulkan_vertex_buffer_block Block = Frame->Renderer->VB.Blocks[Allocation.BlockIndex];
-        FirstCommand[Frame->DrawCommands.DrawIndex++] = VkDrawIndirectCommand{ Block.VertexCount, 1, Block.VertexOffset, InstanceOffset, };
-        DrawCount++;
     }
 
     vkCmdBindPipeline(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->Pipeline);
