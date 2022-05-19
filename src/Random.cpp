@@ -31,7 +31,13 @@ f32 Perlin2_Sample(const perlin2* Perlin, vec2 P)
     vec2i Pi = { (s32)LatticeP.x, (s32)LatticeP.y };
 
     constexpr u32 Mask = perlin2::TableCount - 1;
-    vec2 G[2][2];
+    vec2 V[2][2] = 
+    {
+        { { P0.x,        P0.y }, { P0.x,        P0.y - 1.0f } },
+        { { P0.x - 1.0f, P0.y }, { P0.x - 1.0f, P0.y - 1.0f } }, 
+    };
+
+    f32 GdotV[2][2];
     for (u32 x = 0; x < 2; x++)
     {
         for (u32 y = 0; y < 2; y++)
@@ -42,29 +48,23 @@ f32 Perlin2_Sample(const perlin2* Perlin, vec2 P)
 
             switch (Permutation & 7u)
             {
-                case 0: G[x][y] = { +1.0f, +1.0f }; break;
-                case 1: G[x][y] = { -1.0f, +1.0f }; break;
-                case 2: G[x][y] = { +1.0f, -1.0f }; break;
-                case 3: G[x][y] = { -1.0f, -1.0f }; break;
-                case 4: G[x][y] = { 0.0f, +1.0f }; break;
-                case 5: G[x][y] = { 0.0f, -1.0f }; break;
-                case 6: G[x][y] = { +1.0f, 0.0f }; break;
-                case 7: G[x][y] = { -1.0f, 0.0f }; break;
+                case 0: GdotV[x][y] = +V[x][y].x + V[x][y].y; break;
+                case 1: GdotV[x][y] = -V[x][y].x + V[x][y].y; break;
+                case 2: GdotV[x][y] = +V[x][y].x - V[x][y].y; break;
+                case 3: GdotV[x][y] = -V[x][y].x - V[x][y].y; break;
+                case 4: GdotV[x][y] = +V[x][y].y; break;
+                case 5: GdotV[x][y] = -V[x][y].y; break;
+                case 6: GdotV[x][y] = +V[x][y].x; break;
+                case 7: GdotV[x][y] = -V[x][y].x; break;
             };
         }
     }
 
-    vec2 V[2][2] = 
-    {
-        { { P0.x,        P0.y }, { P0.x,        P0.y - 1.0f } },
-        { { P0.x - 1.0f, P0.y }, { P0.x - 1.0f, P0.y - 1.0f } }, 
-    };
-
     vec2 Factor = { Fade5(P0.x), Fade5(P0.y), };
 
     f32 Result = Blerp(
-        Dot(G[0][0], V[0][0]), Dot(G[1][0], V[1][0]),
-        Dot(G[0][1], V[0][1]), Dot(G[1][1], V[1][1]),
+        GdotV[0][0], GdotV[1][0],
+        GdotV[0][1], GdotV[1][1],
         Factor);
 
     return Result;
@@ -73,6 +73,15 @@ f32 Perlin2_Sample(const perlin2* Perlin, vec2 P)
 __m128 Perlin2_Sample(const perlin2* Perlin, __m128 x, __m128 y)
 {
     __m128 Result = _mm_set1_ps(0.0f);
+
+    __m128 x0 = _mm_round_ps(x, _MM_FROUND_TO_NEG_INF|_MM_FROUND_NO_EXC);
+    __m128 y0 = _mm_round_ps(y, _MM_FROUND_TO_NEG_INF|_MM_FROUND_NO_EXC);
+    
+    __m128i ix = _mm_cvtps_epi32(x0);
+    __m128i iy = _mm_cvtps_epi32(y0);
+
+
+
     assert(!"Unimplemented code path");
     return Result;
 }
