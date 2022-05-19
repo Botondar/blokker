@@ -193,7 +193,7 @@ bool IntersectRayAABB(vec3 P, vec3 v, aabb Box, f32 tMin, f32 tMax, f32* tOut, d
     return Result;
 };
 
-bool IntersectRayFrustumAABB(const frustum& Frustum, const aabb& Box)
+bool IntersectFrustumAABB(const frustum& Frustum, const aabb& Box)
 {
     bool Result = true;
 
