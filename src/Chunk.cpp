@@ -21,10 +21,6 @@ static void Chunk_Generate(chunk* Chunk, world* World)
             vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
             vec2 TerrainP = TerrainBaseFrequency * (vec2{ (f32)x, (f32)y } + ChunkP);
 
-#if 1
-            const f32 Sqrt2Over2 = 0.5f * Sqrt(2.0f);
-            TerrainP = Mat2(Sqrt2Over2, Sqrt2Over2, -Sqrt2Over2, Sqrt2Over2) * TerrainP;
-#endif
             f32 TerrainSample = Perlin2_Octave(&World->Perlin2, TerrainP, 8, 0.5f, 2.0f);
             TerrainSample = 0.5f * (TerrainSample + 1.0f);
             TerrainSample = Fade3(TerrainSample*TerrainSample);
