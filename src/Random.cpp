@@ -1,19 +1,15 @@
 #include "Random.hpp"
 #include <random>
 #include <functional>
+#include <Common.hpp>
 
 void Perlin2_Init(perlin2* Perlin, u32 Seed)
 {
     assert(Perlin);
 
     std::mt19937 Twister(Seed);
-    std::uniform_real_distribution<f32> Distribution(0.0f, 2.0f*PI);
-    auto Dice = std::bind(Distribution, Twister);
-
     for (u32 i = 0; i < perlin2::TableCount; i++)
     {
-        f32 Angle = Dice();
-        Perlin->Gradients[i] = { Cos(Angle), Sin(Angle) };
         Perlin->Permutation[i] = i;
     }
 
@@ -43,15 +39,7 @@ f32 Perlin2_Sample(const perlin2* Perlin, vec2 P)
             // Hash
             u32 Index = (((Pi.x + x) & Mask) + Perlin->Permutation[(Pi.y + y) & Mask]) & Mask;
             u32 Permutation = Perlin->Permutation[Index];
-#if 0
-            switch (Permutation & 3u)
-            {
-                case 0: G[x][y] = { 0.0f, +1.0f }; break;
-                case 1: G[x][y] = { 0.0f, -1.0f }; break;
-                case 2: G[x][y] = { +1.0f, 0.0f }; break;
-                case 3: G[x][y] = { -1.0f, 0.0f }; break;
-            };
-#elif 0
+
             switch (Permutation & 7u)
             {
                 case 0: G[x][y] = { +1.0f, +1.0f }; break;
@@ -63,9 +51,6 @@ f32 Perlin2_Sample(const perlin2* Perlin, vec2 P)
                 case 6: G[x][y] = { +1.0f, 0.0f }; break;
                 case 7: G[x][y] = { -1.0f, 0.0f }; break;
             };
-#else
-            G[x][y] = Perlin->Gradients[Permutation];
-#endif
         }
     }
 
@@ -82,6 +67,13 @@ f32 Perlin2_Sample(const perlin2* Perlin, vec2 P)
         Dot(G[0][1], V[0][1]), Dot(G[1][1], V[1][1]),
         Factor);
 
+    return Result;
+}
+
+__m128 Perlin2_Sample(const perlin2* Perlin, __m128 x, __m128 y)
+{
+    __m128 Result = _mm_set1_ps(0.0f);
+    assert(!"Unimplemented code path");
     return Result;
 }
 
