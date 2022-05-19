@@ -192,3 +192,28 @@ bool IntersectRayAABB(vec3 P, vec3 v, aabb Box, f32 tMin, f32 tMax, f32* tOut, d
 
     return Result;
 };
+
+bool IntersectRayFrustumAABB(const frustum& Frustum, const aabb& Box)
+{
+    bool Result = true;
+
+    vec3 HalfExtent = 0.5f * (Box.Max - Box.Min);
+    vec3 CenterP3 = 0.5f * (Box.Min + Box.Max);
+    vec4 CenterP = { CenterP3.x, CenterP3.y, CenterP3.z, 1.0f };
+
+    for (u32 i = 0; i < 6; i++)
+    {
+        f32 EffectiveRadius = 
+            Abs(Frustum.Planes[i].x * HalfExtent.x) +
+            Abs(Frustum.Planes[i].y * HalfExtent.y) + 
+            Abs(Frustum.Planes[i].z * HalfExtent.z);
+
+        if (Dot(CenterP, Frustum.Planes[i]) < -EffectiveRadius)
+        {
+            Result = false;
+            break;
+        }
+    }
+
+    return Result;
+}
