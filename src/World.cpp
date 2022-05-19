@@ -865,7 +865,7 @@ void World_Render(world* World, renderer_frame_params* FrameParams)
     FrameParams->ViewTransform = FrameParams->Camera.GetInverseTransform();
 
     const f32 AspectRatio = (f32)FrameParams->Renderer->SwapchainSize.width / (f32)FrameParams->Renderer->SwapchainSize.height;
-    FrameParams->ProjectionTransform = PerspectiveMat4(FrameParams->Camera.FieldOfView, AspectRatio, 0.01f, 8000.0f);
+    FrameParams->ProjectionTransform = PerspectiveMat4(FrameParams->Camera.FieldOfView, AspectRatio, FrameParams->Camera.Near, FrameParams->Camera.Far);
 
     if (World->MapView.IsEnabled)
     {
