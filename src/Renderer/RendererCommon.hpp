@@ -59,7 +59,7 @@ constexpr u32 TEXCOORD_AO_SHIFT = 14;
 
 inline constexpr packed_position PackPosition(vec3 P)
 {
-    // NOTE(boti): we could probably get away with not calling floor and cvting to u32
+    // TODO(boti): figure out a way to pack xy coords in 4 bits?
     u32 Result = 
         (((u32)P.x << POSITION_X_SHIFT) & POSITION_X_MASK) |
         (((u32)P.y << POSITION_Y_SHIFT) & POSITION_Y_MASK) |
