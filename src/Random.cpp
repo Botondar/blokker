@@ -70,6 +70,42 @@ f32 Perlin2_Sample(const perlin2* Perlin, vec2 P)
     return Result;
 }
 
+f32 Perlin2_Octave(const perlin2* Perlin, vec2 P0, u32 OctaveCount, f32 Persistence, f32 Lacunarity)
+{
+    f32 Result = 0.0f;
+    f32 Amplitude = 1.0f;
+    f32 Frequency = 1.0f;
+
+#if 0
+    mat2 DomainTransform = Identity2();
+#else
+    constexpr f32 C = 84.0f / 85.0f;
+    constexpr f32 S = 13.0f / 85.0f;
+
+    mat2 DomainTransform = Mat2(
+        C, S,
+        -S, C
+    );
+#endif
+    for (u32 i = 0; i < OctaveCount; i++)
+    {
+        vec2 P = Frequency * P0;
+        Result += Amplitude * Perlin2_Sample(Perlin, P);
+
+        Frequency *= Lacunarity;
+        Amplitude *= Persistence;
+
+        P0 = DomainTransform * P0;
+    }
+    return Result;
+}
+
+f32 Perlin2_SampleUnilateral(const perlin2* Perlin, vec2 P)
+{
+    f32 Result = 0.5f * (Perlin2_Sample(Perlin, P) + 1.0f);
+    return Result;
+}
+
 __m128 Perlin2_Sample(const perlin2* Perlin, __m128 x, __m128 y)
 {
     // Grid cell corner
@@ -122,22 +158,22 @@ __m128 Perlin2_Sample(const perlin2* Perlin, __m128 x, __m128 y)
             case 6: GdotV[x][y] = +V[x][y].x; break;
             case 7: GdotV[x][y] = -V[x][y].x; break;
 #endif
-            __m128 GdV[8];
-            GdV[0] = _mm_add_ps(dxCurrent, dyCurrent);
-            GdV[1] = _mm_sub_ps(dyCurrent, dxCurrent);
-            GdV[2] = _mm_sub_ps(dxCurrent, dyCurrent);
-            GdV[3] = _mm_sub_ps(_mm_xor_ps(dxCurrent, _mm_set1_ps(-0.0)), dyCurrent); // XOR the sign bit to negate
-            GdV[4] = dyCurrent;
-            GdV[5] = _mm_xor_ps(dyCurrent, _mm_set1_ps(-0.0));
-            GdV[6] = dxCurrent;
-            GdV[7] = _mm_xor_ps(dxCurrent, _mm_set1_ps(-0.0));
+                __m128 GdV[8];
+                GdV[0] = _mm_add_ps(dxCurrent, dyCurrent);
+                GdV[1] = _mm_sub_ps(dyCurrent, dxCurrent);
+                GdV[2] = _mm_sub_ps(dxCurrent, dyCurrent);
+                GdV[3] = _mm_sub_ps(_mm_xor_ps(dxCurrent, _mm_set1_ps(-0.0)), dyCurrent); // XOR the sign bit to negate
+                GdV[4] = dyCurrent;
+                GdV[5] = _mm_xor_ps(dyCurrent, _mm_set1_ps(-0.0));
+                GdV[6] = dxCurrent;
+                GdV[7] = _mm_xor_ps(dxCurrent, _mm_set1_ps(-0.0));
             
-            __m128i Mask[8];
-            for (u32 i = 0; i < 8; i++)
-            {
-                Mask[i] = _mm_cmpeq_epi32(Hash, _mm_set1_epi32(i));
-                GdotV[ox][oy] = _mm_blendv_ps(GdotV[ox][oy], GdV[i], _mm_castsi128_ps(Mask[i]));
-            }
+                __m128i Mask[8];
+                for (u32 i = 0; i < 8; i++)
+                {
+                    Mask[i] = _mm_cmpeq_epi32(Hash, _mm_set1_epi32(i));
+                    GdotV[ox][oy] = _mm_blendv_ps(GdotV[ox][oy], GdV[i], _mm_castsi128_ps(Mask[i]));
+                }
         }
     }
 #if 0
@@ -162,15 +198,17 @@ __m128 Perlin2_Sample(const perlin2* Perlin, __m128 x, __m128 y)
     return Result;
 }
 
-f32 Perlin2_Octave(const perlin2* Perlin, vec2 P0, u32 OctaveCount, f32 Persistence, f32 Lacunarity)
+__m128 Perlin2_Octave(const perlin2* Perlin, __m128 x0, __m128 y0, u32 OctaveCount, f32 Persistence, f32 Lacunarity)
 {
-    f32 Result = 0.0f;
-    f32 Amplitude = 1.0f;
-    f32 Frequency = 1.0f;
+    __m128 Result = _mm_setzero_ps();
+    __m128 Amplitude = _mm_set1_ps(1.0f);
+    __m128 Frequency = _mm_set1_ps(1.0f);
 
+    __m128 Persistence4 = _mm_set1_ps(Persistence);
+    __m128 Lacunarity4 = _mm_set1_ps(Lacunarity);
+
+    // TODO(boti): domain transform
 #if 0
-    mat2 DomainTransform = Identity2();
-#else
     constexpr f32 C = 84.0f / 85.0f;
     constexpr f32 S = 13.0f / 85.0f;
 
@@ -179,22 +217,18 @@ f32 Perlin2_Octave(const perlin2* Perlin, vec2 P0, u32 OctaveCount, f32 Persiste
         -S, C
     );
 #endif
+
     for (u32 i = 0; i < OctaveCount; i++)
     {
-        vec2 P = Frequency * P0;
-        Result += Amplitude * Perlin2_Sample(Perlin, P);
+        __m128 x = _mm_mul_ps(x0, Frequency);
+        __m128 y = _mm_mul_ps(y0, Frequency);
 
-        Frequency *= Lacunarity;
-        Amplitude *= Persistence;
+        Result = _mm_add_ps(Result, _mm_mul_ps(Amplitude, Perlin2_Sample(Perlin, x, y)));
 
-        P0 = DomainTransform * P0;
+        Frequency = _mm_mul_ps(Frequency, Lacunarity4);
+        Amplitude = _mm_mul_ps(Amplitude, Persistence4);
+        //P0 = DomainTransform * P0;
     }
-    return Result;
-}
-
-f32 Perlin2_SampleUnilateral(const perlin2* Perlin, vec2 P)
-{
-    f32 Result = 0.5f * (Perlin2_Sample(Perlin, P) + 1.0f);
     return Result;
 }
 
