@@ -2,6 +2,7 @@
 
 #include <Common.hpp>
 #include <cmath>
+#include <Intrinsics.hpp>
 
 //
 // Constants
@@ -228,6 +229,13 @@ inline T Trilerp(
 
 inline constexpr f32 Fade3(f32 t) { return (3.0f - 2.0f*t)*t*t; }
 inline constexpr f32 Fade5(f32 t) { return ((6.0f*t - 15.0f) * t + 10.0f)*t*t*t; }
+
+inline __m128 Lerp(__m128 a, __m128 b, __m128 t)
+{
+    __m128 Result = 
+        _mm_fmadd_ps(b, t, _mm_mul_ps(a, _mm_sub_ps(_mm_set1_ps(1.0f), t)));
+    return Result;
+}
 
 // 
 // Vector and matrix functions
