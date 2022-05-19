@@ -20,7 +20,7 @@ camera Player_GetCamera(const player* Player)
         .Pitch = Player->Pitch,
         .FieldOfView = Player->CurrentFov,
         .Near = 0.01f,
-        .Far = 8000.0f,
+        .Far = 1000.0f,
     };
 
     return Camera;
