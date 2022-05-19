@@ -5,6 +5,23 @@
 
 enum direction : u32;
 
+struct frustum
+{
+    union 
+    {
+        struct 
+        {
+            vec4 Near;
+            vec4 Far;
+            vec4 Left;
+            vec4 Right;
+            vec4 Top;
+            vec4 Bottom;
+        };
+        vec4 Planes[6];
+    };
+};
+
 struct aabb
 {
     vec3 Min;
