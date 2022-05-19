@@ -19,6 +19,8 @@ camera Player_GetCamera(const player* Player)
         .Yaw = Player->Yaw,
         .Pitch = Player->Pitch,
         .FieldOfView = Player->CurrentFov,
+        .Near = 0.01f,
+        .Far = 8000.0f,
     };
 
     return Camera;
