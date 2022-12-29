@@ -147,8 +147,14 @@ struct voxel_neighborhood
     const u16& GetVoxel(vec3i P) const { return VoxelTypes[IndexFromP(P)]; };
 };
 
+struct chunk_mesh
+{
+    u32 VertexCount;
+    terrain_vertex* VertexData;
+};
+
 static void Chunk_Generate(chunk* Chunk, world* World);
-static CBumpArray<terrain_vertex> Chunk_Mesh(const chunk* Chunk, world* World);
+static chunk_mesh Chunk_BuildMesh(const chunk* Chunk, world* World, memory_arena* Arena);
 
 /* Implementations */
 inline constexpr u32 CardinalOpposite(u32 Cardinal)

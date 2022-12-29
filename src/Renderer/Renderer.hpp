@@ -155,7 +155,7 @@ struct renderer
 };
 
 bool Renderer_ResizeRenderTargets(renderer* Renderer);
-bool Renderer_Initialize(renderer* Renderer);
+bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena);
 
 bool Renderer_CreateImGuiTexture(renderer* Renderer, u32 Width, u32 Height, const u8* Data);
 

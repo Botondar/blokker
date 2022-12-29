@@ -12,7 +12,6 @@
 #include <vulkan/vulkan_win32.h>
 
 #include <Platform.hpp>
-#include <Thread.hpp>
 
 #include <Common.hpp>
 #include <Renderer/Renderer.hpp>
@@ -21,9 +20,6 @@
 
 static const char* Win32_ClassName = "wndclass_blokker";
 static const char* Win32_WindowTitle = "Blokker";
-
-static thread_context PrimaryThreadContext;
-static DWORD ThreadContextTlsID;
 
 struct win32_state
 {
@@ -42,24 +38,6 @@ struct win32_state
     bool IsCursorDisabled;
 };
 static win32_state Win32State;
-
-void* Platform_VirtualAlloc(void* Pointer, u64 Size)
-{
-    void* Result = VirtualAlloc(Pointer, Size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
-    return Result;
-}
-
-bool Platform_VirtualFree(void* Pointer, u64 Size)
-{
-    bool Result = (bool)VirtualFree(Pointer, Size, MEM_DECOMMIT|MEM_RELEASE);
-    return Result;
-}
-
-thread_context* Platform_GetThreadContext()
-{
-    thread_context* Result = (thread_context*)TlsGetValue(ThreadContextTlsID);
-    return Result;
-}
 
 static bool SetClipCursorToWindow(bool Clip)
 {
@@ -215,9 +193,9 @@ void PlatformLog_(const char* Function, int Line, const char* Format, ...)
     }
 }
 
-CBuffer LoadEntireFile(const char* Path)
+buffer LoadEntireFile(const char* Path, memory_arena* Arena)
 {
-    CBuffer Result;
+    buffer Buffer = {};
 
     HANDLE File = CreateFileA(Path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (File != INVALID_HANDLE_VALUE)
@@ -225,50 +203,29 @@ CBuffer LoadEntireFile(const char* Path)
         LARGE_INTEGER FileSize;
         if (GetFileSizeEx(File, &FileSize))
         {
-            Result.Size = (u64)FileSize.QuadPart;
-            if (Result.Size <= 0xFFFFFFFF)
+            assert(FileSize.QuadPart <= 0xFFFFFFFFll);
+            
+            u64 Save = Arena->Used;
+            u64 Size = (u64)FileSize.QuadPart;
+            void* Data = PushSize(Arena, Size, 64);
+            if (Data)
             {
-                Result.Data = new u8[Result.Size];
-
                 DWORD BytesRead;
-                BOOL ReadResult = ReadFile(File, Result.Data, (u32)Result.Size, &BytesRead, nullptr);
-                if (!ReadResult || (BytesRead != Result.Size))
+                if (ReadFile(File, Data, (u32)Size, &BytesRead, nullptr))
                 {
-                    delete[] Result.Data;
-                    Result.Data = nullptr;
-                    Result.Size = 0;
+                    Buffer.Size = Size;
+                    Buffer.Data = (u8*)Data;
+                }
+                else
+                {
+                    Arena->Used = Save;
                 }
             }
-            else 
-            {
-                // TODO
-            }
         }
         CloseHandle(File);
     }
 
-    return Result;
-}
-
-bool WriteEntireFile(const char* Path, u64 Size, const void* Data)
-{
-    bool Result = false;
-
-    HANDLE File = CreateFileA(Path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (File != INVALID_HANDLE_VALUE)
-    {
-        assert(Size <= 0xFFFFFFFF);
-
-        DWORD BytesWritten;
-        if (WriteFile(File, Data, (DWORD)Size, &BytesWritten, nullptr))
-        {
-            Result = (BytesWritten == Size);
-        }
-
-        CloseHandle(File);
-    }
-
-    return Result;
+    return(Buffer);
 }
 
 static LRESULT CALLBACK MainWindowProc(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
@@ -561,17 +518,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         {
             return -1;
         }
-    }
-
-    // Init threading
-    {
-        if (!Bump_Initialize(&PrimaryThreadContext.BumpAllocator))
-        {
-            return -1;
-        }
-
-        ThreadContextTlsID = TlsAlloc();
-        TlsSetValue(ThreadContextTlsID, (void*)&PrimaryThreadContext);
     }
 
     game_memory Memory = {};

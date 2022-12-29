@@ -44,6 +44,9 @@ struct map_view
 
 struct world
 {
+    // NOTE(boti): for now the world just piggy-backs off of the game state's memory arena
+    memory_arena* Arena;
+
     renderer* Renderer;
     u64 FrameIndex;
 
@@ -103,7 +106,7 @@ bool World_Initialize(world* World);
 
 // TODO(boti): remove dt from HandleInput
 void World_HandleInput(world* World, game_input* Input, f32 DeltaTime);
-void World_Update(world* World, game_input* Input, f32 DeltaTime);
+void World_Update(world* World, game_input* Input, f32 DeltaTime, memory_arena* TransientArena);
 void World_Render(world* World, renderer_frame_params* Frame);
 
 bool World_RayCast(world* World, vec3 P, vec3 V, f32 tMax, vec3i* OutP, direction* OutDir);

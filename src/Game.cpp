@@ -18,16 +18,13 @@
 #include "World.cpp"
 #include "Player.cpp"
 
-static bool Game_InitImGui(game_state* GameState);
+static bool Game_InitImGui(game_state* Game);
 
-static void Game_Render(game_state* GameState, f32 DeltaTime);
+static void Game_Render(game_state* Game, f32 DeltaTime);
 
-static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
+static void Game_Update(game_state* Game, game_input* Input, f32 DeltaTime)
 {
     TIMED_FUNCTION();
-
-    thread_context* ThreadContext = Platform_GetThreadContext();
-    Bump_Reset(&ThreadContext->BumpAllocator);
 
     if (Input->EscapePressed)
     {
@@ -35,14 +32,14 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
     }
     if (Input->BacktickPressed)
     {
-        GameState->World->Debug.IsDebuggingEnabled = !GameState->World->Debug.IsDebuggingEnabled;
+        Game->World->Debug.IsDebuggingEnabled = !Game->World->Debug.IsDebuggingEnabled;
     }
 
     // ImGui
     {
         // TODO: pass input
         ImGuiIO& IO = ImGui::GetIO();
-        IO.DisplaySize = { (f32)GameState->Renderer->SwapchainSize.width, (f32)GameState->Renderer->SwapchainSize.height };
+        IO.DisplaySize = { (f32)Game->Renderer->SwapchainSize.width, (f32)Game->Renderer->SwapchainSize.height };
         IO.DeltaTime = (DeltaTime == 0.0f) ? 1000.0f : DeltaTime; // NOTE(boti): ImGui doesn't want 0 dt
 
         if (Input->IsCursorEnabled)
@@ -65,32 +62,32 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
         ImGui::NewFrame();
     }
 
-    if (GameState->World->Debug.IsDebuggingEnabled)
+    if (Game->World->Debug.IsDebuggingEnabled)
     {
         ImGui::Begin("Debug");
         {
             ImGui::Text("FrameTime: %.2fms", 1000.0f*DeltaTime);
             ImGui::Text("FPS: %.1f", 1.0f / DeltaTime);
-            ImGui::Checkbox("Hitboxes", &GameState->World->Debug.IsHitboxEnabled);
+            ImGui::Checkbox("Hitboxes", &Game->World->Debug.IsHitboxEnabled);
             ImGui::Text("PlayerP: { %.1f, %.1f, %.1f }", 
-                        GameState->World->Player.P.x, GameState->World->Player.P.y, GameState->World->Player.P.z);
+                        Game->World->Player.P.x, Game->World->Player.P.y, Game->World->Player.P.z);
             if (ImGui::Button("Reset player"))
             {
-                World_ResetPlayer(GameState->World);
+                World_ResetPlayer(Game->World);
             }
 
-            ImGui::Checkbox("Debug camera", &GameState->World->Debug.IsDebugCameraEnabled);
+            ImGui::Checkbox("Debug camera", &Game->World->Debug.IsDebugCameraEnabled);
             ImGui::Text("DebugCameraP: { %.1f, %.1f, %.1f }", 
-                GameState->World->Debug.DebugCamera.P.x,
-                GameState->World->Debug.DebugCamera.P.y,
-                GameState->World->Debug.DebugCamera.P.z);
+                Game->World->Debug.DebugCamera.P.x,
+                Game->World->Debug.DebugCamera.P.y,
+                Game->World->Debug.DebugCamera.P.z);
             if (ImGui::Button("Teleport debug camera to player"))
             {
-                GameState->World->Debug.DebugCamera = Player_GetCamera(&GameState->World->Player);
+                Game->World->Debug.DebugCamera = Player_GetCamera(&Game->World->Player);
             }
             if (ImGui::Button("Teleport player to debug camera"))
             {
-                GameState->World->Player.P = GameState->World->Debug.DebugCamera.P;
+                Game->World->Player.P = Game->World->Debug.DebugCamera.P;
             }
 
         }
@@ -99,32 +96,34 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
         ImGui::Begin("Memory");
         {
             ImGui::Text("RenderTarget: %lluMB / %lluMB (%.1f%%)\n",
-                GameState->Renderer->RTHeap.HeapOffset >> 20,
-                GameState->Renderer->RTHeap.HeapSize >> 20,
-                100.0 * ((f64)GameState->Renderer->RTHeap.HeapOffset / (f64)GameState->Renderer->RTHeap.HeapSize));
+                Game->Renderer->RTHeap.HeapOffset >> 20,
+                Game->Renderer->RTHeap.HeapSize >> 20,
+                100.0 * ((f64)Game->Renderer->RTHeap.HeapOffset / (f64)Game->Renderer->RTHeap.HeapSize));
             ImGui::Text("VertexBuffer: %lluMB / %lluMB (%.1f%%)\n",
-                GameState->Renderer->VB.MemoryUsage >> 20,
-                GameState->Renderer->VB.MemorySize >> 20,
-                100.0 * GameState->Renderer->VB.MemoryUsage / GameState->Renderer->VB.MemorySize);
+                Game->Renderer->VB.MemoryUsage >> 20,
+                Game->Renderer->VB.MemorySize >> 20,
+                100.0 * Game->Renderer->VB.MemoryUsage / Game->Renderer->VB.MemorySize);
 
-            ImGui::Text("Chunks: %u/%u\n", GameState->World->ChunkCount, GameState->World->MaxChunkCount);
+            ImGui::Text("Chunks: %u/%u\n", Game->World->ChunkCount, Game->World->MaxChunkCount);
             ImGui::Text("Chunk header size: %d bytes", sizeof(chunk));
         }
         ImGui::End();
 
         ImGui::Begin("Map");
 
-        ImGui::Checkbox("Enable map view", &GameState->World->MapView.IsEnabled);
+        ImGui::Checkbox("Enable map view", &Game->World->MapView.IsEnabled);
 
         ImGui::End();
 
         GlobalProfiler.DoGUI();
     }
 
-    GameState->World->FrameIndex = GameState->FrameIndex;
-    World_HandleInput(GameState->World, Input, DeltaTime);
+    Game->World->FrameIndex = Game->FrameIndex;
 
-    World_Update(GameState->World, Input, DeltaTime);
+    Game->TransientArena.Used = 0; // Reset temporary memory
+    World_HandleInput(Game->World, Input, DeltaTime);
+
+    World_Update(Game->World, Input, DeltaTime, &Game->TransientArena);
 }
 
 static void Game_Render(game_state* GameState, f32 DeltaTime)
@@ -210,7 +209,7 @@ bool Game_Initialize(game_memory* Memory)
     Game->Renderer = PushStruct<renderer>(&Game->PrimaryArena);
     if (Game->Renderer)
     {
-        if (!Renderer_Initialize(Game->Renderer))
+        if (!Renderer_Initialize(Game->Renderer, &Game->TransientArena))
         {
             return false;
         }
@@ -226,6 +225,7 @@ bool Game_Initialize(game_memory* Memory)
     }
 
     Game->World = PushStruct<world>(&Game->PrimaryArena);
+    Game->World->Arena = &Game->PrimaryArena;
     Game->World->Renderer = Game->Renderer;
     if (!World_Initialize(Game->World))
     {
@@ -240,8 +240,6 @@ void Game_UpdateAndRender(game_memory* Memory, game_input* Input, f32 DeltaTime)
 {
     TIMED_FUNCTION();
 
-    game_state* Game = Memory->Game;
-
     // Disable stepping if there was giant lag-spike
     // TODO: The physics step should subdivide the frame when dt gets too large
     if (DeltaTime > 0.4f)
@@ -249,6 +247,7 @@ void Game_UpdateAndRender(game_memory* Memory, game_input* Input, f32 DeltaTime)
         DeltaTime = 0.0f;
     }
 
+    game_state* Game = Memory->Game;
     Game_Update(Game, Input, DeltaTime);
     Game_Render(Game, DeltaTime);
 }

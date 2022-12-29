@@ -1,7 +1,6 @@
 #include "Chunk.hpp"
 
 #include <Game.hpp>
-#include <Thread.hpp>
 
 static void Chunk_Generate(chunk* Chunk, world* World)
 {
@@ -84,15 +83,20 @@ static void Chunk_Generate(chunk* Chunk, world* World)
     }
 }
 
-static CBumpArray<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, world* World)
+static chunk_mesh Chunk_BuildMesh(const chunk* Chunk, world* World, memory_arena* Arena)
 {
     TIMED_FUNCTION();
+
+    chunk_mesh Mesh = {};
 
     assert(Chunk);
     assert(Chunk->Data);
 
-    thread_context* ThreadContext = Platform_GetThreadContext();
-    CBumpArray<terrain_vertex> VertexList(&ThreadContext->BumpAllocator);
+    constexpr u32 VoxelFaceCount = 6*2;
+    constexpr u32 VertexCountPerVoxel = VoxelFaceCount * 3;
+    constexpr u32 MaxVertexCount = VertexCountPerVoxel * CHUNK_DIM_X * CHUNK_DIM_Y * CHUNK_DIM_Z;
+    // Allocate the theoretical maximum
+    Mesh.VertexData = PushArray<terrain_vertex>(Arena, MaxVertexCount);
 
     for (u32 z = 0; z < CHUNK_DIM_Z; z++)
     {
@@ -243,12 +247,11 @@ static CBumpArray<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, world* Wor
                                     }
                                 }
 
-                                terrain_vertex Vertex = 
+                                Mesh.VertexData[Mesh.VertexCount++] = 
                                 {
                                     .P = PackPosition(CubeVertex.P + VoxelP),
                                     .TexCoord = PackTexCoord((u32)CubeVertex.UVW.x, (u32)CubeVertex.UVW.y, (u32)Desc->FaceTextureIndices[Direction], AO),
                                 };
-                                VertexList.PushBack(Vertex);
                             }
                         }
                     }
@@ -257,5 +260,5 @@ static CBumpArray<terrain_vertex> Chunk_BuildMesh(const chunk* Chunk, world* Wor
         }
     }
 
-    return VertexList;
+    return(Mesh);
 }

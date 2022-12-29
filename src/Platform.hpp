@@ -2,6 +2,7 @@
 
 #include <Common.hpp>
 #include <vulkan/vulkan.h>
+#include <Memory.hpp>
 
 typedef void* native_handle;
 
@@ -27,11 +28,7 @@ void PlatformLog_(const char* Function, int Line, const char* Format, ...);
 // TODO: runtime variable?
 constexpr u64 PLATFORM_PAGE_SIZE = 4096;
 
-void* Platform_VirtualAlloc(void* Pointer, u64 Size);
-bool Platform_VirtualFree(void* Pointer, u64 Size);
-
-CBuffer LoadEntireFile(const char* Path);
-bool WriteEntireFile(const char* Path, u64 Size, const void* Data);
+buffer LoadEntireFile(const char* Path, memory_arena* Arena);
 
 VkSurfaceKHR CreateVulkanSurface(VkInstance vkInstance);
 

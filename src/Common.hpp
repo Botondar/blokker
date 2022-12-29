@@ -31,6 +31,12 @@ static_assert(sizeof(f64) == 8);
 constexpr u32 INVALID_INDEX_U32 = 0xFFFFFFFFu;
 constexpr u64 INVALID_INDEX_U64 = 0xFFFFFFFFFFFFFFFFu;
 
+struct buffer
+{
+    u64 Size;
+    u8* Data;
+};
+
 template<typename T>
 inline T* PointerByteOffset(T* Base, u64 Offset)
 {
@@ -61,23 +67,13 @@ inline u64 AlignToPow2(u64 Value, u64 Alignment)
 //             The idea is to try and force to
 //             generate a load for the a variable that's not marked as volatile
 template<typename T>
-void AtomicLoad(const volatile T& Value)
+T AtomicLoad(const volatile T& Value)
 {
     return Value;
 }
 
-class CBuffer
+template<typename T>
+T AtomicLoad(const volatile T* Value)
 {
-public:
-    u64 Size;
-    u8* Data;
-public:
-    CBuffer();
-    ~CBuffer();
-    
-    CBuffer(const CBuffer& Other) = delete;
-    CBuffer(CBuffer&& Other);
-    
-    CBuffer& operator=(const CBuffer& Other) = delete;
-    CBuffer& operator=(CBuffer&& Other) = delete;
-};
+    return *Value;
+}

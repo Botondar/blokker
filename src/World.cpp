@@ -10,7 +10,7 @@
 // Internal functions
 //
 static u32 World_HashChunkP(const world* World, vec2i P, vec2i* Coords = nullptr);
-static void World_LoadChunks(world* World);
+static void World_LoadChunks(world* World, memory_arena* TransientArena);
 static chunk* World_ReserveChunk(world* World, vec2i P);
 static chunk* World_FindPlayerChunk(world* World);
 
@@ -430,7 +430,7 @@ vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP)
 }
 
 // Loads the chunks around the player
-void World_LoadChunks(world* World)
+void World_LoadChunks(world* World, memory_arena* TransientArena)
 {
     TIMED_FUNCTION();
 
@@ -555,15 +555,15 @@ void World_LoadChunks(world* World)
 
                 ProcessedChunkCount++;
 
-                CBumpArray<terrain_vertex> VertexData = Chunk_BuildMesh(Chunk, World);
+                chunk_mesh Mesh = Chunk_BuildMesh(Chunk, World, TransientArena);
                 Chunk->Flags |= CHUNK_STATE_MESHED_BIT;
 
-                Chunk->AllocationIndex = VB_Allocate(&World->Renderer->VB, (u32)VertexData.GetCount());
+                Chunk->AllocationIndex = VB_Allocate(&World->Renderer->VB, Mesh.VertexCount);
                 if (Chunk->AllocationIndex != INVALID_INDEX_U32)
                 {
                     TIMED_BLOCK("Upload");
 
-                    u64 Size = VertexData.GetCount() * sizeof(terrain_vertex);
+                    u64 Size = (u64)Mesh.VertexCount * sizeof(terrain_vertex);
                     World->Debug.MaxRecordedVBSize = Max(Size, World->Debug.MaxRecordedVBSize);
                     u64 Offset = VB_GetAllocationMemoryOffset(&World->Renderer->VB, Chunk->AllocationIndex);
 
@@ -572,7 +572,7 @@ void World_LoadChunks(world* World)
                         World->Renderer->RenderDevice.TransferQueue,
                         World->Renderer->TransferCmdBuffer,
                         Offset, World->Renderer->VB.Buffer,
-                        Size, VertexData.GetData()))
+                        Size, Mesh.VertexData))
                     {
                         Chunk->Flags |= CHUNK_STATE_UPLOADED_BIT;
                     }
@@ -595,20 +595,11 @@ void World_LoadChunks(world* World)
 bool World_Initialize(world* World)
 {
     // Allocate chunk memory
+    World->Chunks = PushArray<chunk>(World->Arena, world::MaxChunkCount);
+    World->ChunkData = PushArray<chunk_data>(World->Arena, world::MaxChunkCount);
+    if (!World->Chunks || !World->ChunkData)
     {
-        u64 ChunkHeadersSize = (u64)world::MaxChunkCount * sizeof(chunk);
-        World->Chunks = (chunk*)Platform_VirtualAlloc(nullptr, ChunkHeadersSize);
-        if (!World->Chunks)
-        {
-            return false;
-        }
-
-        u64 ChunkDataSize = (u64)world::MaxChunkCount * sizeof(chunk_data);
-        World->ChunkData = (chunk_data*)Platform_VirtualAlloc(nullptr, ChunkDataSize);
-        if (!World->ChunkData)
-        {
-            return false;
-        }
+        return false;
     }
 
     // Init chunks
@@ -745,7 +736,7 @@ void World_HandleInput(world* World, game_input* Input, f32 DeltaTime)
     }
 }
 
-void World_Update(world* World, game_input* Input, f32 DeltaTime)
+void World_Update(world* World, game_input* Input, f32 DeltaTime, memory_arena* TransientArena)
 {
     TIMED_FUNCTION();
 
@@ -757,7 +748,7 @@ void World_Update(world* World, game_input* Input, f32 DeltaTime)
     }
     ImGui::End();
 
-    World_LoadChunks(World);
+    World_LoadChunks(World, TransientArena);
 
     if (World->MapView.IsEnabled)
     {
@@ -810,20 +801,20 @@ void World_Update(world* World, game_input* Input, f32 DeltaTime)
                 Chunk->OldAllocationIndex = Chunk->AllocationIndex;
                 Chunk->LastRenderedInFrameIndex = Chunk->OldAllocationLastRenderedInFrameIndex;
 
-                CBumpArray<terrain_vertex> VertexData = Chunk_BuildMesh(Chunk, World);
+                chunk_mesh Mesh = Chunk_BuildMesh(Chunk, World, TransientArena);
 
-                if (VertexData.GetCount() && (VertexData.GetCount() <= 0xFFFFFFFFu))
+                if (Mesh.VertexCount)
                 {
-                    Chunk->AllocationIndex = VB_Allocate(&World->Renderer->VB, (u32)VertexData.GetCount());
+                    Chunk->AllocationIndex = VB_Allocate(&World->Renderer->VB, Mesh.VertexCount);
                     u64 Offset = VB_GetAllocationMemoryOffset(&World->Renderer->VB, Chunk->AllocationIndex);
                     Chunk->LastRenderedInFrameIndex = 0;
 
-                    u64 MemorySize = VertexData.GetCount() * sizeof(terrain_vertex);
+                    u64 MemorySize = (u64)Mesh.VertexCount * sizeof(terrain_vertex);
                     if (StagingHeap_Copy(&World->Renderer->StagingHeap,
                         World->Renderer->RenderDevice.TransferQueue,
                         World->Renderer->TransferCmdBuffer,
                         Offset, World->Renderer->VB.Buffer,
-                        MemorySize, VertexData.GetData()))
+                        (u64)MemorySize, Mesh.VertexData))
                     {
                         Chunk->Flags &= ~CHUNK_STATE_MESH_DIRTY_BIT;
                         Chunk->Flags |= CHUNK_STATE_UPLOADED_BIT;

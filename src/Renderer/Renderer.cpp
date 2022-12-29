@@ -233,11 +233,8 @@ bool Renderer_ResizeRenderTargets(renderer* Renderer)
     return Result;
 }
 
-bool Renderer_Initialize(renderer* Renderer)
+bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
 {
-    assert(Renderer);
-    memset(Renderer, 0, sizeof(renderer));
-
     if (!CreateRenderDevice(&Renderer->RenderDevice))
     {
         return false;
@@ -820,7 +817,8 @@ bool Renderer_Initialize(renderer* Renderer)
                 CurrentHeight /= 2;
             }
         }
-        u32* PixelBuffer = new u32[TexWidth*TexHeight*TexMaxArrayCount];
+        u64 ArenaSave = Arena->Used;
+        u32* PixelBuffer = PushArray<u32>(Arena, TexWidth*TexHeight*TexMaxArrayCount);
         u32* PixelBufferAt = PixelBuffer;
         struct image
         {
@@ -830,12 +828,13 @@ bool Renderer_Initialize(renderer* Renderer)
             u32* Pixels;
         };
 
-        auto LoadBMP = [&PixelBufferAt](const char* Path, image* Image) -> bool
+        auto LoadBMP = [&PixelBufferAt, &Arena](const char* Path, image* Image) -> bool
         {
             bool Result = false;
 
-            CBuffer Buffer = LoadEntireFile(Path);
-            if (Buffer.Data && Buffer.Size)
+            u64 ArenaSave = Arena->Used;
+            buffer Buffer = LoadEntireFile(Path, Arena);
+            if (Buffer.Data)
             {
                 bmp_file* Bitmap = (bmp_file*)Buffer.Data;
                 if ((Bitmap->File.Tag == BMP_FILE_TAG) && (Bitmap->File.Offset == offsetof(bmp_file, Data)))
@@ -923,6 +922,7 @@ bool Renderer_Initialize(renderer* Renderer)
                         }
                     }
                 }
+                Arena->Used = ArenaSave; // Free the allocation for the loaded file
             }
 
             return Result;
@@ -1087,7 +1087,7 @@ bool Renderer_Initialize(renderer* Renderer)
             }
         }
 
-        delete[] PixelBuffer;
+        Arena->Used = ArenaSave;
     }
 
     // Main pipeline
@@ -1121,8 +1121,9 @@ bool Renderer_Initialize(renderer* Renderer)
         //  Create shaders
         VkShaderModule VSModule, FSModule;
         {
-            CBuffer VSBin = LoadEntireFile("shader/shader.vs");
-            CBuffer FSBin = LoadEntireFile("shader/shader.fs");
+            u64 ArenaSave = Arena->Used;
+            buffer VSBin = LoadEntireFile("shader/shader.vs", Arena);
+            buffer FSBin = LoadEntireFile("shader/shader.fs", Arena);
             
             assert((VSBin.Size > 0) && (FSBin.Size > 0));
             
@@ -1153,6 +1154,7 @@ bool Renderer_Initialize(renderer* Renderer)
             {
                 return false;
             }
+            Arena->Used = ArenaSave;
         }
         
         VkPipelineShaderStageCreateInfo ShaderStages[] = 
@@ -1555,8 +1557,9 @@ bool Renderer_Initialize(renderer* Renderer)
         //  Create shaders
         VkShaderModule VSModule, FSModule;
         {
-            CBuffer VSBin = LoadEntireFile("shader/imguishader.vs");
-            CBuffer FSBin = LoadEntireFile("shader/imguishader.fs");
+            u64 ArenaSave = Arena->Used;
+            buffer VSBin = LoadEntireFile("shader/imguishader.vs", Arena);
+            buffer FSBin = LoadEntireFile("shader/imguishader.fs", Arena);
             
             assert((VSBin.Size > 0) && (FSBin.Size > 0));
             
@@ -1587,6 +1590,7 @@ bool Renderer_Initialize(renderer* Renderer)
             {
                 return false;
             }
+            Arena->Used = ArenaSave;
         }
         
         VkPipelineShaderStageCreateInfo ShaderStages[] = 
@@ -1868,8 +1872,9 @@ bool Renderer_Initialize(renderer* Renderer)
         //  Create shaders
         VkShaderModule VSModule, FSModule;
         {
-            CBuffer VSBin = LoadEntireFile("shader/imshader.vs");
-            CBuffer FSBin = LoadEntireFile("shader/imshader.fs");
+            u64 ArenaSave = Arena->Used;
+            buffer VSBin = LoadEntireFile("shader/imshader.vs", Arena);
+            buffer FSBin = LoadEntireFile("shader/imshader.fs", Arena);
             
             assert((VSBin.Size > 0) && (FSBin.Size > 0));
             
@@ -1900,6 +1905,7 @@ bool Renderer_Initialize(renderer* Renderer)
             {
                 return false;
             }
+            Arena->Used = ArenaSave;
         }
         
         VkPipelineShaderStageCreateInfo ShaderStages[] = 
