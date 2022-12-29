@@ -5,6 +5,14 @@
 
 typedef void* native_handle;
 
+struct game_memory
+{
+    u64 MemorySize;
+    void* Memory;
+
+    struct game_state* Game;
+};
+
 void DebugPrint_(const char* Format, ...);
 
 #if DEVELOPER

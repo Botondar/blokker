@@ -3,6 +3,7 @@
 #include <Common.hpp>
 #include <Math.hpp>
 
+#include <Platform.hpp>
 #include <Renderer/Renderer.hpp>
 #include <World.hpp>
 
@@ -43,6 +44,9 @@ struct game_input
 
 struct game_state
 {
+    memory_arena PrimaryArena;
+    memory_arena TransientArena;
+
     renderer* Renderer;
 
     // TODO: this maybe shouldn't be here
@@ -51,11 +55,11 @@ struct game_state
 
     u64 FrameIndex;
 
-    world World;
+    world* World;
 };
 
-bool Game_Initialize(game_state* GameState);
+bool Game_Initialize(game_memory* Memory);
 void Game_UpdateAndRender(
-    game_state* GameState,
+    game_memory* Memory,
     game_input* Input, 
     f32 DeltaTime);

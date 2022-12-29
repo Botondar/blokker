@@ -56,6 +56,7 @@ struct world
 #else
     static constexpr u32 MaxChunkCount = 16384;
     static constexpr u32 MaxChunkCountSqrt = 128;
+    static_assert(MaxChunkCountSqrt*MaxChunkCountSqrt == MaxChunkCount);
 #endif
 
     u32 ChunkCount;

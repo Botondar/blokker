@@ -24,6 +24,10 @@ static_assert(sizeof(f64) == 8);
 
 #define CountOf(arr) (sizeof(arr) / sizeof((arr)[0]))
 
+#define KiB(s) (1024*s)
+#define MiB(s) (1024*KiB(s))
+#define GiB(s) (1024llu*MiB(s))
+
 constexpr u32 INVALID_INDEX_U32 = 0xFFFFFFFFu;
 constexpr u64 INVALID_INDEX_U64 = 0xFFFFFFFFFFFFFFFFu;
 

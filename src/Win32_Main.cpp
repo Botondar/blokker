@@ -489,8 +489,8 @@ static bool win32_ProcessInput(game_input* Input)
 }
 
 // Put these into global memory so we don't blow out the stack
-static renderer Renderer;
-static game_state GameState;
+//static renderer Renderer;
+//static game_state GameState;
 
 int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int CommandShow)
 {
@@ -574,9 +574,20 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         TlsSetValue(ThreadContextTlsID, (void*)&PrimaryThreadContext);
     }
 
-    GameState.Renderer = &Renderer;
+    game_memory Memory = {};
+    {
+        Memory.MemorySize = GiB(2);
+        Memory.Memory = VirtualAlloc(nullptr, Memory.MemorySize, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
 
-    if(!Game_Initialize(&GameState))
+        if (!Memory.Memory)
+        {
+            return -1;
+        }
+    }
+
+    //GameState.Renderer = &Renderer;
+
+    if(!Game_Initialize(&Memory))
     {
         return -1;
     }
@@ -622,19 +633,19 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
         if (Win32State.WasWindowResized)
         {
-            GameState.NeedRendererResize = true;
+            Memory.Game->NeedRendererResize = true;
             Win32State.WasWindowResized = FALSE;
         }
         Input.IsCursorEnabled = !Win32State.IsCursorDisabled;
-        GameState.IsMinimized = Win32State.IsMinimized;
+        Memory.Game->IsMinimized = Win32State.IsMinimized;
 
-        GameState.FrameIndex = FrameCount;
-        Game_UpdateAndRender(&GameState, &Input, DeltaTime);
+        Memory.Game->FrameIndex = FrameCount;
+        Game_UpdateAndRender(&Memory, &Input, DeltaTime);
 
         // Since there's no rendering when we're minimzed we don't want to be burning the CPU
         if (Win32State.IsMinimized)
         {
-            Sleep(20);
+            Sleep(5);
         }
 
         GlobalProfiler.Reset();

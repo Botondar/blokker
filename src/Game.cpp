@@ -35,7 +35,7 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
     }
     if (Input->BacktickPressed)
     {
-        GameState->World.Debug.IsDebuggingEnabled = !GameState->World.Debug.IsDebuggingEnabled;
+        GameState->World->Debug.IsDebuggingEnabled = !GameState->World->Debug.IsDebuggingEnabled;
     }
 
     // ImGui
@@ -65,31 +65,32 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
         ImGui::NewFrame();
     }
 
-    if (GameState->World.Debug.IsDebuggingEnabled)
+    if (GameState->World->Debug.IsDebuggingEnabled)
     {
         ImGui::Begin("Debug");
         {
             ImGui::Text("FrameTime: %.2fms", 1000.0f*DeltaTime);
             ImGui::Text("FPS: %.1f", 1.0f / DeltaTime);
-            ImGui::Checkbox("Hitboxes", &GameState->World.Debug.IsHitboxEnabled);
-            ImGui::Text("PlayerP: { %.1f, %.1f, %.1f }", GameState->World.Player.P.x, GameState->World.Player.P.y, GameState->World.Player.P.z);
+            ImGui::Checkbox("Hitboxes", &GameState->World->Debug.IsHitboxEnabled);
+            ImGui::Text("PlayerP: { %.1f, %.1f, %.1f }", 
+                        GameState->World->Player.P.x, GameState->World->Player.P.y, GameState->World->Player.P.z);
             if (ImGui::Button("Reset player"))
             {
-                World_ResetPlayer(&GameState->World);
+                World_ResetPlayer(GameState->World);
             }
 
-            ImGui::Checkbox("Debug camera", &GameState->World.Debug.IsDebugCameraEnabled);
+            ImGui::Checkbox("Debug camera", &GameState->World->Debug.IsDebugCameraEnabled);
             ImGui::Text("DebugCameraP: { %.1f, %.1f, %.1f }", 
-                GameState->World.Debug.DebugCamera.P.x,
-                GameState->World.Debug.DebugCamera.P.y,
-                GameState->World.Debug.DebugCamera.P.z);
+                GameState->World->Debug.DebugCamera.P.x,
+                GameState->World->Debug.DebugCamera.P.y,
+                GameState->World->Debug.DebugCamera.P.z);
             if (ImGui::Button("Teleport debug camera to player"))
             {
-                GameState->World.Debug.DebugCamera = Player_GetCamera(&GameState->World.Player);
+                GameState->World->Debug.DebugCamera = Player_GetCamera(&GameState->World->Player);
             }
             if (ImGui::Button("Teleport player to debug camera"))
             {
-                GameState->World.Player.P = GameState->World.Debug.DebugCamera.P;
+                GameState->World->Player.P = GameState->World->Debug.DebugCamera.P;
             }
 
         }
@@ -106,24 +107,24 @@ static void Game_Update(game_state* GameState, game_input* Input, f32 DeltaTime)
                 GameState->Renderer->VB.MemorySize >> 20,
                 100.0 * GameState->Renderer->VB.MemoryUsage / GameState->Renderer->VB.MemorySize);
 
-            ImGui::Text("Chunks: %u/%u\n", GameState->World.ChunkCount, GameState->World.MaxChunkCount);
+            ImGui::Text("Chunks: %u/%u\n", GameState->World->ChunkCount, GameState->World->MaxChunkCount);
             ImGui::Text("Chunk header size: %d bytes", sizeof(chunk));
         }
         ImGui::End();
 
         ImGui::Begin("Map");
 
-        ImGui::Checkbox("Enable map view", &GameState->World.MapView.IsEnabled);
+        ImGui::Checkbox("Enable map view", &GameState->World->MapView.IsEnabled);
 
         ImGui::End();
 
         GlobalProfiler.DoGUI();
     }
 
-    GameState->World.FrameIndex = GameState->FrameIndex;
-    World_HandleInput(&GameState->World, Input, DeltaTime);
+    GameState->World->FrameIndex = GameState->FrameIndex;
+    World_HandleInput(GameState->World, Input, DeltaTime);
 
-    World_Update(&GameState->World, Input, DeltaTime);
+    World_Update(GameState->World, Input, DeltaTime);
 }
 
 static void Game_Render(game_state* GameState, f32 DeltaTime)
@@ -148,7 +149,7 @@ static void Game_Render(game_state* GameState, f32 DeltaTime)
 
     renderer_frame_params* FrameParams = Renderer_NewFrame(Renderer, GameState->FrameIndex);
 
-    World_Render(&GameState->World, FrameParams);
+    World_Render(GameState->World, FrameParams);
 
     Renderer_SubmitFrame(Renderer, FrameParams);
 }
@@ -180,21 +181,53 @@ static bool Game_InitImGui(game_state* GameState)
     return Result;
 }
 
-bool Game_Initialize(game_state* GameState)
+bool Game_Initialize(game_memory* Memory)
 {
-    if (!Renderer_Initialize(GameState->Renderer))
+    game_state* Game = nullptr;
+    {
+        memory_arena BootstrapArena = InitializeArena(Memory->MemorySize, Memory->Memory);
+        Game = Memory->Game = PushStruct<game_state>(&BootstrapArena);
+        if (Game)
+        {
+            Game->PrimaryArena = BootstrapArena;
+            u64 TransientMemorySize = MiB(512);
+            void* TransientMemory = PushSize(&Game->PrimaryArena, TransientMemorySize, KiB(64));
+            if (TransientMemory)
+            {
+                Game->TransientArena = InitializeArena(TransientMemorySize, TransientMemory);
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    Game->Renderer = PushStruct<renderer>(&Game->PrimaryArena);
+    if (Game->Renderer)
+    {
+        if (!Renderer_Initialize(Game->Renderer))
+        {
+            return false;
+        }
+    }
+    else
     {
         return false;
     }
     
-    if (!Game_InitImGui(GameState))
+    if (!Game_InitImGui(Game))
     {
         return false;
     }
 
-    GameState->World.Renderer = GameState->Renderer;
-
-    if (!World_Initialize(&GameState->World))
+    Game->World = PushStruct<world>(&Game->PrimaryArena);
+    Game->World->Renderer = Game->Renderer;
+    if (!World_Initialize(Game->World))
     {
         return false;
     }
@@ -203,9 +236,11 @@ bool Game_Initialize(game_state* GameState)
     return true;
 }
 
-void Game_UpdateAndRender(game_state* GameState, game_input* Input, f32 DeltaTime)
+void Game_UpdateAndRender(game_memory* Memory, game_input* Input, f32 DeltaTime)
 {
     TIMED_FUNCTION();
+
+    game_state* Game = Memory->Game;
 
     // Disable stepping if there was giant lag-spike
     // TODO: The physics step should subdivide the frame when dt gets too large
@@ -214,6 +249,6 @@ void Game_UpdateAndRender(game_state* GameState, game_input* Input, f32 DeltaTim
         DeltaTime = 0.0f;
     }
 
-    Game_Update(GameState, Input, DeltaTime);
-    Game_Render(GameState, DeltaTime);
+    Game_Update(Game, Input, DeltaTime);
+    Game_Render(Game, DeltaTime);
 }
