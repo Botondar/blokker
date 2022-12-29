@@ -28,7 +28,7 @@ clean:
 	@cl -nologo $(LANG) -W4 -WX -Zi -O2 -Oi -c -Fe:"build/imgui.lib" -Fo:"build/imgui.obj" -Fd:"build/" "src/imgui/build.cpp"
 	@lib -nologo -OUT:$@ "build/imgui.obj"
 "build/blokker.exe": "build/win32_platform.obj" "build/game.obj" "build/imgui.lib"
-	@link -nologo -LIBPATH:$(VULKAN_SDK)/Lib/ -LIBPATH:lib/ -OUT:$@ $** $(LIBS)
+	@link -nologo -DEBUG:FULL -LIBPATH:$(VULKAN_SDK)/Lib/ -LIBPATH:lib/ -OUT:$@ $** $(LIBS)
 	
 # The shaders might benefit from an actual build-system...
 "shader/shader.vs": "src/shader/shader.glsl"
