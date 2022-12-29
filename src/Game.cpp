@@ -118,11 +118,10 @@ static void Game_Update(game_state* Game, game_input* Input, f32 DeltaTime)
         GlobalProfiler.DoGUI();
     }
 
-    Game->World->FrameIndex = Game->FrameIndex;
-
     Game->TransientArena.Used = 0; // Reset temporary memory
+    Game->World->FrameIndex = Game->FrameIndex;
+    
     World_HandleInput(Game->World, Input, DeltaTime);
-
     World_Update(Game->World, Input, DeltaTime, &Game->TransientArena);
 }
 
