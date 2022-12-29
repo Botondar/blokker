@@ -4,6 +4,47 @@
 #include <Intrinsics.hpp>
 
 //
+// Memory arena
+//
+
+inline void* PushSize(memory_arena* Arena, u64 Size, u64 Alignment /*= 0*/)
+{
+    void* Result = nullptr;
+
+    u64 EffectiveSize = Size;
+    if (Alignment)
+    {
+        EffectiveSize = AlignToPow2(Size, Alignment);
+    }
+
+    u64 Offset = EffectiveSize - Size;
+    if (EffectiveSize <= Arena->Size)
+    {
+        Result = (void*)(Arena->Base + Arena->Used + Offset);
+        Arena->Used += EffectiveSize;
+    }
+    else
+    {
+        // TODO
+    }
+
+    return(Result);
+}
+
+template<typename T>
+inline T* PushStruct(memory_arena* Arena)
+{
+    T* Result = PushSize(Arena, sizeof(T), alignof(T));
+    return(Result);
+}
+template<typename T>
+inline T* PushArray(memory_arena* Arena, u64 Count)
+{
+    T* Result = PushSize(Arena, sizeof(T) * Count, alignof(T));
+    return Result;
+}
+
+//
 // Large memory block allocator
 //
 
