@@ -649,7 +649,7 @@ void World_HandleInput(world* World, game_input* Input, f32 DeltaTime)
             Camera->Yaw -= Input->MouseDelta.x * CameraSpeed;
             Camera->Pitch -= Input->MouseDelta.y * CameraSpeed;
 
-            constexpr f32 PitchClamp = 0.5f * PI - 1e-3;
+            constexpr f32 PitchClamp = 0.5f * PI - 1e-3f;
             Camera->Pitch = Clamp(Camera->Pitch, -PitchClamp, +PitchClamp);
 
             mat4 CameraTransform = Camera->GetGlobalTransform();
