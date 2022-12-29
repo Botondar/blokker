@@ -522,7 +522,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
     game_memory Memory = {};
     {
-        Memory.MemorySize = GiB(2);
+        Memory.MemorySize = GiB(4);
         Memory.Memory = VirtualAlloc(nullptr, Memory.MemorySize, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
 
         if (!Memory.Memory)

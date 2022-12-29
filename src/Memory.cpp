@@ -26,7 +26,7 @@ inline void* PushSize(memory_arena* Arena, u64 Size, u64 Alignment /*= 0*/)
     }
 
     u64 Offset = EffectiveSize - Size;
-    if (EffectiveSize <= Arena->Size)
+    if (EffectiveSize <= Arena->Size - Arena->Used)
     {
         Result = (void*)(Arena->Base + Arena->Used + Offset);
         Arena->Used += EffectiveSize;
