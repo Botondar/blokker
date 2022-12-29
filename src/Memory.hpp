@@ -15,32 +15,6 @@ inline T* PushStruct(memory_arena* Arena);
 template<typename T>
 inline T* PushArray(memory_arena* Arena, u64 Count);
 
-struct large_memory_block
-{
-    static constexpr u64 BlockSize = 2 * 1024 * 1024;
-    void* Memory;
-    large_memory_block* NextBlock;
-};
-
-struct large_memory_block_allocator
-{
-    static constexpr u64 MaxBlockCount = 128;
-    static constexpr u64 MemorySize = MaxBlockCount * large_memory_block::BlockSize;
-
-    void* Memory;
-
-    static constexpr u32 FreeBlocksArrayCount = 2;
-    u64 FreeBlocks[FreeBlocksArrayCount]; // Bitfield
-
-    large_memory_block Blocks[MaxBlockCount];
-};
-
-bool LMBA_Initialize(large_memory_block_allocator* Allocator);
-void LMBA_Shutdown(large_memory_block_allocator* Allocator);
-
-large_memory_block* LMBA_Allocate(large_memory_block_allocator* Allocator, large_memory_block* Prev = nullptr);
-void LMBA_Free(large_memory_block_allocator* Allocator, large_memory_block* Block);
-
 struct bump_allocator
 {
     static constexpr u64 MemorySize = 64 * 1024 * 1024;
