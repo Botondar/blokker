@@ -78,8 +78,6 @@ struct world
         bool IsHitboxEnabled;
         bool IsDebugCameraEnabled;
         camera DebugCamera;
-
-        u64 MaxRecordedVBSize;
     } Debug;
 
     map_view MapView;
