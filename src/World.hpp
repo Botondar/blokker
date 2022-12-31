@@ -16,6 +16,16 @@
 struct renderer;
 struct renderer_frame_params;
 
+inline vec2i GetChunkP(vec2i WorldP)
+{
+    vec2i Result = 
+    {
+        FloorDiv(WorldP.x, CHUNK_DIM_X) * CHUNK_DIM_X,
+        FloorDiv(WorldP.y, CHUNK_DIM_Y) * CHUNK_DIM_Y,
+    };
+    return(Result);
+}
+
 //
 // World
 //
