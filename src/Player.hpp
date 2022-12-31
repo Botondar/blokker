@@ -73,5 +73,5 @@ aabb Player_GetVerticalAABB(const player* Player); // Excludes legs
 void Player_GetHorizontalAxes(const player* Player, vec3& Forward, vec3& Right);
 vec3 Player_GetForward(const player* Player);
 
-void Player_HandleInput(player* Player, game_input* Input);
+void Player_HandleInput(player* Player, game_io* IO);
 void Player_Update(player* Player, world* World, f32 DeltaTime);

@@ -626,19 +626,19 @@ bool World_Initialize(world* World)
     return true;
 }
 
-void World_HandleInput(world* World, game_input* Input, f32 DeltaTime)
+void World_HandleInput(world* World, game_io* IO, f32 DeltaTime)
 {
     if (World->Debug.IsDebugCameraEnabled)
     {
         // Debug camera update
-        if (!Input->IsCursorEnabled)
+        if (!IO->IsCursorEnabled)
         {
             const f32 dt = DeltaTime;
             constexpr f32 CameraSpeed = 2.5e-3f;
 
             camera* Camera = &World->Debug.DebugCamera;
-            Camera->Yaw -= Input->MouseDelta.x * CameraSpeed;
-            Camera->Pitch -= Input->MouseDelta.y * CameraSpeed;
+            Camera->Yaw -= IO->MouseDelta.x * CameraSpeed;
+            Camera->Pitch -= IO->MouseDelta.y * CameraSpeed;
 
             constexpr f32 PitchClamp = 0.5f * PI - 1e-3f;
             Camera->Pitch = Clamp(Camera->Pitch, -PitchClamp, +PitchClamp);
@@ -653,37 +653,37 @@ void World_HandleInput(world* World, game_input* Input, f32 DeltaTime)
             vec3 Up = { 0.0f, 0.0f, 1.0f };
 
             f32 MoveSpeed = 3.0f;
-            if (Input->LeftShift)
+            if (IO->LeftShift)
             {
                 MoveSpeed = 10.0f;
             }
-            if (Input->LeftAlt)
+            if (IO->LeftAlt)
             {
                 MoveSpeed = 50.0f;
             }
 
-            if (Input->Forward)
+            if (IO->Forward)
             {
                 Camera->P += Forward * MoveSpeed * dt;
             }
-            if (Input->Back)
+            if (IO->Back)
             {
                 Camera->P -= Forward * MoveSpeed * dt;
             }
-            if (Input->Right)
+            if (IO->Right)
             {
                 Camera->P += Right * MoveSpeed * dt;
             }
-            if (Input->Left)
+            if (IO->Left)
             {
                 Camera->P -= Right * MoveSpeed * dt;
             }
 
-            if (Input->Space)
+            if (IO->Space)
             {
                 Camera->P += Up * MoveSpeed * dt;
             }
-            if (Input->LeftControl)
+            if (IO->LeftControl)
             {
                 Camera->P -= Up * MoveSpeed * dt;
             }
@@ -692,7 +692,7 @@ void World_HandleInput(world* World, game_input* Input, f32 DeltaTime)
     else
     {
         // Toggle map view
-        if (Input->MPressed)
+        if (IO->MPressed)
         {
             World->MapView.IsEnabled = !World->MapView.IsEnabled;
             if (World->MapView.IsEnabled)
@@ -707,23 +707,23 @@ void World_HandleInput(world* World, game_input* Input, f32 DeltaTime)
 
         if (World->MapView.IsEnabled)
         {
-            World->MapView.ZoomTarget += 0.1f * Input->WheelDelta * World->MapView.ZoomTarget; // Diff equation hack?
+            World->MapView.ZoomTarget += 0.1f * IO->WheelDelta * World->MapView.ZoomTarget; // Diff equation hack?
 
-            if (Input->MouseButtons[MOUSE_LEFT])
+            if (IO->MouseButtons[MOUSE_LEFT])
             {
                 constexpr f32 MouseSpeed = 3.5e-3f;
-                World->MapView.TargetYaw -= MouseSpeed * Input->MouseDelta.x;
-                World->MapView.TargetPitch -= MouseSpeed * Input->MouseDelta.y;
+                World->MapView.TargetYaw -= MouseSpeed * IO->MouseDelta.x;
+                World->MapView.TargetPitch -= MouseSpeed * IO->MouseDelta.y;
                 World->MapView.TargetPitch = Clamp(World->MapView.TargetPitch, World->MapView.PitchMin, World->MapView.PitchMax);
             }
-            else if (Input->MouseButtons[MOUSE_RIGHT])
+            else if (IO->MouseButtons[MOUSE_RIGHT])
             {
                 mat2 Axes = World->MapView.GetAxesXY();
 
                 constexpr f32 MoveSpeed = 2.5e-1f;
-                World->MapView.TargetP += (Axes * vec2{ -Input->MouseDelta.x, Input->MouseDelta.y }) * (MoveSpeed / World->MapView.ZoomTarget);
+                World->MapView.TargetP += (Axes * vec2{ -IO->MouseDelta.x, IO->MouseDelta.y }) * (MoveSpeed / World->MapView.ZoomTarget);
             }
-            else if (Input->MouseButtons[MOUSE_MIDDLE])
+            else if (IO->MouseButtons[MOUSE_MIDDLE])
             {
                 World->MapView.Reset(World);
             }
@@ -731,12 +731,12 @@ void World_HandleInput(world* World, game_input* Input, f32 DeltaTime)
         else
         {
             // Player update
-            Player_HandleInput(&World->Player, Input);
+            Player_HandleInput(&World->Player, IO);
         }
     }
 }
 
-void World_Update(world* World, game_input* Input, f32 DeltaTime, memory_arena* TransientArena)
+void World_Update(world* World, game_io* IO, f32 DeltaTime, memory_arena* TransientArena)
 {
     TIMED_FUNCTION();
 

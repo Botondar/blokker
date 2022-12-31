@@ -20,17 +20,17 @@
 
 static bool Game_InitImGui(game_state* Game);
 
-static void Game_Render(game_state* Game, f32 DeltaTime);
+static void Game_Render(game_state* Game, game_io* IO, f32 DeltaTime);
 
-static void Game_Update(game_state* Game, game_input* Input, f32 DeltaTime)
+static void Game_Update(game_state* Game, game_io* IO, f32 DeltaTime)
 {
     TIMED_FUNCTION();
 
-    if (Input->EscapePressed)
+    if (IO->EscapePressed)
     {
-        Input->IsCursorEnabled = ToggleCursor();
+        IO->IsCursorEnabled = ToggleCursor();
     }
-    if (Input->BacktickPressed)
+    if (IO->BacktickPressed)
     {
         Game->World->Debug.IsDebuggingEnabled = !Game->World->Debug.IsDebuggingEnabled;
     }
@@ -38,24 +38,24 @@ static void Game_Update(game_state* Game, game_input* Input, f32 DeltaTime)
     // ImGui
     {
         // TODO: pass input
-        ImGuiIO& IO = ImGui::GetIO();
-        IO.DisplaySize = { (f32)Game->Renderer->SwapchainSize.width, (f32)Game->Renderer->SwapchainSize.height };
-        IO.DeltaTime = (DeltaTime == 0.0f) ? 1000.0f : DeltaTime; // NOTE(boti): ImGui doesn't want 0 dt
+        ImGuiIO& ImIO = ImGui::GetIO();
+        ImIO.DisplaySize = { (f32)Game->Renderer->SwapchainSize.width, (f32)Game->Renderer->SwapchainSize.height };
+        ImIO.DeltaTime = (DeltaTime == 0.0f) ? 1000.0f : DeltaTime; // NOTE(boti): ImGui doesn't want 0 dt
 
-        if (Input->IsCursorEnabled)
+        if (IO->IsCursorEnabled)
         {
-            IO.MousePos = { Input->MouseP.x, Input->MouseP.y };
+            ImIO.MousePos = { IO->MouseP.x, IO->MouseP.y };
             for (u32 i = 0; i < MOUSE_ButtonCount; i++)
             {
-                IO.MouseDown[i] = Input->MouseButtons[i];
+                ImIO.MouseDown[i] = IO->MouseButtons[i];
             }
         }
         else
         {
-            IO.MousePos = { -1.0f, -1.0f };
+            ImIO.MousePos = { -1.0f, -1.0f };
             for (u32 i = 0; i < MOUSE_ButtonCount; i++)
             {
-                IO.MouseDown[i] = false;
+                ImIO.MouseDown[i] = false;
             }
 
         }
@@ -121,33 +121,33 @@ static void Game_Update(game_state* Game, game_input* Input, f32 DeltaTime)
     Game->TransientArena.Used = 0; // Reset temporary memory
     Game->World->FrameIndex = Game->FrameIndex;
     
-    World_HandleInput(Game->World, Input, DeltaTime);
-    World_Update(Game->World, Input, DeltaTime, &Game->TransientArena);
+    World_HandleInput(Game->World, IO, DeltaTime);
+    World_Update(Game->World, IO, DeltaTime, &Game->TransientArena);
 }
 
-static void Game_Render(game_state* GameState, f32 DeltaTime)
+static void Game_Render(game_state* Game, game_io* IO, f32 DeltaTime)
 {
     TIMED_FUNCTION();
 
-    renderer* Renderer = GameState->Renderer;
-    if (GameState->IsMinimized)
+    renderer* Renderer = Game->Renderer;
+    if (IO->IsMinimized)
     {
         // HACK: Call ImGui rendering here so that we don't crash on the next ImGui::NewFrame();
         ImGui::Render();
         return;
     }
-    if (GameState->NeedRendererResize)
+    if (IO->NeedRendererResize)
     {
         if (!Renderer_ResizeRenderTargets(Renderer))
         {
             assert(!"Fatal error");
         }
-        GameState->NeedRendererResize = false;
+        IO->NeedRendererResize = false;
     }
 
-    renderer_frame_params* FrameParams = Renderer_NewFrame(Renderer, GameState->FrameIndex);
+    renderer_frame_params* FrameParams = Renderer_NewFrame(Renderer, Game->FrameIndex);
 
-    World_Render(GameState->World, FrameParams);
+    World_Render(Game->World, FrameParams);
 
     Renderer_SubmitFrame(Renderer, FrameParams);
 }
@@ -235,7 +235,7 @@ bool Game_Initialize(game_memory* Memory)
     return true;
 }
 
-void Game_UpdateAndRender(game_memory* Memory, game_input* Input, f32 DeltaTime)
+void Game_UpdateAndRender(game_memory* Memory, game_io* IO, f32 DeltaTime)
 {
     TIMED_FUNCTION();
 
@@ -247,6 +247,6 @@ void Game_UpdateAndRender(game_memory* Memory, game_input* Input, f32 DeltaTime)
     }
 
     game_state* Game = Memory->Game;
-    Game_Update(Game, Input, DeltaTime);
-    Game_Render(Game, DeltaTime);
+    Game_Update(Game, IO, DeltaTime);
+    Game_Render(Game, IO, DeltaTime);
 }

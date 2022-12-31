@@ -93,32 +93,32 @@ vec3 Player_GetForward(const player* Player)
     return Result;
 }
 
-void Player_HandleInput(player* Player, game_input* Input)
+void Player_HandleInput(player* Player, game_io* IO)
 {
     constexpr f32 MouseTurnSpeed = 2.5e-3f;
 
     Player->Control.PrimaryAction = false;
     Player->Control.SecondaryAction = false;
     // Disable mouse input when there's a cursor on the screen
-    if (!Input->IsCursorEnabled)
+    if (!IO->IsCursorEnabled)
     {
-        Player->Yaw -= Input->MouseDelta.x * MouseTurnSpeed;
-        Player->Pitch -= Input->MouseDelta.y * MouseTurnSpeed;
+        Player->Yaw -= IO->MouseDelta.x * MouseTurnSpeed;
+        Player->Pitch -= IO->MouseDelta.y * MouseTurnSpeed;
 
-        Player->Control.PrimaryAction = Input->MouseButtons[MOUSE_LEFT];
-        Player->Control.SecondaryAction = Input->MouseButtons[MOUSE_RIGHT];
+        Player->Control.PrimaryAction = IO->MouseButtons[MOUSE_LEFT];
+        Player->Control.SecondaryAction = IO->MouseButtons[MOUSE_RIGHT];
     }
     constexpr f32 CameraClamp = 0.5f * PI - 1e-3f;
     Player->Pitch = Clamp(Player->Pitch, -CameraClamp, CameraClamp);
 
     Player->Control.DesiredMoveDirection = { 0.0f, 0.0f };
-    if (Input->Forward) Player->Control.DesiredMoveDirection.x += 1.0f;
-    if (Input->Back) Player->Control.DesiredMoveDirection.x -= 1.0f;
-    if (Input->Right) Player->Control.DesiredMoveDirection.y += 1.0f;
-    if (Input->Left) Player->Control.DesiredMoveDirection.y -= 1.0f;
+    if (IO->Forward) Player->Control.DesiredMoveDirection.x += 1.0f;
+    if (IO->Back) Player->Control.DesiredMoveDirection.x -= 1.0f;
+    if (IO->Right) Player->Control.DesiredMoveDirection.y += 1.0f;
+    if (IO->Left) Player->Control.DesiredMoveDirection.y -= 1.0f;
 
-    Player->Control.IsJumping = Input->Space;
-    Player->Control.IsRunning = Input->LeftShift;
+    Player->Control.IsJumping = IO->Space;
+    Player->Control.IsRunning = IO->LeftShift;
 }
 
 void Player_Update(player* Player, world* World, f32 dt)

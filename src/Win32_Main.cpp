@@ -302,7 +302,7 @@ static LRESULT CALLBACK MainWindowProc(HWND Window, UINT Message, WPARAM WParam,
     return Result;
 }
 
-static bool win32_ProcessInput(game_input* Input)
+static bool win32_ProcessInput(game_io* Input)
 {
     // Clear non-sticky input
     Input->MouseDelta = {};
@@ -538,7 +538,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         return -1;
     }
 
-    game_input Input = {};
+    game_io IO = {};
 
     f32 DeltaTime = 0.0f;
     f32 Time = 0.0f;
@@ -571,7 +571,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
             SetWindowTextA(Win32State.Window, Buff);
         }
 
-        if (win32_ProcessInput(&Input))
+        if (win32_ProcessInput(&IO))
         {
             IsRunning = false;
             break;
@@ -579,14 +579,14 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
         if (Win32State.WasWindowResized)
         {
-            Memory.Game->NeedRendererResize = true;
+            IO.NeedRendererResize = true;
             Win32State.WasWindowResized = FALSE;
         }
-        Input.IsCursorEnabled = !Win32State.IsCursorDisabled;
-        Memory.Game->IsMinimized = Win32State.IsMinimized;
+        IO.IsCursorEnabled = !Win32State.IsCursorDisabled;
+        IO.IsMinimized = Win32State.IsMinimized;
 
         Memory.Game->FrameIndex = FrameCount;
-        Game_UpdateAndRender(&Memory, &Input, DeltaTime);
+        Game_UpdateAndRender(&Memory, &IO, DeltaTime);
 
         // Since there's no rendering when we're minimzed we don't want to be burning the CPU
         if (Win32State.IsMinimized)
