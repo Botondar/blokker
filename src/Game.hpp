@@ -21,7 +21,4 @@ struct game_state
 };
 
 bool Game_Initialize(game_memory* Memory);
-void Game_UpdateAndRender(
-    game_memory* Memory,
-    game_io* IO, 
-    f32 DeltaTime);
+void Game_UpdateAndRender(game_memory* Memory, game_io* IO);

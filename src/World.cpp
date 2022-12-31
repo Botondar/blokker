@@ -626,14 +626,14 @@ bool World_Initialize(world* World)
     return true;
 }
 
-void World_HandleInput(world* World, game_io* IO, f32 DeltaTime)
+void World_HandleInput(world* World, game_io* IO)
 {
     if (World->Debug.IsDebugCameraEnabled)
     {
         // Debug camera update
         if (!IO->IsCursorEnabled)
         {
-            const f32 dt = DeltaTime;
+            const f32 dt = IO->DeltaTime;
             constexpr f32 CameraSpeed = 2.5e-3f;
 
             camera* Camera = &World->Debug.DebugCamera;
@@ -736,7 +736,7 @@ void World_HandleInput(world* World, game_io* IO, f32 DeltaTime)
     }
 }
 
-void World_Update(world* World, game_io* IO, f32 DeltaTime, memory_arena* TransientArena)
+void World_Update(world* World, game_io* IO, memory_arena* TransientArena)
 {
     TIMED_FUNCTION();
 
@@ -752,16 +752,15 @@ void World_Update(world* World, game_io* IO, f32 DeltaTime, memory_arena* Transi
 
     if (World->MapView.IsEnabled)
     {
-        World->MapView.CurrentP = Lerp(World->MapView.CurrentP, World->MapView.TargetP, 1.0f - Exp(-50.0f * DeltaTime));
-        World->MapView.CurrentYaw = Lerp(World->MapView.CurrentYaw, World->MapView.TargetYaw, 1.0f - Exp(-30.0f * DeltaTime));
-        World->MapView.CurrentPitch = Lerp(World->MapView.CurrentPitch, World->MapView.TargetPitch, 1.0f - Exp(-30.0f * DeltaTime));
-        World->MapView.ZoomCurrent = Lerp(World->MapView.ZoomCurrent, World->MapView.ZoomTarget, 1.0f - Exp(-20.0f * DeltaTime));
-        
+        World->MapView.CurrentP = Lerp(World->MapView.CurrentP, World->MapView.TargetP, 1.0f - Exp(-50.0f * IO->DeltaTime));
+        World->MapView.CurrentYaw = Lerp(World->MapView.CurrentYaw, World->MapView.TargetYaw, 1.0f - Exp(-30.0f * IO->DeltaTime));
+        World->MapView.CurrentPitch = Lerp(World->MapView.CurrentPitch, World->MapView.TargetPitch, 1.0f - Exp(-30.0f * IO->DeltaTime));
+        World->MapView.ZoomCurrent = Lerp(World->MapView.ZoomCurrent, World->MapView.ZoomTarget, 1.0f - Exp(-20.0f * IO->DeltaTime));
     }
 
     constexpr f32 MinPhysicsResolution = 16.6667e-3f;
 
-    f32 RemainingTime = DeltaTime;
+    f32 RemainingTime = IO->DeltaTime;
     while (RemainingTime > 0.0f)
     {
         f32 dt = Min(RemainingTime, MinPhysicsResolution);

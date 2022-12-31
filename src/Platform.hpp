@@ -27,6 +27,8 @@ enum mouse_button : u32
 
 struct game_io
 {
+    f32 DeltaTime;
+
     // ShouldQuit is both whether a quit request happened in the platform layer
     // _and_ something the game code can set to quit the app
     bool ShouldQuit;

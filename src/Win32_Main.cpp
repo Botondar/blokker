@@ -540,17 +540,15 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
     game_io IO = {};
 
-    f32 DeltaTime = 0.0f;
     f32 Time = 0.0f;
     u64 FrameCount = 0;
     bool IsRunning = true;
     while (IsRunning) 
     {
-        //DebugPrint("%llu. Frame started\n", FrameCount);
-        Time += DeltaTime;
-
         s64 StartTime;
         QueryPerformanceCounter((LARGE_INTEGER*)&StartTime);
+
+        Time += IO.DeltaTime;
 
 #if DEVELOPER && 0
         if (IsHungAppWindow(Win32State.Window))
@@ -565,8 +563,8 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
             snprintf(Buff, BuffSize, "%s [%.2fms | %.1fFPS]",
                      Win32_WindowTitle,
-                     1000.0f * DeltaTime,
-                     1.0f / DeltaTime);
+                     1000.0f * IO.DeltaTime,
+                     1.0f / IO.DeltaTime);
 
             SetWindowTextA(Win32State.Window, Buff);
         }
@@ -586,7 +584,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         IO.IsMinimized = Win32State.IsMinimized;
 
         Memory.Game->FrameIndex = FrameCount;
-        Game_UpdateAndRender(&Memory, &IO, DeltaTime);
+        Game_UpdateAndRender(&Memory, &IO);
 
         // Since there's no rendering when we're minimzed we don't want to be burning the CPU
         if (Win32State.IsMinimized)
@@ -599,7 +597,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         s64 EndTime;
         QueryPerformanceCounter((LARGE_INTEGER*)&EndTime);
 
-        DeltaTime = (EndTime - StartTime) / (f32)Win32State.PerformanceFrequency;
+        IO.DeltaTime = (EndTime - StartTime) / (f32)Win32State.PerformanceFrequency;
         //DebugPrint("%llu. Frame ended\n", FrameCount);
         FrameCount++;
     }
