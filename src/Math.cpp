@@ -112,7 +112,7 @@ vec2 Normalize(const vec2& v)
     return Result;
 }
 
-vec2 SafeNormalize(const vec2& v)
+vec2 NOZ(const vec2& v)
 {
     vec2 Result = { 0.0f, 0.0f };
     f32 Len = Length(v);
@@ -365,7 +365,7 @@ vec3 Normalize(const vec3& v)
     return Result;
 }
 
-vec3 SafeNormalize(const vec3& v)
+vec3 NOZ(const vec3& v)
 {
     vec3 Result;
     f32 Len = Length(v);

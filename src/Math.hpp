@@ -260,7 +260,7 @@ vec2 Floor(const vec2& v);
 f32 Dot(const vec2& a, const vec2& b);
 f32 Length(const vec2& v);
 vec2 Normalize(const vec2& v);
-vec2 SafeNormalize(const vec2& v);
+vec2 NOZ(const vec2& v);
 
 vec2i operator-(const vec2i& v);
 vec2i& operator*=(vec2i& v, s32 s);
@@ -302,7 +302,7 @@ vec3 Ceil(const vec3& v);
 f32 Dot(const vec3& a, const vec3& b);
 f32 Length(const vec3& v);
 vec3 Normalize(const vec3& v);
-vec3 SafeNormalize(const vec3& v);
+vec3 NOZ(const vec3& v);
 
 // NOTE(boti): b should be normalized
 vec3 Projection(const vec3& a, const vec3& b);

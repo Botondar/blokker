@@ -295,7 +295,7 @@ bool World_RayCast(
 
     //vec3 RelP = P - (vec3)(vec3i{Chunk->P.x, Chunk->P.y, 0 } * vec3i{ CHUNK_DIM_X, CHUNK_DIM_Y, 1 });
 
-    V = SafeNormalize(V);
+    V = NOZ(V);
     aabb SearchBox = MakeAABB(Floor(P), Floor(P + tMax * V));
 
     vec3i StartP = (vec3i)SearchBox.Min;

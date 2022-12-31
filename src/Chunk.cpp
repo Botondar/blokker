@@ -9,6 +9,7 @@ static void Chunk_Generate(chunk* Chunk, world* World)
     assert(Chunk);
     assert(Chunk->Data);
 
+    vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
     for (u32 y = 0; y < CHUNK_DIM_Y; y++)
     {
         for (u32 x = 0; x < CHUNK_DIM_X; x++)
@@ -17,7 +18,6 @@ static void Chunk_Generate(chunk* Chunk, world* World)
             constexpr f32 TerrainBaseScale = 32.0f;
             constexpr u32 TerrainBaseHeight = 80;
 
-            vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
             vec2 TerrainP = TerrainBaseFrequency * (vec2{ (f32)x, (f32)y } + ChunkP);
 
             f32 TerrainSample = Perlin2_Octave(&World->Perlin2, TerrainP, 8, 0.5f, 2.0f);

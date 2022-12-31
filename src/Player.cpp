@@ -196,7 +196,7 @@ void Player_Update(player* Player, world* World, f32 dt)
     Player_GetHorizontalAxes(Player, Forward, Right);
     vec3 Up = { 0.0f, 0.0f, 1.0f };
 
-    vec3 DesiredMoveDirection = SafeNormalize(Player->Control.DesiredMoveDirection.x * Forward + Player->Control.DesiredMoveDirection.y * Right);
+    vec3 DesiredMoveDirection = NOZ(Player->Control.DesiredMoveDirection.x * Forward + Player->Control.DesiredMoveDirection.y * Right);
 
     constexpr f32 WalkSpeed = 4.0f;
     constexpr f32 RunSpeed = 7.75f;
@@ -263,7 +263,7 @@ void Player_Update(player* Player, world* World, f32 dt)
         constexpr f32 SideArea = Player->Width * Player->Height;
             
         f32 Speed = Length(Player->Velocity);
-        vec3 UnitVelocity = SafeNormalize(Player->Velocity);
+        vec3 UnitVelocity = NOZ(Player->Velocity);
             
         f32 Area = Lerp(SideArea, BottomArea, Abs(Dot(UnitVelocity, vec3{0.0f, 0.0f, 1.0f})));
         vec3 DragForce = (-0.5f * AirDensity * DragCoeff * Area) * Player->Velocity * Speed;
