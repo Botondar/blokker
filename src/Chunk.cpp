@@ -9,7 +9,7 @@ static void Chunk_Generate(chunk* Chunk, world* World)
     assert(Chunk);
     assert(Chunk->Data);
 
-    vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
+    vec2 ChunkP = { (f32)Chunk->P.x, (f32)Chunk->P.y };
     for (u32 y = 0; y < CHUNK_DIM_Y; y++)
     {
         for (u32 x = 0; x < CHUNK_DIM_X; x++)
@@ -168,7 +168,7 @@ static chunk_mesh Chunk_BuildMesh(const chunk* Chunk, world* World, memory_arena
                     };
                     constexpr u32 CubeVertexCount = CountOf(Cube);
 
-                    vec3i WorldVoxelP = vec3i{(s32)x, (s32)y, (s32)z} + vec3i{Chunk->P.x * CHUNK_DIM_X, Chunk->P.y * CHUNK_DIM_Y, 0 };
+                    vec3i WorldVoxelP = vec3i{(s32)x, (s32)y, (s32)z} + vec3i{Chunk->P.x, Chunk->P.y, 0 };
                     voxel_neighborhood Neighborhood = World_GetVoxelNeighborhood(World, WorldVoxelP);
 
                     for (u32 Direction = DIRECTION_First; Direction < DIRECTION_Count; Direction++)

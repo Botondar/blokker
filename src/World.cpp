@@ -82,6 +82,8 @@ void World_ResetPlayer(world* World)
 
 static u32 World_HashChunkP(const world* World, vec2i P, vec2i* Coords /*= nullptr*/)
 {
+    P.x = FloorDiv(P.x, CHUNK_DIM_X);
+    P.y = FloorDiv(P.y, CHUNK_DIM_Y);
     s32 ix = Modulo(P.x, World->MaxChunkCountSqrt);
     s32 iy = Modulo(P.y, World->MaxChunkCountSqrt);
     assert((ix >= 0) && (iy >= 0));
@@ -117,15 +119,15 @@ chunk* World_GetChunkFromP(world* World, vec3i P, vec3i* RelP)
 {
     chunk* Result = nullptr;
 
-    vec2i ChunkP = { FloorDiv(P.x, CHUNK_DIM_X), FloorDiv(P.y, CHUNK_DIM_Y) };
+    vec2i ChunkP = { FloorDiv(P.x, CHUNK_DIM_X) * CHUNK_DIM_X, FloorDiv(P.y, CHUNK_DIM_Y) * CHUNK_DIM_Y };
     chunk* Chunk = World_GetChunkFromP(World, ChunkP);
     if (Chunk)
     {
+        Result = Chunk;
         if (RelP)
         {
-            *RelP = P - vec3i{ ChunkP.x * CHUNK_DIM_X, ChunkP.y * CHUNK_DIM_Y, 0 };
+            *RelP = P - vec3i{ ChunkP.x, ChunkP.y, 0 };
         }
-        Result = Chunk;
     }
 
     return Result;
@@ -170,7 +172,7 @@ bool World_SetVoxelType(world* World, vec3i P, u16 Type)
 
             if (RelP.x == 0)
             {
-                chunk* Neighbor = World_GetChunkFromP(World, Chunk->P + CardinalDirections[West]);
+                chunk* Neighbor = World_GetChunkFromP(World, Chunk->P + CardinalDirections[West] * CHUNK_DIM_X);
                 if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
                 {
                     Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
@@ -178,7 +180,7 @@ bool World_SetVoxelType(world* World, vec3i P, u16 Type)
             }
             else if (RelP.x == CHUNK_DIM_X - 1)
             {
-                chunk* Neighbor = World_GetChunkFromP(World, Chunk->P + CardinalDirections[East]);
+                chunk* Neighbor = World_GetChunkFromP(World, Chunk->P + CardinalDirections[East] * CHUNK_DIM_X);
                 if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
                 {
                     Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
@@ -186,7 +188,7 @@ bool World_SetVoxelType(world* World, vec3i P, u16 Type)
             }
             if (RelP.y == 0)
             {
-                chunk* Neighbor = World_GetChunkFromP(World, Chunk->P + CardinalDirections[South]);
+                chunk* Neighbor = World_GetChunkFromP(World, Chunk->P + CardinalDirections[South] * CHUNK_DIM_Y);
                 if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
                 {
                     Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
@@ -194,7 +196,7 @@ bool World_SetVoxelType(world* World, vec3i P, u16 Type)
             }
             else if (RelP.y == CHUNK_DIM_Y - 1)
             {
-                chunk* Neighbor = World_GetChunkFromP(World, Chunk->P + CardinalDirections[North]);
+                chunk* Neighbor = World_GetChunkFromP(World, Chunk->P + CardinalDirections[North] * CHUNK_DIM_Y);
                 if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
                 {
                     Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
@@ -272,8 +274,8 @@ static chunk* World_FindPlayerChunk(world* World)
 {
     TIMED_FUNCTION();
     chunk* Result = nullptr;
-    vec2i PlayerChunkP = (vec2i)Floor(vec2{ World->Player.P.x / CHUNK_DIM_X, World->Player.P.y / CHUNK_DIM_Y });
 
+    vec2i PlayerChunkP = ((vec2i)Floor(vec2{ World->Player.P.x / CHUNK_DIM_X, World->Player.P.y / CHUNK_DIM_Y })) * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y };
     u32 Index = World_HashChunkP(World, PlayerChunkP);
     chunk* Chunk = World->Chunks + Index;
     if (Chunk->P == PlayerChunkP)
@@ -435,7 +437,7 @@ void World_LoadChunks(world* World, memory_arena* TransientArena)
     TIMED_FUNCTION();
 
     vec2 PlayerP = (vec2)World->Player.P;
-    vec2i PlayerChunkP = (vec2i)Floor(PlayerP / vec2{ (f32)CHUNK_DIM_X, (f32)CHUNK_DIM_Y });
+    vec2i PlayerChunkP = ((vec2i)Floor(PlayerP / vec2{ (f32)CHUNK_DIM_X, (f32)CHUNK_DIM_Y })) * vec2i{ CHUNK_DIM_X, CHUNK_DIM_Y };
 
     constexpr u32 ImmediateMeshDistance = 1;
     constexpr u32 ImmediateGenerationDistance = ImmediateMeshDistance + 1;
@@ -477,7 +479,7 @@ void World_LoadChunks(world* World, memory_arena* TransientArena)
     for (u32 i = 0; i <= GenerationDistance; i++)
     {
         u32 Diameter = 2*i + 1;
-        vec2i CurrentP = PlayerChunk->P - vec2i{(s32)i, (s32)i};
+        vec2i CurrentP = PlayerChunk->P - vec2i{(s32)i * CHUNK_DIM_X, (s32)i * CHUNK_DIM_Y};
 
         u32 CurrentCardinal = South; // last
         for (u32 j = 0; j < 4; j++)
@@ -485,7 +487,7 @@ void World_LoadChunks(world* World, memory_arena* TransientArena)
             CurrentCardinal = CardinalNext(CurrentCardinal);
             for (u32 k = 0; k < Diameter - 1; k++)
             {
-                CurrentP = CurrentP + CardinalDirections[CurrentCardinal];
+                CurrentP = CurrentP + CardinalDirections[CurrentCardinal] * CHUNK_DIM_X;
                 chunk* Chunk = World_GetChunkFromP(World, CurrentP);
                 if (!Chunk)
                 {
@@ -524,8 +526,7 @@ void World_LoadChunks(world* World, memory_arena* TransientArena)
         for (u32 i = 0; i < StackAt; i++)
         {
             chunk* Chunk = Stack[i];
-
-            s32 Distance = ChebyshevDistance(Chunk->P, PlayerChunkP);
+            s32 Distance = ChebyshevDistance(Chunk->P, PlayerChunkP) / CHUNK_DIM_X;
             if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
             {
                 if ((Distance <= ImmediateGenerationDistance) ||
@@ -543,7 +544,7 @@ void World_LoadChunks(world* World, memory_arena* TransientArena)
     for (u32 i = 0; i < StackAt; i++)
     {
         chunk* Chunk = Stack[i];
-        s32 Distance = ChebyshevDistance(PlayerChunkP, Chunk->P);
+        s32 Distance = ChebyshevDistance(PlayerChunkP, Chunk->P) / CHUNK_DIM_X;
 
         if (!(Chunk->Flags & CHUNK_STATE_MESHED_BIT) && (Distance <= MeshDistance))
         {

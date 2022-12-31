@@ -2949,9 +2949,7 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
             continue;
         }
 
-        
-        vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
-
+        vec2 ChunkP = { (f32)Chunk->P.x, (f32)Chunk->P.y };
         vec3 ChunkP3 = { ChunkP.x, ChunkP.y, 0.0f };
 
         aabb ChunkBox = MakeAABB(ChunkP3, ChunkP3 + vec3{ CHUNK_DIM_X, CHUNK_DIM_Y, CHUNK_DIM_Z });
