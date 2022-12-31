@@ -6,7 +6,6 @@
 #include <Camera.hpp>
 
 struct world;
-struct game_input;
 
 struct entity
 {

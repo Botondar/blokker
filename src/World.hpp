@@ -13,7 +13,6 @@
 #define BLOKKER_TINY_RENDER_DISTANCE 0
 
 // Forward declare
-struct game_input;
 struct renderer;
 struct renderer_frame_params;
 
