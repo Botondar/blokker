@@ -84,9 +84,10 @@ static u32 World_HashChunkP(const world* World, vec2i P, vec2i* Coords /*= nullp
 {
     P.x = FloorDiv(P.x, CHUNK_DIM_X);
     P.y = FloorDiv(P.y, CHUNK_DIM_Y);
+    P.x += World->MaxChunkCountSqrt / 2;
+    P.y += World->MaxChunkCountSqrt / 2;
     s32 ix = Modulo(P.x, World->MaxChunkCountSqrt);
     s32 iy = Modulo(P.y, World->MaxChunkCountSqrt);
-    assert((ix >= 0) && (iy >= 0));
 
     u32 x = (u32)ix;
     u32 y = (u32)iy;
@@ -149,7 +150,7 @@ u16 World_GetVoxelType(world* World, vec3i P)
         }
         else
         {
-            DebugPrint("WARNING: Invalid voxel read\n");
+            //DebugPrint("WARNING: Invalid voxel read\n");
         }
     }
     return Result;
@@ -741,8 +742,6 @@ void World_Update(world* World, game_io* IO, memory_arena* TransientArena)
 {
     TIMED_FUNCTION();
 
-    World_LoadChunks(World, TransientArena);
-
     if (World->MapView.IsEnabled)
     {
         World->MapView.CurrentP = Lerp(World->MapView.CurrentP, World->MapView.TargetP, 1.0f - Exp(-50.0f * IO->DeltaTime));
@@ -750,6 +749,8 @@ void World_Update(world* World, game_io* IO, memory_arena* TransientArena)
         World->MapView.CurrentPitch = Lerp(World->MapView.CurrentPitch, World->MapView.TargetPitch, 1.0f - Exp(-30.0f * IO->DeltaTime));
         World->MapView.ZoomCurrent = Lerp(World->MapView.ZoomCurrent, World->MapView.ZoomTarget, 1.0f - Exp(-20.0f * IO->DeltaTime));
     }
+
+    World_LoadChunks(World, TransientArena);
 
     constexpr f32 MinPhysicsResolution = 16.6667e-3f;
 
