@@ -2927,7 +2927,6 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
 {
     TIMED_FUNCTION();
 
-#if 1
     frustum ViewFrustum = Frame->Camera.GetFrustum((f32)Frame->Renderer->SwapchainSize.width / Frame->Renderer->SwapchainSize.height);
 
     VkDeviceSize DrawBufferOffset = Frame->DrawCommands.DrawIndex * sizeof(VkDrawIndirectCommand);
@@ -2982,61 +2981,7 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
         Frame->Renderer->PipelineLayout,
         VK_SHADER_STAGE_VERTEX_BIT, 0,
         sizeof(mat4), &VP);
-
     vkCmdDrawIndirect(Frame->CmdBuffer, Frame->DrawCommands.Buffer, DrawBufferOffset, DrawCount, sizeof(VkDrawIndirectCommand));
-
-#else
-
-    vkCmdBindPipeline(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->Pipeline);
-    vkCmdBindDescriptorSets(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->PipelineLayout, 
-        0, 1, &Frame->Renderer->DescriptorSet, 0, nullptr);
-
-    VkDeviceSize Offset = 0;
-    vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->Renderer->VB.Buffer, &Offset);
-    vkCmdBindVertexBuffers(Frame->CmdBuffer, 1, 1, &Frame->ChunkPositions.Buffer, &Offset);
-
-    mat4 VP = Frame->ProjectionTransform * Frame->ViewTransform;
-
-    vkCmdPushConstants(
-        Frame->CmdBuffer,
-        Frame->Renderer->PipelineLayout,
-        VK_SHADER_STAGE_VERTEX_BIT, 0,
-        sizeof(mat4), &VP);
-
-    mat3 CameraAxes = Frame->Camera.GetAxes();
-    vec3 CameraForward3 = { CameraAxes(0, 0), CameraAxes(1, 0), CameraAxes(2, 0) };
-    vec2 CameraForward = Normalize((vec2)CameraForward3);
-
-    for (u32 i = 0; i < Count; i++)
-    {
-        chunk_render_data* Chunk = Chunks + i;
-
-        if (Chunk->AllocationIndex == INVALID_INDEX_U32)
-        {
-            continue;
-        }
-
-        vulkan_vertex_buffer_allocation Allocation = Frame->Renderer->VB.Allocations[Chunk->AllocationIndex];
-        if (Allocation.BlockIndex == INVALID_INDEX_U32)
-        {
-            assert(!"Invalid code path");
-            continue;
-        }
-
-        vec2 ChunkP = { (f32)Chunk->P.x * CHUNK_DIM_X, (f32)Chunk->P.y * CHUNK_DIM_Y };
-
-        //if (Dot(CameraForward, ChunkP - CameraForward) >= 0.0f)
-        {
-            u32 InstanceOffset = (u32)Frame->ChunkPositions.ChunkAt++;
-            memcpy(Frame->ChunkPositions.Mapping + InstanceOffset, &ChunkP, sizeof(ChunkP));
-
-            vulkan_vertex_buffer_block Block = Frame->Renderer->VB.Blocks[Allocation.BlockIndex];
-            vkCmdDraw(Frame->CmdBuffer, Block.VertexCount, 1, Block.VertexOffset, InstanceOffset);
-
-            *Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
-        }
-    }
-#endif
 }
 
 u64 Frame_PushToStack(renderer_frame_params* Frame, u64 Alignment, const void* Data, u64 Size)
