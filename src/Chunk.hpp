@@ -8,8 +8,7 @@
 
 struct world;
 
-constexpr s32 CHUNK_DIM_X = 16;
-constexpr s32 CHUNK_DIM_Y = 16;
+constexpr s32 CHUNK_DIM_XY = 16;
 constexpr s32 CHUNK_DIM_Z = 256;
 
 enum axis : u32
@@ -108,7 +107,7 @@ enum chunk_state_flags : u32
 
 struct chunk_data
 {
-    u16 Voxels[CHUNK_DIM_Z][CHUNK_DIM_Y][CHUNK_DIM_X];
+    u16 Voxels[CHUNK_DIM_Z][CHUNK_DIM_XY][CHUNK_DIM_XY];
 };
 
 struct chunk 

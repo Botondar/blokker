@@ -10,9 +10,9 @@ static void Chunk_Generate(chunk* Chunk, world* World)
     assert(Chunk->Data);
 
     vec2 ChunkP = { (f32)Chunk->P.x, (f32)Chunk->P.y };
-    for (u32 y = 0; y < CHUNK_DIM_Y; y++)
+    for (u32 y = 0; y < CHUNK_DIM_XY; y++)
     {
-        for (u32 x = 0; x < CHUNK_DIM_X; x++)
+        for (u32 x = 0; x < CHUNK_DIM_XY; x++)
         {
             constexpr f32 TerrainBaseFrequency = 1.0f / 64.0f;
             constexpr f32 TerrainBaseScale = 32.0f;
@@ -94,15 +94,15 @@ static chunk_mesh Chunk_BuildMesh(const chunk* Chunk, world* World, memory_arena
 
     constexpr u32 VoxelFaceCount = 6*2;
     constexpr u32 VertexCountPerVoxel = VoxelFaceCount * 3;
-    constexpr u32 MaxVertexCount = VertexCountPerVoxel * CHUNK_DIM_X * CHUNK_DIM_Y * CHUNK_DIM_Z;
+    constexpr u32 MaxVertexCount = VertexCountPerVoxel * CHUNK_DIM_XY * CHUNK_DIM_XY * CHUNK_DIM_Z;
     // Allocate the theoretical maximum
     Mesh.VertexData = PushArray<terrain_vertex>(Arena, MaxVertexCount);
 
     for (u32 z = 0; z < CHUNK_DIM_Z; z++)
     {
-        for (u32 y = 0; y < CHUNK_DIM_Y; y++)
+        for (u32 y = 0; y < CHUNK_DIM_XY; y++)
         {
-            for (u32 x = 0; x < CHUNK_DIM_X; x++)
+            for (u32 x = 0; x < CHUNK_DIM_XY; x++)
             {
                 vec3 VoxelP = vec3{ (f32)x, (f32)y, (f32)z };
 

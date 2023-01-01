@@ -20,8 +20,8 @@ inline vec2i GetChunkP(vec2i WorldP)
 {
     vec2i Result = 
     {
-        FloorDiv(WorldP.x, CHUNK_DIM_X) * CHUNK_DIM_X,
-        FloorDiv(WorldP.y, CHUNK_DIM_Y) * CHUNK_DIM_Y,
+        FloorDiv(WorldP.x, CHUNK_DIM_XY) * CHUNK_DIM_XY,
+        FloorDiv(WorldP.y, CHUNK_DIM_XY) * CHUNK_DIM_XY,
     };
     return(Result);
 }
