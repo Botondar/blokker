@@ -71,7 +71,6 @@ struct world
     static_assert(MaxChunkCountSqrt*MaxChunkCountSqrt == MaxChunkCount);
 #endif
 
-    u32 ChunkCount;
     chunk* Chunks;
     chunk_data* ChunkData;
 

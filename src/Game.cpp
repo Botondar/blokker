@@ -103,8 +103,6 @@ static void Game_Update(game_state* Game, game_io* IO)
                 Game->Renderer->VB.MemoryUsage >> 20,
                 Game->Renderer->VB.MemorySize >> 20,
                 100.0 * Game->Renderer->VB.MemoryUsage / Game->Renderer->VB.MemorySize);
-
-            ImGui::Text("Chunks: %u/%u\n", Game->World->ChunkCount, Game->World->MaxChunkCount);
             ImGui::Text("Chunk header size: %d bytes", sizeof(chunk));
         }
         ImGui::End();
