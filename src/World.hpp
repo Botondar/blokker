@@ -92,29 +92,22 @@ struct world
 };
 
 // From chunk position
-chunk* World_GetChunkFromP(world* World, vec2i P);
+chunk* GetChunkFromP(world* World, vec2i P);
 // From voxel position
-chunk* World_GetChunkFromP(world* World, vec3i P, vec3i* RelP);
-u16 World_GetVoxelType(world* World, vec3i P);
-bool World_SetVoxelType(world* World, vec3i P, u16 Type);
-voxel_neighborhood World_GetVoxelNeighborhood(world* World, vec3i P);
+chunk* GetChunkFromP(world* World, vec3i P, vec3i* RelP);
+u16 GetVoxelTypeAt(world* World, vec3i P);
+bool SetVoxelTypeAt(world* World, vec3i P, u16 Type);
+voxel_neighborhood GetVoxelNeighborhood(world* World, vec3i P);
 
+void ResetPlayer(world* World);
 
-static bool World_RayCast(
-    world* World, 
-    vec3 P, vec3 V, 
-    f32 tMax, 
-    vec3i* OutP, direction* OutDir);
-
-void World_ResetPlayer(world* World);
-
-bool World_Initialize(world* World);
+bool Initialize(world* World);
 
 // TODO(boti): remove dt from HandleInput
-void World_HandleInput(world* World, game_io* IO);
-void World_Update(world* World, game_io* IO, memory_arena* TransientArena);
+void HandleInput(world* World, game_io* IO);
+void Update(world* World, game_io* IO, memory_arena* TransientArena);
 void World_Render(world* World, renderer_frame_params* Frame);
 
-bool World_RayCast(world* World, vec3 P, vec3 V, f32 tMax, vec3i* OutP, direction* OutDir);
+bool RayCast(world* World, vec3 P, vec3 V, f32 tMax, vec3i* OutP, direction* OutDir);
 
-vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP);
+vec3 MoveEntityBy(world* World, entity* Entity, aabb AABB, vec3 dP);

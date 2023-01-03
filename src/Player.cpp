@@ -10,7 +10,7 @@
 // Player
 //
 
-camera Player_GetCamera(const player* Player)
+camera GetCamera(const player* Player)
 {
     vec3 CamPDelta = { 0.0f, 0.0f, Player->CurrentHeadBobValue };
     camera Camera =
@@ -26,7 +26,7 @@ camera Player_GetCamera(const player* Player)
     return Camera;
 }
 
-aabb Player_GetAABB(const player* Player)
+aabb GetAABB(const player* Player)
 {
     aabb Result = 
     {
@@ -46,7 +46,7 @@ aabb Player_GetAABB(const player* Player)
     return Result;
 }
 
-aabb Player_GetVerticalAABB(const player* Player)
+aabb GetVerticalAABB(const player* Player)
 {
     aabb Result = 
     {
@@ -66,7 +66,7 @@ aabb Player_GetVerticalAABB(const player* Player)
     return Result;
 }
 
-void Player_GetHorizontalAxes(const player* Player, vec3& Forward, vec3& Right)
+void GetHorizontalAxes(const player* Player, vec3& Forward, vec3& Right)
 {   
     f32 SinYaw = Sin(Player->Yaw);
     f32 CosYaw = Cos(Player->Yaw);
@@ -74,7 +74,7 @@ void Player_GetHorizontalAxes(const player* Player, vec3& Forward, vec3& Right)
     Forward = { -SinYaw, CosYaw, 0.0f };
 }
 
-vec3 Player_GetForward(const player* Player)
+vec3 GetForwardVector(const player* Player)
 {
     vec3 Result = {};
     
@@ -93,7 +93,7 @@ vec3 Player_GetForward(const player* Player)
     return Result;
 }
 
-void Player_HandleInput(player* Player, game_io* IO)
+void HandleInput(player* Player, game_io* IO)
 {
     constexpr f32 MouseTurnSpeed = 2.5e-3f;
 
@@ -121,32 +121,32 @@ void Player_HandleInput(player* Player, game_io* IO)
     Player->Control.IsRunning = IO->LeftShift;
 }
 
-void Player_Update(player* Player, world* World, f32 dt)
+void Update(player* Player, world* World, f32 dt)
 {
     TIMED_FUNCTION();
     
     // Block breaking
     {
-        vec3 Forward = Player_GetForward(Player);
+        vec3 Forward = GetForwardVector(Player);
 
         constexpr f32 PlayerReach = 8.0f;
 
         vec3i OldTargetBlock = Player->TargetBlock;
-        Player->HasTargetBlock = World_RayCast(World, Player->P, Forward, PlayerReach, &Player->TargetBlock, &Player->TargetDirection);
+        Player->HasTargetBlock = RayCast(World, Player->P, Forward, PlayerReach, &Player->TargetBlock, &Player->TargetDirection);
 
         if (Player->HasTargetBlock)
         {
             // Breaking
             if ((OldTargetBlock == Player->TargetBlock) && Player->Control.PrimaryAction)
             {
-                u16 VoxelType = World_GetVoxelType(World, Player->TargetBlock);
+                u16 VoxelType = GetVoxelTypeAt(World, Player->TargetBlock);
                 const voxel_desc* VoxelDesc = &VoxelDescs[VoxelType];
                 if (VoxelDesc->Flags & VOXEL_FLAGS_SOLID)
                 {
                     Player->BreakTime += dt;
                     if (Player->BreakTime >= Player->BlockBreakTime)
                     {
-                        World_SetVoxelType(World, Player->TargetBlock, VOXEL_AIR);
+                        SetVoxelTypeAt(World, Player->TargetBlock, VOXEL_AIR);
                     }
                 }
             }
@@ -172,18 +172,18 @@ void Player_Update(player* Player, world* World, f32 dt)
                 }
 
                 vec3i PlacementP = Player->TargetBlock + DeltaP;
-                u16 VoxelType = World_GetVoxelType(World, PlacementP);
+                u16 VoxelType = GetVoxelTypeAt(World, PlacementP);
                 if (VoxelType == VOXEL_AIR)
                 {
-                    aabb PlayerBox = Player_GetAABB(Player);
+                    aabb PlayerBox = GetAABB(Player);
                     vec3i BoxP = PlacementP;
                     aabb BlockBox = MakeAABB((vec3)BoxP, (vec3)(BoxP + vec3i{1, 1, 1}));
 
                     vec3 Overlap;
                     int MinCoord;
-                    if (!AABB_Intersect(PlayerBox, BlockBox, Overlap, MinCoord))
+                    if (!Intersect(PlayerBox, BlockBox, Overlap, MinCoord))
                     {
-                        World_SetVoxelType(World, PlacementP, VOXEL_GROUND);
+                        SetVoxelTypeAt(World, PlacementP, VOXEL_GROUND);
                         Player->TimeSinceLastBlockPlacement = 0.0f;
                     }
                 }
@@ -193,7 +193,7 @@ void Player_Update(player* Player, world* World, f32 dt)
     
 
     vec3 Forward, Right;
-    Player_GetHorizontalAxes(Player, Forward, Right);
+    GetHorizontalAxes(Player, Forward, Right);
     vec3 Up = { 0.0f, 0.0f, 1.0f };
 
     vec3 DesiredMoveDirection = NOZ(Player->Control.DesiredMoveDirection.x * Forward + Player->Control.DesiredMoveDirection.y * Right);
@@ -314,7 +314,7 @@ void Player_Update(player* Player, world* World, f32 dt)
         vec3 dP = (Player->Velocity + 0.5f * Acceleration * dt) * dt;
         Player->WasGroundedLastFrame = false;
 
-        vec3 Displacement = World_ApplyEntityMovement(World, Player, Player_GetAABB(Player), dP);
+        vec3 Displacement = MoveEntityBy(World, Player, GetAABB(Player), dP);
         
         if (Displacement.x != 0.0f)
         {

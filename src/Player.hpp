@@ -66,11 +66,11 @@ struct player : public entity
     player_control Control;
 };
 
-camera Player_GetCamera(const player* Player);
-aabb Player_GetAABB(const player* Player);
-aabb Player_GetVerticalAABB(const player* Player); // Excludes legs
-void Player_GetHorizontalAxes(const player* Player, vec3& Forward, vec3& Right);
-vec3 Player_GetForward(const player* Player);
+camera GetCamera(const player* Player);
+aabb GetAABB(const player* Player);
+aabb GetVerticalAABB(const player* Player); // Excludes legs
+void GetHorizontalAxes(const player* Player, vec3& Forward, vec3& Right);
+vec3 GetForwardVector(const player* Player);
 
-void Player_HandleInput(player* Player, game_io* IO);
-void Player_Update(player* Player, world* World, f32 DeltaTime);
+void HandleInput(player* Player, game_io* IO);
+void Update(player* Player, world* World, f32 DeltaTime);

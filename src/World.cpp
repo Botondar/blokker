@@ -9,15 +9,16 @@
 //
 // Internal functions
 //
-static u32 World_HashChunkP(const world* World, vec2i P, vec2i* Coords = nullptr);
-static void World_LoadChunks(world* World, memory_arena* TransientArena);
-static chunk* World_ReserveChunk(world* World, vec2i P);
-static chunk* World_FindPlayerChunk(world* World);
+static u32 HashChunkP(const world* World, vec2i P, vec2i* Coords = nullptr);
+static void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena);
+static chunk* ReserveChunk(world* World, vec2i P);
+static chunk* FindPlayerChunk(world* World);
 
 //
 // Implementations
 //
 
+// TODO(boti): rename, I don't understand this anymore without looking at the implementation
 void map_view::ResetAll(world* World)
 {
     CurrentP = { World->Player.P.x, World->Player.P.y };
@@ -47,7 +48,7 @@ mat2 map_view::GetAxesXY() const
     return Result;
 }
 
-void World_ResetPlayer(world* World)
+void ResetPlayer(world* World)
 {
     player* Player = &World->Player;
     Player->Velocity = {};
@@ -56,7 +57,7 @@ void World_ResetPlayer(world* World)
     Player->P.y = PlayerP.y + 0.5f;
     
     vec3i RelP;
-    chunk* Chunk = World_GetChunkFromP(World, PlayerP, &RelP);
+    chunk* Chunk = GetChunkFromP(World, PlayerP, &RelP);
     if (Chunk && (Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
     {
         for (s32 z = CHUNK_DIM_Z - 1; z >= 0; z--)
@@ -80,7 +81,7 @@ void World_ResetPlayer(world* World)
 // World
 //
 
-static u32 World_HashChunkP(const world* World, vec2i P, vec2i* Coords /*= nullptr*/)
+static u32 HashChunkP(const world* World, vec2i P, vec2i* Coords /*= nullptr*/)
 {
     P.x = FloorDiv(P.x, CHUNK_DIM_XY);
     P.y = FloorDiv(P.y, CHUNK_DIM_XY);
@@ -102,11 +103,11 @@ static u32 World_HashChunkP(const world* World, vec2i P, vec2i* Coords /*= nullp
     return Result;
 }
 
-chunk* World_GetChunkFromP(world* World, vec2i P)
+chunk* GetChunkFromP(world* World, vec2i P)
 {
     chunk* Result = nullptr;
 
-    u32 Index = World_HashChunkP(World, P);
+    u32 Index = HashChunkP(World, P);
     chunk* Chunk = World->Chunks + Index;
     if (Chunk->P == P)
     {
@@ -116,12 +117,12 @@ chunk* World_GetChunkFromP(world* World, vec2i P)
     return Result;
 }
 
-chunk* World_GetChunkFromP(world* World, vec3i P, vec3i* RelP)
+chunk* GetChunkFromP(world* World, vec3i P, vec3i* RelP)
 {
     chunk* Result = nullptr;
 
     vec2i ChunkP = { FloorDiv(P.x, CHUNK_DIM_XY) * CHUNK_DIM_XY, FloorDiv(P.y, CHUNK_DIM_XY) * CHUNK_DIM_XY };
-    chunk* Chunk = World_GetChunkFromP(World, ChunkP);
+    chunk* Chunk = GetChunkFromP(World, ChunkP);
     if (Chunk)
     {
         Result = Chunk;
@@ -134,14 +135,14 @@ chunk* World_GetChunkFromP(world* World, vec3i P, vec3i* RelP)
     return Result;
 }
 
-u16 World_GetVoxelType(world* World, vec3i P)
+u16 GetVoxelTypeAt(world* World, vec3i P)
 {
     u16 Result = VOXEL_AIR;
 
     if (0 <= P.z && P.z < CHUNK_DIM_Z)
     {
         vec3i RelP = {};
-        chunk* Chunk = World_GetChunkFromP(World, P, &RelP);
+        chunk* Chunk = GetChunkFromP(World, P, &RelP);
 
         if (Chunk && (Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
         {
@@ -156,12 +157,12 @@ u16 World_GetVoxelType(world* World, vec3i P)
     return Result;
 }
 
-bool World_SetVoxelType(world* World, vec3i P, u16 Type)
+bool SetVoxelTypeAt(world* World, vec3i P, u16 Type)
 {
     bool Result = false;
 
     vec3i RelP = {};
-    chunk* Chunk = World_GetChunkFromP(World, P, &RelP);
+    chunk* Chunk = GetChunkFromP(World, P, &RelP);
 
     if (Chunk && (Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
     {
@@ -173,7 +174,7 @@ bool World_SetVoxelType(world* World, vec3i P, u16 Type)
 
             if (RelP.x == 0)
             {
-                chunk* Neighbor = World_GetChunkFromP(World, Chunk->P + CardinalDirections[West] * CHUNK_DIM_XY);
+                chunk* Neighbor = GetChunkFromP(World, Chunk->P + CardinalDirections[West] * CHUNK_DIM_XY);
                 if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
                 {
                     Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
@@ -181,7 +182,7 @@ bool World_SetVoxelType(world* World, vec3i P, u16 Type)
             }
             else if (RelP.x == CHUNK_DIM_XY - 1)
             {
-                chunk* Neighbor = World_GetChunkFromP(World, Chunk->P + CardinalDirections[East] * CHUNK_DIM_XY);
+                chunk* Neighbor = GetChunkFromP(World, Chunk->P + CardinalDirections[East] * CHUNK_DIM_XY);
                 if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
                 {
                     Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
@@ -189,7 +190,7 @@ bool World_SetVoxelType(world* World, vec3i P, u16 Type)
             }
             if (RelP.y == 0)
             {
-                chunk* Neighbor = World_GetChunkFromP(World, Chunk->P + CardinalDirections[South] * CHUNK_DIM_XY);
+                chunk* Neighbor = GetChunkFromP(World, Chunk->P + CardinalDirections[South] * CHUNK_DIM_XY);
                 if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
                 {
                     Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
@@ -197,7 +198,7 @@ bool World_SetVoxelType(world* World, vec3i P, u16 Type)
             }
             else if (RelP.y == CHUNK_DIM_XY - 1)
             {
-                chunk* Neighbor = World_GetChunkFromP(World, Chunk->P + CardinalDirections[North] * CHUNK_DIM_XY);
+                chunk* Neighbor = GetChunkFromP(World, Chunk->P + CardinalDirections[North] * CHUNK_DIM_XY);
                 if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
                 {
                     Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
@@ -211,7 +212,7 @@ bool World_SetVoxelType(world* World, vec3i P, u16 Type)
     return Result;
 }
 
-voxel_neighborhood World_GetVoxelNeighborhood(world* World, vec3i P)
+voxel_neighborhood GetVoxelNeighborhood(world* World, vec3i P)
 {
     voxel_neighborhood Result = {};
 
@@ -221,7 +222,7 @@ voxel_neighborhood World_GetVoxelNeighborhood(world* World, vec3i P)
         {
             for (s32 x = -1; x <= 1; x++)
             {
-                Result.GetVoxel(vec3i{ x, y, z }) = World_GetVoxelType(World, P + vec3i{ x, y, z });
+                Result.GetVoxel(vec3i{ x, y, z }) = GetVoxelTypeAt(World, P + vec3i{ x, y, z });
             }
         }
     }
@@ -230,10 +231,10 @@ voxel_neighborhood World_GetVoxelNeighborhood(world* World, vec3i P)
 }
 
 
-static chunk* World_ReserveChunk(world* World, vec2i P)
+static chunk* ReserveChunk(world* World, vec2i P)
 {
     chunk* Result = nullptr;
-    u32 Index = World_HashChunkP(World, P);
+    u32 Index = HashChunkP(World, P);
     assert(Index < World->MaxChunkCount);
 
     Result = World->Chunks + Index;
@@ -271,13 +272,13 @@ static chunk* World_ReserveChunk(world* World, vec2i P)
     return Result;
 }
 
-static chunk* World_FindPlayerChunk(world* World)
+static chunk* FindPlayerChunk(world* World)
 {
     TIMED_FUNCTION();
     chunk* Result = nullptr;
 
     vec2i PlayerChunkP = ((vec2i)Floor(vec2{ World->Player.P.x / CHUNK_DIM_XY, World->Player.P.y / CHUNK_DIM_XY })) * vec2i{ CHUNK_DIM_XY, CHUNK_DIM_XY };
-    u32 Index = World_HashChunkP(World, PlayerChunkP);
+    u32 Index = HashChunkP(World, PlayerChunkP);
     chunk* Chunk = World->Chunks + Index;
     if (Chunk->P == PlayerChunkP)
     {
@@ -286,7 +287,7 @@ static chunk* World_FindPlayerChunk(world* World)
     return Result;
 }
 
-bool World_RayCast(
+bool RayCast(
     world* World, 
     vec3 P, vec3 V, 
     f32 tMax, 
@@ -313,7 +314,7 @@ bool World_RayCast(
         {
             for (s32 x = StartP.x; x <= EndP.x; x++)
             {
-                u16 Voxel = World_GetVoxelType(World, vec3i{x, y, z});
+                u16 Voxel = GetVoxelTypeAt(World, vec3i{x, y, z});
                 if (Voxel != VOXEL_AIR)
                 {
                     aabb Box = MakeAABB(vec3{ (f32)x, (f32)y, (f32)z }, vec3{ (f32)(x + 1), (f32)(y + 1), (f32)(z + 1) });
@@ -342,7 +343,7 @@ bool World_RayCast(
     return Result;
 }
 
-vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP)
+vec3 MoveEntityBy(world* World, entity* Entity, aabb AABB, vec3 dP)
 {
     vec3 Displacement = {};
 
@@ -370,7 +371,7 @@ vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP)
                 {
                     for (s32 x = MinPi.x; x <= MaxPi.x; x++)
                     {
-                        u16 VoxelType = World_GetVoxelType(World, vec3i{x, y, z});
+                        u16 VoxelType = GetVoxelTypeAt(World, vec3i{x, y, z});
                         const voxel_desc* VoxelDesc = &VoxelDescs[VoxelType];
                         if (VoxelDesc->Flags & VOXEL_FLAGS_SOLID)
                         {
@@ -392,7 +393,7 @@ vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP)
             {
                 vec3 Overlap;
                 int MinCoord;
-                if (AABB_Intersect(AABB, AABBStack[i], Overlap, MinCoord))
+                if (Intersect(AABB, AABBStack[i], Overlap, MinCoord))
                 {
                     IsCollision = true;
                     if (Abs(Displacement) < Abs(Overlap[Direction]))
@@ -433,7 +434,7 @@ vec3 World_ApplyEntityMovement(world* World, entity* Entity, aabb AABB, vec3 dP)
 }
 
 // Loads the chunks around the player
-void World_LoadChunks(world* World, memory_arena* TransientArena)
+void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
 {
     TIMED_FUNCTION();
 
@@ -454,10 +455,10 @@ void World_LoadChunks(world* World, memory_arena* TransientArena)
     u32 StackAt = 0;
     chunk* Stack[StackSize];
 
-    chunk* PlayerChunk = World_FindPlayerChunk(World);
+    chunk* PlayerChunk = FindPlayerChunk(World);
     if (!PlayerChunk)
     {
-        PlayerChunk = World_ReserveChunk(World, PlayerChunkP);
+        PlayerChunk = ReserveChunk(World, PlayerChunkP);
         if (PlayerChunk)
         {
             Stack[StackAt++] = PlayerChunk;
@@ -489,10 +490,10 @@ void World_LoadChunks(world* World, memory_arena* TransientArena)
             for (u32 k = 0; k < Diameter - 1; k++)
             {
                 CurrentP = CurrentP + CardinalDirections[CurrentCardinal] * CHUNK_DIM_XY;
-                chunk* Chunk = World_GetChunkFromP(World, CurrentP);
+                chunk* Chunk = GetChunkFromP(World, CurrentP);
                 if (!Chunk)
                 {
-                    Chunk = World_ReserveChunk(World, CurrentP);
+                    Chunk = ReserveChunk(World, CurrentP);
                 }
 
                 if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT) ||
@@ -533,7 +534,7 @@ void World_LoadChunks(world* World, memory_arena* TransientArena)
                 if ((Distance <= ImmediateGenerationDistance) ||
                     (ProcessedChunkCount < ProcessedChunkLimit))
                 {
-                    Chunk_Generate(Chunk, World);
+                    Generate(Chunk, World);
                     Chunk->Flags |= CHUNK_STATE_GENERATED_BIT;
                     ProcessedChunkCount++;
                 }
@@ -557,7 +558,7 @@ void World_LoadChunks(world* World, memory_arena* TransientArena)
 
                 ProcessedChunkCount++;
 
-                chunk_mesh Mesh = Chunk_BuildMesh(Chunk, World, TransientArena);
+                chunk_mesh Mesh = BuildMesh(Chunk, World, TransientArena);
                 Chunk->Flags |= CHUNK_STATE_MESHED_BIT;
 
                 Chunk->AllocationIndex = VB_Allocate(&World->Renderer->VB, Mesh.VertexCount);
@@ -593,7 +594,7 @@ void World_LoadChunks(world* World, memory_arena* TransientArena)
     }
 }
 
-bool World_Initialize(world* World)
+bool Initialize(world* World)
 {
     // Allocate chunk memory
     World->Chunks = PushArray<chunk>(World->Arena, world::MaxChunkCount);
@@ -627,7 +628,7 @@ bool World_Initialize(world* World)
     return true;
 }
 
-void World_HandleInput(world* World, game_io* IO)
+void HandleInput(world* World, game_io* IO)
 {
     if (World->Debug.IsDebugCameraEnabled)
     {
@@ -732,13 +733,13 @@ void World_HandleInput(world* World, game_io* IO)
         else
         {
             // Player update
-            Player_HandleInput(&World->Player, IO);
+            HandleInput(&World->Player, IO);
         }
     }
 }
 
 // TODO(boti): We probably only need dt here, not the entire game_io.
-void World_Update(world* World, game_io* IO, memory_arena* TransientArena)
+void Update(world* World, game_io* IO, memory_arena* TransientArena)
 {
     TIMED_FUNCTION();
 
@@ -750,7 +751,7 @@ void World_Update(world* World, game_io* IO, memory_arena* TransientArena)
         World->MapView.ZoomCurrent = Lerp(World->MapView.ZoomCurrent, World->MapView.ZoomTarget, 1.0f - Exp(-20.0f * IO->DeltaTime));
     }
 
-    World_LoadChunks(World, TransientArena);
+    LoadChunksAroundPlayer(World, TransientArena);
 
     constexpr f32 MinPhysicsResolution = 16.6667e-3f;
 
@@ -758,7 +759,7 @@ void World_Update(world* World, game_io* IO, memory_arena* TransientArena)
     while (RemainingTime > 0.0f)
     {
         f32 dt = Min(RemainingTime, MinPhysicsResolution);
-        Player_Update(&World->Player, World, dt);
+        Update(&World->Player, World, dt);
         RemainingTime -= dt;
     }
 
@@ -794,7 +795,7 @@ void World_Update(world* World, game_io* IO, memory_arena* TransientArena)
                 Chunk->OldAllocationIndex = Chunk->AllocationIndex;
                 Chunk->LastRenderedInFrameIndex = Chunk->OldAllocationLastRenderedInFrameIndex;
 
-                chunk_mesh Mesh = Chunk_BuildMesh(Chunk, World, TransientArena);
+                chunk_mesh Mesh = BuildMesh(Chunk, World, TransientArena);
 
                 if (Mesh.VertexCount)
                 {
@@ -845,7 +846,7 @@ void World_Render(world* World, renderer_frame_params* FrameParams)
     FrameParams->Camera = 
         World->Debug.IsDebugCameraEnabled ? 
         World->Debug.DebugCamera : 
-        Player_GetCamera(&World->Player);
+        GetCamera(&World->Player);
     FrameParams->ViewTransform = FrameParams->Camera.GetInverseTransform();
 
     const f32 AspectRatio = (f32)FrameParams->Renderer->SwapchainSize.width / (f32)FrameParams->Renderer->SwapchainSize.height;
@@ -900,8 +901,8 @@ void World_Render(world* World, renderer_frame_params* FrameParams)
 
     if (World->Debug.IsHitboxEnabled)
     {
-        Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, Player_GetAABB(&World->Player), PackColor(0xFF, 0x00, 0x00));
-        Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, Player_GetVerticalAABB(&World->Player), PackColor(0xFF, 0xFF, 0x00));
+        Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, GetAABB(&World->Player), PackColor(0xFF, 0x00, 0x00));
+        Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, GetVerticalAABB(&World->Player), PackColor(0xFF, 0xFF, 0x00));
     }
 
     // HUD

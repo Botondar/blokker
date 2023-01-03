@@ -73,7 +73,7 @@ static void Game_Update(game_state* Game, game_io* IO)
                         Game->World->Player.P.x, Game->World->Player.P.y, Game->World->Player.P.z);
             if (ImGui::Button("Reset player"))
             {
-                World_ResetPlayer(Game->World);
+                ResetPlayer(Game->World);
             }
 
             ImGui::Checkbox("Debug camera", &Game->World->Debug.IsDebugCameraEnabled);
@@ -83,7 +83,7 @@ static void Game_Update(game_state* Game, game_io* IO)
                 Game->World->Debug.DebugCamera.P.z);
             if (ImGui::Button("Teleport debug camera to player"))
             {
-                Game->World->Debug.DebugCamera = Player_GetCamera(&Game->World->Player);
+                Game->World->Debug.DebugCamera = GetCamera(&Game->World->Player);
             }
             if (ImGui::Button("Teleport player to debug camera"))
             {
@@ -119,8 +119,8 @@ static void Game_Update(game_state* Game, game_io* IO)
     Game->TransientArena.Used = 0; // Reset temporary memory
     Game->World->FrameIndex = Game->FrameIndex;
     
-    World_HandleInput(Game->World, IO);
-    World_Update(Game->World, IO, &Game->TransientArena);
+    HandleInput(Game->World, IO);
+    Update(Game->World, IO, &Game->TransientArena);
 }
 
 static void Game_Render(game_state* Game, game_io* IO)
@@ -224,7 +224,7 @@ bool Game_Initialize(game_memory* Memory)
     Game->World = PushStruct<world>(&Game->PrimaryArena);
     Game->World->Arena = &Game->PrimaryArena;
     Game->World->Renderer = Game->Renderer;
-    if (!World_Initialize(Game->World))
+    if (!Initialize(Game->World))
     {
         return false;
     }

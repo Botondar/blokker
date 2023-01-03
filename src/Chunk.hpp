@@ -152,8 +152,8 @@ struct chunk_mesh
     terrain_vertex* VertexData;
 };
 
-static void Chunk_Generate(chunk* Chunk, world* World);
-static chunk_mesh Chunk_BuildMesh(const chunk* Chunk, world* World, memory_arena* Arena);
+static void Generate(chunk* Chunk, world* World);
+static chunk_mesh BuildMesh(const chunk* Chunk, world* World, memory_arena* Arena);
 
 /* Implementations */
 inline constexpr u32 CardinalOpposite(u32 Cardinal)

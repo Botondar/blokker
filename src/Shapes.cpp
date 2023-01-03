@@ -12,7 +12,7 @@ aabb MakeAABB(const vec3& a, const vec3& b)
     return Result;
 }
 
-bool AABB_Intersect(const aabb& A, const aabb& B, vec3& Overlap, int& MinCoord)
+bool Intersect(const aabb& A, const aabb& B, vec3& Overlap, int& MinCoord)
 {
     vec3 Overlap_ = {};
     f32 MinOverlap = F32_MAX_NORMAL;

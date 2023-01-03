@@ -2,7 +2,7 @@
 
 #include <Game.hpp>
 
-static void Chunk_Generate(chunk* Chunk, world* World)
+static void Generate(chunk* Chunk, world* World)
 {
     TIMED_FUNCTION();
 
@@ -20,7 +20,7 @@ static void Chunk_Generate(chunk* Chunk, world* World)
 
             vec2 TerrainP = TerrainBaseFrequency * (vec2{ (f32)x, (f32)y } + ChunkP);
 
-            f32 TerrainSample = Perlin2_Octave(&World->Perlin2, TerrainP, 8, 0.5f, 2.0f);
+            f32 TerrainSample = SampleOctave(&World->Perlin2, TerrainP, 8, 0.5f, 2.0f);
             TerrainSample = 0.5f * (TerrainSample + 1.0f);
             TerrainSample = Fade3(TerrainSample*TerrainSample);
             s32 Height = (s32)Round(TerrainBaseScale * TerrainSample) + TerrainBaseHeight;
@@ -45,7 +45,7 @@ static void Chunk_Generate(chunk* Chunk, world* World)
 
                 // Generate ores
                 constexpr f32 OreScale = 1.0f / 8.0f;
-                f32 OreSample = Perlin3_Octave(&World->Perlin3, OreScale*P, 3, 0.5f, 2.0f);
+                f32 OreSample = OctaveNoise(&World->Perlin3, OreScale*P, 3, 0.5f, 2.0f);
                 // Only replace stone with ores
                 if (Chunk->Data->Voxels[z][y][x] == VOXEL_STONE)
                 {
@@ -61,7 +61,7 @@ static void Chunk_Generate(chunk* Chunk, world* World)
 
                 // Generate caves
                 constexpr f32 CaveScale = 1.0f / 16.0f;
-                f32 CaveSample = Perlin3_Octave(&World->Perlin3, CaveScale*P, 1, 0.5f, 2.0f);
+                f32 CaveSample = OctaveNoise(&World->Perlin3, CaveScale*P, 1, 0.5f, 2.0f);
 #if 0
                 CaveSample = Abs(CaveSample);
                 if (CaveSample < 0.01f)
@@ -83,11 +83,13 @@ static void Chunk_Generate(chunk* Chunk, world* World)
     }
 }
 
-static chunk_mesh Chunk_BuildMesh(const chunk* Chunk, world* World, memory_arena* Arena)
+static chunk_mesh BuildMesh(const chunk* Chunk, world* World, memory_arena* Arena)
 {
     TIMED_FUNCTION();
 
     chunk_mesh Mesh = {};
+
+    // TODO(boti): check for _transparent_ voxels and mesh their neighbors
 
     assert(Chunk);
     assert(Chunk->Data);
@@ -169,7 +171,7 @@ static chunk_mesh Chunk_BuildMesh(const chunk* Chunk, world* World, memory_arena
                     constexpr u32 CubeVertexCount = CountOf(Cube);
 
                     vec3i WorldVoxelP = vec3i{(s32)x, (s32)y, (s32)z} + vec3i{Chunk->P.x, Chunk->P.y, 0 };
-                    voxel_neighborhood Neighborhood = World_GetVoxelNeighborhood(World, WorldVoxelP);
+                    voxel_neighborhood Neighborhood = GetVoxelNeighborhood(World, WorldVoxelP);
 
                     for (u32 Direction = DIRECTION_First; Direction < DIRECTION_Count; Direction++)
                     {

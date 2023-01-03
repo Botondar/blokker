@@ -24,7 +24,7 @@ void Perlin2_Init(perlin2* Perlin, u32 Seed)
     }
 }
 
-f32 Perlin2_Sample(const perlin2* Perlin, vec2 P)
+f32 SampleNoise(const perlin2* Perlin, vec2 P)
 {
     vec2 LatticeP = Floor(P);
     vec2 P0 = P - LatticeP;
@@ -70,7 +70,7 @@ f32 Perlin2_Sample(const perlin2* Perlin, vec2 P)
     return Result;
 }
 
-f32 Perlin2_Octave(const perlin2* Perlin, vec2 P0, u32 OctaveCount, f32 Persistence, f32 Lacunarity)
+f32 SampleOctave(const perlin2* Perlin, vec2 P0, u32 OctaveCount, f32 Persistence, f32 Lacunarity)
 {
     f32 Result = 0.0f;
     f32 Amplitude = 1.0f;
@@ -90,7 +90,7 @@ f32 Perlin2_Octave(const perlin2* Perlin, vec2 P0, u32 OctaveCount, f32 Persiste
     for (u32 i = 0; i < OctaveCount; i++)
     {
         vec2 P = Frequency * P0;
-        Result += Amplitude * Perlin2_Sample(Perlin, P);
+        Result += Amplitude * SampleNoise(Perlin, P);
 
         Frequency *= Lacunarity;
         Amplitude *= Persistence;
@@ -100,9 +100,9 @@ f32 Perlin2_Octave(const perlin2* Perlin, vec2 P0, u32 OctaveCount, f32 Persiste
     return Result;
 }
 
-f32 Perlin2_SampleUnilateral(const perlin2* Perlin, vec2 P)
+f32 SampleNoise01(const perlin2* Perlin, vec2 P)
 {
-    f32 Result = 0.5f * (Perlin2_Sample(Perlin, P) + 1.0f);
+    f32 Result = 0.5f * (SampleNoise(Perlin, P) + 1.0f);
     return Result;
 }
 
@@ -256,7 +256,7 @@ void Perlin3_Init(perlin3* Perlin, u32 Seed)
     }
 }
 
-f32 Perlin3_Sample(const perlin3* Perlin, vec3 P)
+f32 SampleNoise(const perlin3* Perlin, vec3 P)
 {
 #define PERLIN_PRECOMPUTE_GDOTV 1
     vec3 LatticeP = Floor(P);
@@ -357,7 +357,7 @@ f32 Perlin3_Sample(const perlin3* Perlin, vec3 P)
 #undef PERLIN_PRECOMPUTE_GDOTV
 }
 
-f32 Perlin3_Octave(const perlin3* Perlin, vec3 P0, u32 OctaveCount, f32 Persistence, f32 Lacunarity)
+f32 OctaveNoise(const perlin3* Perlin, vec3 P0, u32 OctaveCount, f32 Persistence, f32 Lacunarity)
 {
     f32 Result = 0.0f;
 
@@ -366,7 +366,7 @@ f32 Perlin3_Octave(const perlin3* Perlin, vec3 P0, u32 OctaveCount, f32 Persiste
     for (u32 i = 0; i < OctaveCount; i++)
     {
         vec3 P = Frequency * P0;
-        Result += Amplitude * Perlin3_Sample(Perlin, P);
+        Result += Amplitude * SampleNoise(Perlin, P);
 
         Frequency *= Lacunarity;
         Amplitude *= Persistence;
