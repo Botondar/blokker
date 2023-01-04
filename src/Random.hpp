@@ -15,9 +15,6 @@ f32 SampleNoise(const perlin2* Perlin, vec2 P);
 f32 SampleOctave(const perlin2* Perlin, vec2 P, u32 OctaveCount, f32 Persistence, f32 Lacunarity);
 f32 SampleNoise01(const perlin2* Perlin, vec2 P);
 
-__m128 SampleNoise(const perlin2* Perlin, __m128 x, __m128 y);
-__m128 SampleOctave(const perlin2* Perlin, __m128 x, __m128 y, u32 OctaveCount, f32 Persistence, f32 Lacunarity);
-
 struct perlin3
 {
     static constexpr u32 TableCount = 256;
