@@ -83,6 +83,58 @@ static void Generate(chunk* Chunk, world* World)
     }
 }
 
+static const vertex Cube[] = 
+{
+    // EAST
+    { { 1.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
+    { { 1.0f, 1.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
+    { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
+    { { 1.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
+    { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
+    { { 1.0f, 0.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
+
+    // WEST
+    { { 0.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
+    { { 0.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
+    { { 0.0f, 1.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
+    { { 0.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
+    { { 0.0f, 0.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
+    { { 0.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
+
+    // NORTH
+    { { 0.0f, 1.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
+    { { 1.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
+    { { 1.0f, 1.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
+    { { 0.0f, 1.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
+    { { 0.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
+    { { 1.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
+
+    // SOUTH
+    { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
+    { { 1.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
+    { { 1.0f, 0.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
+    { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
+    { { 1.0f, 0.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
+    { { 0.0f, 0.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
+
+    // TOP
+    { { 0.0f, 0.0f, 1.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
+    { { 1.0f, 0.0f, 1.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
+    { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
+    { { 0.0f, 0.0f, 1.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
+    { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
+    { { 0.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
+
+    // BOTTOM
+    { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
+    { { 1.0f, 1.0f, 0.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
+    { { 1.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
+    { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
+    { { 0.0f, 1.0f, 0.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
+    { { 1.0f, 1.0f, 0.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
+};
+static constexpr u32 CubeVertexCount = CountOf(Cube);
+
 static chunk_mesh BuildMesh(const chunk* Chunk, world* World, memory_arena* Arena)
 {
     TIMED_FUNCTION();
@@ -99,6 +151,31 @@ static chunk_mesh BuildMesh(const chunk* Chunk, world* World, memory_arena* Aren
     constexpr u32 MaxVertexCount = VertexCountPerVoxel * CHUNK_DIM_XY * CHUNK_DIM_XY * CHUNK_DIM_Z;
     // Allocate the theoretical maximum
     Mesh.VertexData = PushArray<terrain_vertex>(Arena, MaxVertexCount);
+#if 0
+    // Gather neighbor chunks
+    // NOTE(boti): E, N, W, S, NE, NW, SW, SE
+    chunk* NeighborChunks[8] = 
+    {
+        GetChunkFromP(World, Chunk->P + CHUNK_DIM_XY * vec2i{ +1, 0 }),
+        GetChunkFromP(World, Chunk->P + CHUNK_DIM_XY * vec2i{ 0, +1 }),
+        GetChunkFromP(World, Chunk->P + CHUNK_DIM_XY * vec2i{ -1, 0 }),
+        GetChunkFromP(World, Chunk->P + CHUNK_DIM_XY * vec2i{ 0, -1 }),
+        GetChunkFromP(World, Chunk->P + CHUNK_DIM_XY * vec2i{ +1, +1 }),
+        GetChunkFromP(World, Chunk->P + CHUNK_DIM_XY * vec2i{ -1, +1 }),
+        GetChunkFromP(World, Chunk->P + CHUNK_DIM_XY * vec2i{ -1, -1 }),
+        GetChunkFromP(World, Chunk->P + CHUNK_DIM_XY * vec2i{ +1, -1 }),
+    }
+    for (u32 i = 0; i < 8; i++)
+    {
+        vec2i Direction = CardinalDirections[Cardinal];
+        vec2i NeighborP = Chunk->P + CHUNK_DIM_XY * Direction;
+
+        chunk* Neighbor = GetChunkFromP(World, NeighborP);
+        assert(Neighbor);
+        assert(Neighbor->P == NeighborP);
+        NeighborChunks[Cardinal] = Neighbor;
+    }
+#endif
 
     for (u32 z = 0; z < CHUNK_DIM_Z; z++)
     {
@@ -109,67 +186,20 @@ static chunk_mesh BuildMesh(const chunk* Chunk, world* World, memory_arena* Aren
                 vec3 VoxelP = vec3{ (f32)x, (f32)y, (f32)z };
 
                 u16 VoxelType = Chunk->Data->Voxels[z][y][x];
-                assert(VoxelType < VoxelDescCount);
+                voxel_desc Desc = VoxelDescs[VoxelType];
+#if 0
+                if ((Desc.Flags & VOXEL_FLAGS_NO_MESH) != 0 || 
+                    (Desc.Flags & VOXEL_FLAGS_TRANSPARENT))
+                {
 
-                const voxel_desc* Desc = VoxelDescs + VoxelType;
-                if (Desc->Flags & VOXEL_FLAGS_NO_MESH)
+                }
+#else
+                if (Desc.Flags & VOXEL_FLAGS_NO_MESH)
                 {
                     continue;
                 }
                 else
                 {
-                    static const vertex Cube[] = 
-                    {
-                        // EAST
-                        { { 1.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
-                        { { 1.0f, 1.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
-                        { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
-                        { { 1.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
-                        { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
-                        { { 1.0f, 0.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0x00) },
-
-                        // WEST
-                        { { 0.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
-                        { { 0.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
-                        { { 0.0f, 1.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
-                        { { 0.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
-                        { { 0.0f, 0.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
-                        { { 0.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0xFF) },
-
-                        // NORTH
-                        { { 0.0f, 1.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
-                        { { 1.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
-                        { { 1.0f, 1.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
-                        { { 0.0f, 1.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
-                        { { 0.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
-                        { { 1.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0x00, 0xFF) },
-
-                        // SOUTH
-                        { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
-                        { { 1.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
-                        { { 1.0f, 0.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
-                        { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
-                        { { 1.0f, 0.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
-                        { { 0.0f, 0.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0x00, 0xFF, 0x00) },
-
-                        // TOP
-                        { { 0.0f, 0.0f, 1.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
-                        { { 1.0f, 0.0f, 1.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
-                        { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
-                        { { 0.0f, 0.0f, 1.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
-                        { { 1.0f, 1.0f, 1.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
-                        { { 0.0f, 1.0f, 1.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0xFF) },
-
-                        // BOTTOM
-                        { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
-                        { { 1.0f, 1.0f, 0.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
-                        { { 1.0f, 0.0f, 0.0f, }, { 1.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
-                        { { 0.0f, 0.0f, 0.0f, }, { 0.0f, 0.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
-                        { { 0.0f, 1.0f, 0.0f, }, { 0.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
-                        { { 1.0f, 1.0f, 0.0f, }, { 1.0f, 1.0f, 0.0f }, PackColor(0xFF, 0xFF, 0x00) },
-                    };
-                    constexpr u32 CubeVertexCount = CountOf(Cube);
-
                     vec3i WorldVoxelP = vec3i{(s32)x, (s32)y, (s32)z} + vec3i{Chunk->P.x, Chunk->P.y, 0 };
                     voxel_neighborhood Neighborhood = GetVoxelNeighborhood(World, WorldVoxelP);
 
@@ -252,12 +282,13 @@ static chunk_mesh BuildMesh(const chunk* Chunk, world* World, memory_arena* Aren
                                 Mesh.VertexData[Mesh.VertexCount++] = 
                                 {
                                     .P = PackPosition(CubeVertex.P + VoxelP),
-                                    .TexCoord = PackTexCoord((u32)CubeVertex.UVW.x, (u32)CubeVertex.UVW.y, (u32)Desc->FaceTextureIndices[Direction], AO),
+                                    .TexCoord = PackTexCoord((u32)CubeVertex.UVW.x, (u32)CubeVertex.UVW.y, (u32)Desc.FaceTextureIndices[Direction], AO),
                                 };
                             }
                         }
                     }
                 }
+#endif
             }
         }
     }
