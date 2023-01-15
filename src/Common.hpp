@@ -62,18 +62,3 @@ inline u64 AlignToPow2(u64 Value, u64 Alignment)
     u64 Result = (Value + (Alignment - 1)) & (~(Alignment - 1));
     return Result;
 }
-
-// TODO(boti): Figure out if this is correct.
-//             The idea is to try and force to
-//             generate a load for the a variable that's not marked as volatile
-template<typename T>
-T AtomicLoad(const volatile T& Value)
-{
-    return Value;
-}
-
-template<typename T>
-T AtomicLoad(const volatile T* Value)
-{
-    return *Value;
-}
