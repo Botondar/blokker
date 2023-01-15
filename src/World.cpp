@@ -738,7 +738,6 @@ void HandleInput(world* World, game_io* IO)
     }
 }
 
-// TODO(boti): We probably only need dt here, not the entire game_io.
 void Update(world* World, game_io* IO, memory_arena* TransientArena)
 {
     TIMED_FUNCTION();

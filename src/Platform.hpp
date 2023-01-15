@@ -5,8 +5,6 @@
 #include <vulkan/vulkan.h>
 #include <Memory.hpp>
 
-typedef void* native_handle;
-
 struct game_memory
 {
     u64 MemorySize;
