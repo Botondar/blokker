@@ -10,8 +10,13 @@
 #define TIMED_BLOCK_(line, ...) timed_block CONCAT(Timed_Block, line)(__FUNCTION__, ":" __VA_ARGS__ ":" LINE_STR)
 // ==== END HELPERS====
 
+#if PROFILER_ENABLED
 #define TIMED_FUNCTION() timed_block Timed_Function(__FUNCTION__, nullptr)
 #define TIMED_BLOCK(...) TIMED_BLOCK_(__LINE__, __VA_ARGS__)
+#else
+#define TIMED_FUNCTION(...)
+#define TIMED_BLOCK(...)
+#endif
 
 struct profiler_entry
 {
