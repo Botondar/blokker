@@ -233,9 +233,13 @@ bool Game_Initialize(game_memory* Memory)
     return true;
 }
 
+platform_api Platform;
+
 void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
 {
     TIMED_FUNCTION();
+
+    Platform = Memory->Platform;
 
     // Disable stepping if there was giant lag-spike
     // TODO: The physics step should subdivide the frame when dt gets too large

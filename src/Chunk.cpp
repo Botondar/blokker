@@ -177,11 +177,11 @@ static chunk_mesh BuildMesh(const chunk* Chunk, world* World, memory_arena* Aren
     }
 #endif
 
-    for (u32 z = 0; z < CHUNK_DIM_Z; z++)
+    for (s32 z = 0; z < CHUNK_DIM_Z; z++)
     {
-        for (u32 y = 0; y < CHUNK_DIM_XY; y++)
+        for (s32 y = 0; y < CHUNK_DIM_XY; y++)
         {
-            for (u32 x = 0; x < CHUNK_DIM_XY; x++)
+            for (s32 x = 0; x < CHUNK_DIM_XY; x++)
             {
                 vec3 VoxelP = vec3{ (f32)x, (f32)y, (f32)z };
 
@@ -200,7 +200,7 @@ static chunk_mesh BuildMesh(const chunk* Chunk, world* World, memory_arena* Aren
                 }
                 else
                 {
-                    vec3i WorldVoxelP = vec3i{(s32)x, (s32)y, (s32)z} + vec3i{Chunk->P.x, Chunk->P.y, 0 };
+                    vec3i WorldVoxelP = vec3i{ x, y, z } + vec3i{Chunk->P.x, Chunk->P.y, 0 };
                     voxel_neighborhood Neighborhood = GetVoxelNeighborhood(World, WorldVoxelP);
 
                     for (u32 Direction = DIRECTION_First; Direction < DIRECTION_Count; Direction++)
@@ -248,7 +248,8 @@ static chunk_mesh BuildMesh(const chunk* Chunk, world* World, memory_arena* Aren
                                         vec3i DeltaP = PlaneDeltaP[j] + NormalDelta;
                                         u16 AONeighborType = Neighborhood.GetVoxel(DeltaP);
                                         const voxel_desc* AONeighborDesc = &VoxelDescs[AONeighborType];
-                                        if (!(AONeighborDesc->Flags & VOXEL_FLAGS_NO_MESH) && !(AONeighborDesc->Flags & VOXEL_FLAGS_TRANSPARENT))
+                                        if (!(AONeighborDesc->Flags & VOXEL_FLAGS_NO_MESH) && 
+                                            !(AONeighborDesc->Flags & VOXEL_FLAGS_TRANSPARENT))
                                         {
                                             bSideAO[j] = 1;
                                         }
@@ -263,7 +264,8 @@ static chunk_mesh BuildMesh(const chunk* Chunk, world* World, memory_arena* Aren
                                         vec3i DeltaP = PlaneDeltaP[0] + PlaneDeltaP[1] + NormalDelta;
                                         u16 AONeighborType = Neighborhood.GetVoxel(DeltaP);
                                         const voxel_desc* AONeighborDesc = &VoxelDescs[AONeighborType];
-                                        if (!(AONeighborDesc->Flags & VOXEL_FLAGS_NO_MESH) && !(AONeighborDesc->Flags & VOXEL_FLAGS_TRANSPARENT))
+                                        if (!(AONeighborDesc->Flags & VOXEL_FLAGS_NO_MESH) && 
+                                            !(AONeighborDesc->Flags & VOXEL_FLAGS_TRANSPARENT))
                                         {
                                             bCornerAO = 1;
                                         }

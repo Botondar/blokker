@@ -441,14 +441,14 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
     vec2 PlayerP = (vec2)World->Player.P;
     vec2i PlayerChunkP = ((vec2i)Floor(PlayerP / vec2{ (f32)CHUNK_DIM_XY, (f32)CHUNK_DIM_XY })) * vec2i{ CHUNK_DIM_XY, CHUNK_DIM_XY };
 
-    constexpr u32 ImmediateMeshDistance = 1;
-    constexpr u32 ImmediateGenerationDistance = ImmediateMeshDistance + 1;
+    constexpr s32 ImmediateMeshDistance = 1;
+    constexpr s32 ImmediateGenerationDistance = ImmediateMeshDistance + 1;
 #if BLOKKER_TINY_RENDER_DISTANCE
-    constexpr u32 MeshDistance = 3;
+    constexpr s32 MeshDistance = 3;
 #else
-    constexpr u32 MeshDistance = 20;
+    constexpr s32 MeshDistance = 20;
 #endif
-    constexpr u32 GenerationDistance = MeshDistance + 1;
+    constexpr s32 GenerationDistance = MeshDistance + 1;
 
     // Create a stack that'll hold the chunks that haven't been meshed/generated around the player.
     constexpr u32 StackSize = (2*GenerationDistance + 1)*(2*GenerationDistance + 1);
@@ -475,19 +475,19 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
     }
 
     // Keep track of closest rings around the player that have been fully generated or meshed
-    u32 ClosestNotGeneratedDistance = GenerationDistance + 1;
-    u32 ClosestNotMeshedDistance = GenerationDistance + 1;
+    s32 ClosestNotGeneratedDistance = (s32)GenerationDistance + 1;
+    s32 ClosestNotMeshedDistance = (s32)GenerationDistance + 1;
 
-    for (u32 i = 0; i <= GenerationDistance; i++)
+    for (s32 Ring = 0; Ring <= GenerationDistance; Ring++)
     {
-        u32 Diameter = 2*i + 1;
-        vec2i CurrentP = PlayerChunk->P - vec2i{(s32)i * CHUNK_DIM_XY, (s32)i * CHUNK_DIM_XY};
+        u32 Diameter = 2*Ring + 1;
+        vec2i CurrentP = PlayerChunk->P - vec2i{ Ring * CHUNK_DIM_XY, Ring * CHUNK_DIM_XY};
 
         u32 CurrentCardinal = South; // last
-        for (u32 j = 0; j < 4; j++)
+        for (u32 CardinalIndex = 0; CardinalIndex < 4; CardinalIndex++)
         {
             CurrentCardinal = CardinalNext(CurrentCardinal);
-            for (u32 k = 0; k < Diameter - 1; k++)
+            for (u32 EdgeIndex = 0; EdgeIndex < Diameter - 1; EdgeIndex++)
             {
                 CurrentP = CurrentP + CardinalDirections[CurrentCardinal] * CHUNK_DIM_XY;
                 chunk* Chunk = GetChunkFromP(World, CurrentP);
@@ -505,91 +505,102 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
 
                     if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
                     {
-                        ClosestNotGeneratedDistance = Min(i, ClosestNotGeneratedDistance);
+                        ClosestNotGeneratedDistance = Min(Ring, ClosestNotGeneratedDistance);
                     }
                     if (!(Chunk->Flags & CHUNK_STATE_MESHED_BIT))
                     {
-                        ClosestNotMeshedDistance = Min(i, ClosestNotMeshedDistance);
+                        ClosestNotMeshedDistance = Min(Ring, ClosestNotMeshedDistance);
                     }
                 }
             }
         }
     }
 
-    // Limit the number of chunks that can be processed in a single frame so that we don't hitch
-    constexpr u32 ProcessedChunkLimit = 1;
-    u32 ProcessedChunkCount = 0;
-
-    
-    if ((ClosestNotGeneratedDistance <= ImmediateGenerationDistance) ||
-        (ClosestNotMeshedDistance + 1) >= ClosestNotGeneratedDistance)
-    {
-        // Generate the chunks in the stack
-        for (u32 i = 0; i < StackAt; i++)
-        {
-            chunk* Chunk = Stack[i];
-            s32 Distance = ChebyshevDistance(Chunk->P, PlayerChunkP) / CHUNK_DIM_XY;
-            if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
-            {
-                if ((Distance <= ImmediateGenerationDistance) ||
-                    (ProcessedChunkCount < ProcessedChunkLimit))
-                {
-                    Generate(Chunk, World);
-                    Chunk->Flags |= CHUNK_STATE_GENERATED_BIT;
-                    ProcessedChunkCount++;
-                }
-            }
-        }
-    }
-
-    // Mesh the chunks in the stack and upload them to the GPU
     for (u32 i = 0; i < StackAt; i++)
     {
         chunk* Chunk = Stack[i];
-        s32 Distance = ChebyshevDistance(PlayerChunkP, Chunk->P) / CHUNK_DIM_XY;
+        s32 Distance = ChebyshevDistance(Chunk->P, PlayerChunkP) / CHUNK_DIM_XY;
 
-        if (!(Chunk->Flags & CHUNK_STATE_MESHED_BIT) && (Distance <= MeshDistance))
+        bool ShouldGenerate = Distance == ClosestNotGeneratedDistance || Distance < ImmediateGenerationDistance;
+
+        if (ShouldGenerate && !Chunk->InGenerationQueue && 
+            ((Chunk->Flags & CHUNK_STATE_GENERATED_BIT) == 0))
         {
-            if (((Distance <= ImmediateMeshDistance) || (ProcessedChunkCount < ProcessedChunkLimit)) && 
-                ((Distance + 1) < (s32)ClosestNotGeneratedDistance))
-            {
-                assert(Chunk->Flags & CHUNK_STATE_GENERATED_BIT);
-                assert(!(Chunk->Flags & CHUNK_STATE_UPLOADED_BIT));
-
-                ProcessedChunkCount++;
-
-                chunk_mesh Mesh = BuildMesh(Chunk, World, TransientArena);
-                Chunk->Flags |= CHUNK_STATE_MESHED_BIT;
-
-                Chunk->AllocationIndex = VB_Allocate(&World->Renderer->VB, Mesh.VertexCount);
-                if (Chunk->AllocationIndex != INVALID_INDEX_U32)
+            Chunk->InGenerationQueue = true;
+            AddWork(Platform.WorkQueue,
+                [Chunk, World](memory_arena* Arena)
                 {
-                    TIMED_BLOCK("Upload");
+                    Generate(Chunk, World);
 
-                    u64 Size = (u64)Mesh.VertexCount * sizeof(terrain_vertex);
-                    u64 Offset = VB_GetAllocationMemoryOffset(&World->Renderer->VB, Chunk->AllocationIndex);
+                    for (;;)
+                    {
+                        u32 WriteIndex = World->ChunkWorkWriteIndex;
+                        while (WriteIndex - World->ChunkWorkReadIndex == World->ChunkWorkQueueCount)
+                        {
+                            SpinWait;
+                        }
+                        if (AtomicCompareExchange(&World->ChunkWorkWriteIndex, WriteIndex + 1, WriteIndex) == WriteIndex)
+                        {
+                            chunk_work* Work = World->ChunkWorkResults + (WriteIndex % World->ChunkWorkQueueCount);
+                            Work->Type = ChunkWork_Generate;
+                            Work->Chunk = Chunk;
+                            AtomicExchange(&Work->IsReady, true);
+                            break;
+                        }
+                    }
+                });
+        }
+    }
 
-                    if (StagingHeap_Copy(
-                        &World->Renderer->StagingHeap,
-                        World->Renderer->RenderDevice.TransferQueue,
-                        World->Renderer->TransferCmdBuffer,
-                        Offset, World->Renderer->VB.Buffer,
-                        Size, Mesh.VertexData))
-                    {
-                        Chunk->Flags |= CHUNK_STATE_UPLOADED_BIT;
-                    }
-                    else
-                    {
-                        VB_Free(&World->Renderer->VB, Chunk->AllocationIndex);
-                        Chunk->AllocationIndex = INVALID_INDEX_U32;
-                        assert(!"Upload failed");
-                    }
-                }
-                else
+    for (u32 i = 0; i < StackAt; i++)
+    {
+        chunk* Chunk = Stack[i];
+
+        s32 Distance = ChebyshevDistance(Chunk->P, PlayerChunkP) / CHUNK_DIM_XY;
+        bool ShouldMesh = Distance < ClosestNotGeneratedDistance;
+        
+        if (ShouldMesh && !Chunk->InMeshQueue &&
+            (((Chunk->Flags & CHUNK_STATE_MESHED_BIT) == 0) ||
+            ((Chunk->Flags & CHUNK_STATE_MESH_DIRTY_BIT) != 0)))
+        {
+            Chunk->InMeshQueue = true;
+            AddWork(Platform.WorkQueue,
+                [Chunk, World](memory_arena* Arena)
                 {
-                    assert(!"Allocation failed");
-                }
-            }
+                    chunk_mesh Mesh = BuildMesh(Chunk, World, Arena);
+                    assert(Mesh.VertexCount <= World->VertexBufferCount);
+
+                    chunk_work* Work = nullptr;
+                    for (;;)
+                    {
+                        u32 WriteIndex = World->ChunkWorkWriteIndex;
+                        while (WriteIndex - World->ChunkWorkReadIndex == World->ChunkWorkQueueCount)
+                        {
+                            SpinWait;
+                        }
+                        if (AtomicCompareExchange(&World->ChunkWorkWriteIndex, WriteIndex + 1, WriteIndex) == WriteIndex)
+                        {
+                            Work = World->ChunkWorkResults + (WriteIndex % World->ChunkWorkQueueCount);
+                            Work->Type = ChunkWork_BuildMesh;
+                            Work->Chunk = Chunk;
+                            break;
+                        }
+                    }
+
+                    u64 FirstIndex = AtomicAdd(&World->VertexBufferWriteIndex, Mesh.VertexCount);
+                    u64 OnePastLastIndex = FirstIndex + Mesh.VertexCount;
+                    while (OnePastLastIndex - AtomicLoad(&World->VertexBufferReadIndex) >= World->VertexBufferCount)
+                    {
+                        SpinWait;
+                    }
+                    for (u64 i = 0; i < Mesh.VertexCount; i++)
+                    {
+                        World->VertexBuffer[(FirstIndex + i) % World->VertexBufferCount] = Mesh.VertexData[i];
+                    }
+                    Work->Mesh.FirstIndex = FirstIndex;
+                    Work->Mesh.OnePastLastIndex = OnePastLastIndex;
+                    AtomicExchange(&Work->IsReady, true);
+                });
         }
     }
 }
@@ -600,6 +611,12 @@ bool Initialize(world* World)
     World->Chunks = PushArray<chunk>(World->Arena, world::MaxChunkCount);
     World->ChunkData = PushArray<chunk_data>(World->Arena, world::MaxChunkCount);
     if (!World->Chunks || !World->ChunkData)
+    {
+        return false;
+    }
+
+    World->VertexBuffer = PushArray<terrain_vertex>(World->Arena, World->VertexBufferCount);
+    if (!World->VertexBuffer)
     {
         return false;
     }
@@ -655,40 +672,16 @@ void HandleInput(world* World, game_io* IO)
             vec3 Up = { 0.0f, 0.0f, 1.0f };
 
             f32 MoveSpeed = 3.0f;
-            if (IO->LeftShift)
-            {
-                MoveSpeed = 10.0f;
-            }
-            if (IO->LeftAlt)
-            {
-                MoveSpeed = 50.0f;
-            }
+            if (IO->LeftShift) MoveSpeed = 10.0f;
+            if (IO->LeftAlt) MoveSpeed = 50.0f;
 
-            if (IO->Forward)
-            {
-                Camera->P += Forward * MoveSpeed * dt;
-            }
-            if (IO->Back)
-            {
-                Camera->P -= Forward * MoveSpeed * dt;
-            }
-            if (IO->Right)
-            {
-                Camera->P += Right * MoveSpeed * dt;
-            }
-            if (IO->Left)
-            {
-                Camera->P -= Right * MoveSpeed * dt;
-            }
+            if (IO->Forward) Camera->P += Forward * MoveSpeed * dt;
+            if (IO->Back) Camera->P -= Forward * MoveSpeed * dt;
+            if (IO->Right) Camera->P += Right * MoveSpeed * dt;
+            if (IO->Left) Camera->P -= Right * MoveSpeed * dt;
 
-            if (IO->Space)
-            {
-                Camera->P += Up * MoveSpeed * dt;
-            }
-            if (IO->LeftControl)
-            {
-                Camera->P -= Up * MoveSpeed * dt;
-            }
+            if (IO->Space) Camera->P += Up * MoveSpeed * dt;
+            if (IO->LeftControl) Camera->P -= Up * MoveSpeed * dt;
         }
     }
     else
@@ -751,6 +744,107 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
     }
 
     LoadChunksAroundPlayer(World, TransientArena);
+
+    bool WaitForPlayerChunk = false;
+    chunk* PlayerChunk = FindPlayerChunk(World);
+    if ((PlayerChunk->Flags & CHUNK_STATE_GENERATED_BIT) == 0)
+    {
+        WaitForPlayerChunk = true;
+    }
+
+    do
+    {
+        for (; World->ChunkWorkReadIndex < World->ChunkWorkWriteIndex; AtomicIncrement(&World->ChunkWorkReadIndex))
+        {
+            chunk_work* Work = World->ChunkWorkResults + (World->ChunkWorkReadIndex % World->ChunkWorkQueueCount);
+            while (AtomicLoad(&Work->IsReady) == false)
+            {
+                SpinWait;
+            }
+
+            chunk* Chunk = Work->Chunk;
+            if (Work->Type == ChunkWork_Generate)
+            {
+                Chunk->Flags |= CHUNK_STATE_GENERATED_BIT;
+                Chunk->InGenerationQueue = false;
+                if (Chunk == PlayerChunk)
+                {
+                    WaitForPlayerChunk = false;
+                }
+            }
+            else if (Work->Type == ChunkWork_BuildMesh)
+            {
+                u64 Count = Work->Mesh.OnePastLastIndex - Work->Mesh.FirstIndex;
+                Chunk->OldAllocationIndex = Chunk->AllocationIndex;
+                Chunk->AllocationIndex = VB_Allocate(&World->Renderer->VB, (u32)Count);
+                if (Chunk->AllocationIndex != INVALID_INDEX_U32)
+                {
+                    u64 Size = Count * sizeof(terrain_vertex);
+                    u64 BaseOffset = VB_GetAllocationMemoryOffset(&World->Renderer->VB, Chunk->AllocationIndex);
+
+                    u64 HeadCount = Count;
+                    u64 TailCount = 0;
+                    u64 FirstIndexModCount = Work->Mesh.FirstIndex % World->VertexBufferCount;
+                    u64 OnePastLastIndexModCount = Work->Mesh.OnePastLastIndex % World->VertexBufferCount;
+                    if (OnePastLastIndexModCount < FirstIndexModCount)
+                    {
+                        HeadCount = World->VertexBufferCount - FirstIndexModCount;
+                        TailCount = OnePastLastIndexModCount;
+                    }
+                    u64 HeadSize = HeadCount * sizeof(terrain_vertex);
+                    u64 TailSize = TailCount * sizeof(terrain_vertex);
+
+
+                    auto CopyVertexData = [World](u64 Offset, u64 Size, void* Data) -> bool
+                    {
+                        return StagingHeap_Copy(
+                            &World->Renderer->StagingHeap,
+                            World->Renderer->RenderDevice.TransferQueue,
+                            World->Renderer->TransferCmdBuffer,
+                            Offset, World->Renderer->VB.Buffer,
+                            Size, Data);
+                    };
+
+                    bool CopyResult = CopyVertexData(BaseOffset, HeadSize, 
+                                                     World->VertexBuffer + FirstIndexModCount);
+                    if (TailCount != 0)
+                    {
+                        CopyResult &= CopyVertexData(BaseOffset + HeadSize, TailSize,
+                                                     World->VertexBuffer);
+                    }
+
+                    if (CopyResult)
+                    {
+                        Chunk->Flags |= CHUNK_STATE_UPLOADED_BIT | CHUNK_STATE_MESHED_BIT;
+                        Chunk->Flags &= ~CHUNK_STATE_MESH_DIRTY_BIT;
+                    }
+                    else
+                    {
+                        assert(!"Upload failed");
+                        VB_Free(&World->Renderer->VB, Chunk->AllocationIndex);
+                        Chunk->AllocationIndex = INVALID_INDEX_U32;
+                    }
+
+                    if (World->VertexBufferReadIndex == Work->Mesh.FirstIndex)
+                    {
+                        AtomicExchange(&World->VertexBufferReadIndex, Work->Mesh.OnePastLastIndex);
+                    }
+                    else
+                    {
+                        assert(!"Unimplemented code path");
+                    }
+                }
+                else
+                {
+                    assert(!"Allocation failed");
+                }
+
+                Chunk->InMeshQueue = false;
+            }
+
+            AtomicExchange(&Work->IsReady, false);
+        }
+    } while (WaitForPlayerChunk);
 
     constexpr f32 MinPhysicsResolution = 16.6667e-3f;
 

@@ -39,6 +39,73 @@ struct win32_state
 };
 static win32_state Win32State;
 
+struct platform_work_queue
+{
+    static constexpr u32 MaxWorkCount = 512;
+
+    HANDLE Semaphore;
+
+    // TODO(boti): u64 Completion
+    volatile u32 Completion;
+    volatile u32 CompletionGoal;
+    volatile u32 ReadIndex;
+    volatile u32 WriteIndex;
+    work_function WorkQueue[MaxWorkCount];
+};
+
+static DWORD __stdcall WorkerThread(void* Param)
+{
+    platform_work_queue* Queue = (platform_work_queue*)Param;
+
+    memory_arena Arena = {};
+    Arena.Size = MiB(32);
+    Arena.Base = (u8*)VirtualAlloc(nullptr, Arena.Size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+    if (!Arena.Base)
+    {
+        DebugPrint("Failed to allocate thread memory");
+        ExitProcess(1);
+    }
+
+    for (;;)
+    {
+        u32 ReadIndex = Queue->ReadIndex;
+        if (ReadIndex < Queue->WriteIndex)
+        {
+            function Work = Queue->WorkQueue[ReadIndex % Queue->MaxWorkCount];
+            if (AtomicCompareExchange(&Queue->ReadIndex, ReadIndex + 1, ReadIndex) == ReadIndex)
+            {
+                Work.Invoke(&Arena);
+                AtomicIncrement(&Queue->Completion);
+                Arena.Used = 0;
+            }
+        }
+        else
+        {
+            SpinWait;
+        }
+    }
+    //return(0);
+}
+
+void AddWork(platform_work_queue* Queue, work_function Work)
+{
+    u32 WriteIndex = Queue->WriteIndex;
+    Queue->WorkQueue[WriteIndex % Queue->MaxWorkCount] = Work;
+
+    u32 PrevIndex = AtomicCompareExchange(&Queue->WriteIndex, WriteIndex + 1, WriteIndex);
+    assert(PrevIndex == WriteIndex);
+
+    AtomicIncrement(&Queue->CompletionGoal);
+}
+
+void WaitForAllWork(platform_work_queue* Queue)
+{
+    while (Queue->Completion != Queue->CompletionGoal)
+    {
+        SpinWait;
+    }
+}
+
 static bool SetClipCursorToWindow(bool Clip)
 {
     if (Clip)
@@ -445,10 +512,6 @@ static bool win32_ProcessInput(game_io* Input)
     return false;
 }
 
-// Put these into global memory so we don't blow out the stack
-//static renderer Renderer;
-//static game_state GameState;
-
 int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int CommandShow)
 {
     Win32State.Instance = Instance;
@@ -470,7 +533,15 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         freopen_s(&StdOut, "CONOUT$", "wb", stdout);
     }
 #endif
-    
+
+    static constexpr u32 WorkerCount = 3;
+    platform_work_queue WorkQueue = {};
+    for (u32 ThreadIndex = 0; ThreadIndex < WorkerCount; ThreadIndex++)
+    {
+        DWORD WorkerID;
+        HANDLE WorkerHandle = CreateThread(nullptr, 0, &WorkerThread, &WorkQueue, 0, &WorkerID);
+    }
+
     WNDCLASSA WindowClass = 
     {
         .style = CS_HREDRAW | CS_VREDRAW,
@@ -524,14 +595,13 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     {
         Memory.MemorySize = GiB(4);
         Memory.Memory = VirtualAlloc(nullptr, Memory.MemorySize, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+        Memory.Platform.WorkQueue = &WorkQueue;
 
         if (!Memory.Memory)
         {
             return -1;
         }
     }
-
-    //GameState.Renderer = &Renderer;
 
     if(!Game_Initialize(&Memory))
     {

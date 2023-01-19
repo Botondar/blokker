@@ -51,6 +51,27 @@ struct map_view
     mat2 GetAxesXY() const;
 };
 
+enum chunk_work_type
+{
+    ChunkWork_Generate,
+    ChunkWork_BuildMesh,
+};
+
+struct chunk_work
+{
+    chunk_work_type Type;
+    b32 IsReady;
+    chunk* Chunk;
+    union
+    {
+        struct
+        {
+            u64 FirstIndex;
+            u64 OnePastLastIndex;
+        } Mesh;
+    };
+};
+
 struct world
 {
     // NOTE(boti): for now the world just piggy-backs off of the game state's memory arena
@@ -76,6 +97,21 @@ struct world
 
     u32 ChunkRenderDataCount;
     chunk_render_data ChunkRenderData[MaxChunkCount];
+
+    static constexpr u32 ChunkWorkQueueCount = MaxChunkCount;
+    volatile u32 ChunkWorkReadIndex;
+    volatile u32 ChunkWorkWriteIndex;
+    chunk_work ChunkWorkResults[ChunkWorkQueueCount];
+
+    static constexpr u64 MaxVertexCountPerChunk = 6*2*3 * CHUNK_DIM_XY * CHUNK_DIM_XY * CHUNK_DIM_Z;
+    static constexpr u64 MaxMeshMemoryPerChunk = MaxVertexCountPerChunk * sizeof(terrain_vertex);
+    static constexpr u64 VertexBufferSize = MiB(144);
+    static constexpr u64 VertexBufferCount = VertexBufferSize / sizeof(terrain_vertex);
+    static_assert((VertexBufferSize % sizeof(terrain_vertex)) == 0);
+
+    u64 VertexBufferReadIndex;
+    u64 VertexBufferWriteIndex;
+    terrain_vertex* VertexBuffer;
 
     player Player;
 

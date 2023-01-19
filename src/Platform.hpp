@@ -5,14 +5,31 @@
 #include <vulkan/vulkan.h>
 #include <Memory.hpp>
 
+typedef function<void(memory_arena*)> work_function;
+
+// Work queue is an opaque type to the game
+struct platform_work_queue;
+void AddWork(platform_work_queue* Queue, work_function Work);
+void WaitForAllWork(platform_work_queue* Queue);
+
+struct platform_api
+{
+    platform_work_queue* WorkQueue;
+};
+
 struct game_memory
 {
     u64 MemorySize;
     void* Memory;
 
+    platform_api Platform;
+
     struct game_state* Game;
 };
 
+//
+// Input
+//
 enum mouse_button : u32
 {
     MOUSE_LEFT = 0,
@@ -57,6 +74,10 @@ struct game_io
     bool LeftAlt;
 };
 
+//
+// Global platform API
+// TODO(boti): move these to game_memory::platform_api
+//
 void DebugPrint_(const char* Format, ...);
 
 #if DEVELOPER

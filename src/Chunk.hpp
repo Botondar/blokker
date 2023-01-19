@@ -114,6 +114,8 @@ struct chunk
 {
     vec2i P;
     u32 Flags;
+    b32 InGenerationQueue;
+    b32 InMeshQueue;
 
     chunk_data* Data;
 

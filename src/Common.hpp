@@ -62,3 +62,85 @@ inline u64 AlignToPow2(u64 Value, u64 Alignment)
     u64 Result = (Value + (Alignment - 1)) & (~(Alignment - 1));
     return Result;
 }
+
+// NOTE(boti): 
+//     Work function is a type-erased function pointer that can hold 56 bytes of arguments directly.
+//     There are no allocations or real C++ ownership/copy/move/destruction etc. semantics here,
+//     so the caller _must_ manage the lifetime of all arguments _not_ passed by value.
+template<typename T> struct function {};
+
+template<typename ret_type, typename... args>
+struct function<ret_type(args...)>
+{
+    static constexpr u64 MaxPayloadSize = 60;
+    struct impl_base
+    {
+        virtual ret_type Invoke(args... Args) = 0;
+    };
+
+    template<typename function_type>
+    struct impl : public impl_base
+    {
+        function_type Function;
+
+        impl(function_type Function) : Function(Function) { }
+
+        virtual ret_type Invoke(args... Args) { return Function(Args...); }
+    };
+
+    function() : Data{}, IsValid{false}
+    {
+        static_assert(sizeof(function<ret_type(args...)>) == 64);
+    }
+    template<typename function_type> function(function_type Function)
+    {
+        static_assert(sizeof(impl<function_type>) <= MaxPayloadSize, "Work function exceeds MaxPayloadSize");
+        impl_base* Impl = new(Data) impl<function_type>(Function);
+        if (Impl)
+        {
+            IsValid = true;
+        }
+    }
+
+    function(const function& Other)
+    {
+        memcpy(Data, Other.Data, sizeof(Data));
+        IsValid = Other.IsValid;
+    }
+
+    function& operator=(const function& Other)
+    {
+        memcpy(Data, Other.Data, sizeof(Data));
+        IsValid = Other.IsValid;
+        return(*this);
+    }
+
+    template<typename function_type> function& operator=(function_type Function)
+    {
+        static_assert(sizeof(impl<function_type>) <= MaxPayloadSize, "Work function exceeds MaxPayloadSize");
+        impl_base* Impl = new(Data) impl<function_type>(Function);
+        if (Impl)
+        {
+            IsValid = true;
+        }
+        return (*this);
+    }
+    function& operator=(nullptr_t)
+    {
+        IsValid = false;
+        return (*this);
+    }
+
+    ret_type Invoke(args... Args)
+    {
+        if (IsValid)
+        {
+            return reinterpret_cast<impl_base*>(Data)->Invoke(Args...);
+        }
+    }
+
+public:
+    // NOTE(boti): The data array is put first here so that the impl object is properly aligned
+    u8 Data[MaxPayloadSize];
+    b32 IsValid;
+};
