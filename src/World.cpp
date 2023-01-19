@@ -750,6 +750,7 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
     if ((PlayerChunk->Flags & CHUNK_STATE_GENERATED_BIT) == 0)
     {
         WaitForPlayerChunk = true;
+        assert(PlayerChunk->InGenerationQueue);
     }
 
     do
