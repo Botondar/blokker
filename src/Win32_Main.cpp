@@ -534,7 +534,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     }
 #endif
 
-    static constexpr u32 WorkerCount = 3;
+    static constexpr u32 WorkerCount = 1;
     platform_work_queue WorkQueue = {};
     for (u32 ThreadIndex = 0; ThreadIndex < WorkerCount; ThreadIndex++)
     {
