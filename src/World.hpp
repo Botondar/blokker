@@ -105,7 +105,7 @@ struct world
 
     static constexpr u64 MaxVertexCountPerChunk = 6*2*3 * CHUNK_DIM_XY * CHUNK_DIM_XY * CHUNK_DIM_Z;
     static constexpr u64 MaxMeshMemoryPerChunk = MaxVertexCountPerChunk * sizeof(terrain_vertex);
-    static constexpr u64 VertexBufferSize = MiB(144);
+    static constexpr u64 VertexBufferSize = MiB(32);
     static constexpr u64 VertexBufferCount = VertexBufferSize / sizeof(terrain_vertex);
     static_assert((VertexBufferSize % sizeof(terrain_vertex)) == 0);
 
