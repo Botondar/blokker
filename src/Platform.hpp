@@ -14,7 +14,8 @@ void WaitForAllWork(platform_work_queue* Queue);
 
 struct platform_api
 {
-    platform_work_queue* WorkQueue;
+    platform_work_queue* HighPriorityQueue;
+    platform_work_queue* LowPriorityQueue;
 };
 
 struct game_memory

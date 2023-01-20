@@ -21,6 +21,20 @@
 static const char* Win32_ClassName = "wndclass_blokker";
 static const char* Win32_WindowTitle = "Blokker";
 
+struct platform_work_queue
+{
+    static constexpr u32 MaxWorkCount = 512;
+
+    HANDLE Semaphore;
+
+    // TODO(boti): u64 Completion
+    volatile u32 Completion;
+    volatile u32 CompletionGoal;
+    volatile u32 ReadIndex;
+    volatile u32 WriteIndex;
+    work_function WorkQueue[MaxWorkCount];
+};
+
 struct win32_state
 {
     HINSTANCE Instance;
@@ -36,26 +50,18 @@ struct win32_state
 
     BOOL HasDebugger;
     bool IsCursorDisabled;
+
+    HANDLE WorkerSemaphore;
+    platform_work_queue HighPriorityQueue;
+    platform_work_queue LowPriorityQueue;
 };
 static win32_state Win32State;
 
-struct platform_work_queue
-{
-    static constexpr u32 MaxWorkCount = 512;
-
-    HANDLE Semaphore;
-
-    // TODO(boti): u64 Completion
-    volatile u32 Completion;
-    volatile u32 CompletionGoal;
-    volatile u32 ReadIndex;
-    volatile u32 WriteIndex;
-    work_function WorkQueue[MaxWorkCount];
-};
-
 static DWORD __stdcall WorkerThread(void* Param)
 {
-    platform_work_queue* Queue = (platform_work_queue*)Param;
+    HANDLE Semaphore = Win32State.WorkerSemaphore;
+    platform_work_queue* HighPriorityQueue = &Win32State.HighPriorityQueue;
+    platform_work_queue* LowPriorityQueue = &Win32State.LowPriorityQueue;
 
     memory_arena Arena = {};
     Arena.Size = MiB(32);
@@ -68,21 +74,37 @@ static DWORD __stdcall WorkerThread(void* Param)
 
     for (;;)
     {
-        u32 ReadIndex = Queue->ReadIndex;
-        if (ReadIndex < Queue->WriteIndex)
+        // NOTE(boti): The control flow is ugly here, we only want to move onto the low priority queue
+        //             when we know the high priority queue is empty, and we only want to sleep
+        //             when both queues are empty.
+        //             This means that we want to restart the loop each time there is/was work in whichever queue.
+        u32 ReadIndex = HighPriorityQueue->ReadIndex;
+        if (ReadIndex < HighPriorityQueue->WriteIndex)
         {
-            function Work = Queue->WorkQueue[ReadIndex % Queue->MaxWorkCount];
-            if (AtomicCompareExchange(&Queue->ReadIndex, ReadIndex + 1, ReadIndex) == ReadIndex)
+            function Work = HighPriorityQueue->WorkQueue[ReadIndex % HighPriorityQueue->MaxWorkCount];
+            if (AtomicCompareExchange(&HighPriorityQueue->ReadIndex, ReadIndex + 1, ReadIndex) == ReadIndex)
             {
                 Work.Invoke(&Arena);
-                AtomicIncrement(&Queue->Completion);
+                AtomicIncrement(&HighPriorityQueue->Completion);
                 Arena.Used = 0;
             }
+            continue;
         }
-        else
+        ReadIndex = LowPriorityQueue->ReadIndex;
+        if (ReadIndex < LowPriorityQueue->WriteIndex)
         {
-            SpinWait;
+            function Work = LowPriorityQueue->WorkQueue[ReadIndex % LowPriorityQueue->MaxWorkCount];
+            if (AtomicCompareExchange(&LowPriorityQueue->ReadIndex, ReadIndex + 1, ReadIndex) == ReadIndex)
+            {
+                Work.Invoke(&Arena);
+                AtomicIncrement(&LowPriorityQueue->Completion);
+                Arena.Used = 0;
+            }
+
+            continue;
         }
+
+        WaitForSingleObject(Semaphore, INFINITE);
     }
     //return(0);
 }
@@ -90,12 +112,17 @@ static DWORD __stdcall WorkerThread(void* Param)
 void AddWork(platform_work_queue* Queue, work_function Work)
 {
     u32 WriteIndex = Queue->WriteIndex;
-    Queue->WorkQueue[WriteIndex % Queue->MaxWorkCount] = Work;
+    while (WriteIndex - Queue->ReadIndex >= Queue->MaxWorkCount)
+    {
+        SpinWait;
+    }
 
+    Queue->WorkQueue[WriteIndex % Queue->MaxWorkCount] = Work;
     u32 PrevIndex = AtomicCompareExchange(&Queue->WriteIndex, WriteIndex + 1, WriteIndex);
     assert(PrevIndex == WriteIndex);
 
     AtomicIncrement(&Queue->CompletionGoal);
+    ReleaseSemaphore(Win32State.WorkerSemaphore, 1, nullptr);
 }
 
 void WaitForAllWork(platform_work_queue* Queue)
@@ -535,11 +562,15 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 #endif
 
     static constexpr u32 WorkerCount = 1;
-    platform_work_queue WorkQueue = {};
+    Win32State.WorkerSemaphore = CreateSemaphoreA(nullptr, 0, WorkerCount, nullptr);
+    if (!Win32State.WorkerSemaphore || Win32State.WorkerSemaphore == INVALID_HANDLE_VALUE)
+    {
+        return -1;
+    }
     for (u32 ThreadIndex = 0; ThreadIndex < WorkerCount; ThreadIndex++)
     {
         DWORD WorkerID;
-        HANDLE WorkerHandle = CreateThread(nullptr, 0, &WorkerThread, &WorkQueue, 0, &WorkerID);
+        HANDLE WorkerHandle = CreateThread(nullptr, 0, &WorkerThread, nullptr, 0, &WorkerID);
     }
 
     WNDCLASSA WindowClass = 
@@ -595,7 +626,8 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     {
         Memory.MemorySize = GiB(4);
         Memory.Memory = VirtualAlloc(nullptr, Memory.MemorySize, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
-        Memory.Platform.WorkQueue = &WorkQueue;
+        Memory.Platform.HighPriorityQueue = &Win32State.HighPriorityQueue;
+        Memory.Platform.LowPriorityQueue = &Win32State.LowPriorityQueue;
 
         if (!Memory.Memory)
         {

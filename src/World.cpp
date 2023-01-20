@@ -527,7 +527,7 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
             ((Chunk->Flags & CHUNK_STATE_GENERATED_BIT) == 0))
         {
             Chunk->InGenerationQueue = true;
-            AddWork(Platform.WorkQueue,
+            AddWork(Platform.LowPriorityQueue,
                 [Chunk, World](memory_arena* Arena)
                 {
                     Generate(Chunk, World);
@@ -563,8 +563,11 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
             (((Chunk->Flags & CHUNK_STATE_MESHED_BIT) == 0) ||
             ((Chunk->Flags & CHUNK_STATE_MESH_DIRTY_BIT) != 0)))
         {
+            platform_work_queue* Queue = ((Chunk->Flags & CHUNK_STATE_MESH_DIRTY_BIT) != 0) ?
+                Platform.HighPriorityQueue : Platform.LowPriorityQueue;
+
             Chunk->InMeshQueue = true;
-            AddWork(Platform.WorkQueue,
+            AddWork(Queue,
                 [Chunk, World](memory_arena* Arena)
                 {
                     chunk_mesh Mesh = BuildMesh(Chunk, World, Arena);
@@ -867,7 +870,8 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
         for (u32 i = 0; i < World->MaxChunkCount; i++)
         {
             chunk* Chunk = World->Chunks + i;
-            if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
+            if (((Chunk->Flags & CHUNK_STATE_GENERATED_BIT)) == 0 ||
+                ((Chunk->Flags & CHUNK_STATE_MESHED_BIT) == 0))
             {
                 continue;
             }
@@ -880,7 +884,7 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
                     Chunk->OldAllocationIndex = INVALID_INDEX_U32;
                 }
             }
-
+#if 0
             if ((Chunk->Flags & CHUNK_STATE_MESHED_BIT) &&
                 (Chunk->Flags & CHUNK_STATE_MESH_DIRTY_BIT))
             {
@@ -917,6 +921,7 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
                     assert(!"Invalid VertexData");
                 }
             }
+#endif
 
             if (Chunk->Flags & CHUNK_STATE_UPLOADED_BIT)
             {
