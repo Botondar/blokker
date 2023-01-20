@@ -475,8 +475,8 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
     }
 
     // Keep track of closest rings around the player that have been fully generated or meshed
-    s32 ClosestNotGeneratedDistance = (s32)GenerationDistance + 1;
-    s32 ClosestNotMeshedDistance = (s32)GenerationDistance + 1;
+    s32 ClosestNotGeneratedDistance = GenerationDistance + 1;
+    s32 ClosestNotMeshedDistance = MeshDistance + 1;
 
     for (s32 Ring = 0; Ring <= GenerationDistance; Ring++)
     {
@@ -521,7 +521,7 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
         chunk* Chunk = Stack[i];
         s32 Distance = ChebyshevDistance(Chunk->P, PlayerChunkP) / CHUNK_DIM_XY;
 
-        bool ShouldGenerate = Distance == ClosestNotGeneratedDistance || Distance < ImmediateGenerationDistance;
+        bool ShouldGenerate = Distance <= ClosestNotGeneratedDistance/* || Distance < ImmediateGenerationDistance*/;
 
         if (ShouldGenerate && !Chunk->InGenerationQueue && 
             ((Chunk->Flags & CHUNK_STATE_GENERATED_BIT) == 0))
@@ -532,7 +532,8 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
                 {
                     Generate(Chunk, World);
 
-                    for (;;)
+                    chunk_work* Work = nullptr;
+                    while (!Work)
                     {
                         u32 WriteIndex = World->ChunkWorkWriteIndex;
                         while (WriteIndex - World->ChunkWorkReadIndex == World->ChunkWorkQueueCount)
@@ -541,13 +542,13 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
                         }
                         if (AtomicCompareExchange(&World->ChunkWorkWriteIndex, WriteIndex + 1, WriteIndex) == WriteIndex)
                         {
-                            chunk_work* Work = World->ChunkWorkResults + (WriteIndex % World->ChunkWorkQueueCount);
-                            Work->Type = ChunkWork_Generate;
-                            Work->Chunk = Chunk;
-                            AtomicExchange(&Work->IsReady, true);
-                            break;
+                            Work = World->ChunkWorkResults + (WriteIndex % World->ChunkWorkQueueCount);
                         }
                     }
+
+                    Work->Type = ChunkWork_Generate;
+                    Work->Chunk = Chunk;
+                    AtomicExchange(&Work->IsReady, true);
                 });
         }
     }
@@ -557,7 +558,10 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
         chunk* Chunk = Stack[i];
 
         s32 Distance = ChebyshevDistance(Chunk->P, PlayerChunkP) / CHUNK_DIM_XY;
-        bool ShouldMesh = Distance < ClosestNotGeneratedDistance;
+        bool ShouldMesh = 
+            Distance < ClosestNotGeneratedDistance && 
+            Distance <= ClosestNotMeshedDistance && 
+            Distance <= MeshDistance;
         
         if (ShouldMesh && !Chunk->InMeshQueue &&
             (((Chunk->Flags & CHUNK_STATE_MESHED_BIT) == 0) ||
@@ -574,7 +578,7 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
                     assert(Mesh.VertexCount <= World->VertexBufferCount);
 
                     chunk_work* Work = nullptr;
-                    for (;;)
+                    while (!Work)
                     {
                         u32 WriteIndex = World->ChunkWorkWriteIndex;
                         while (WriteIndex - World->ChunkWorkReadIndex == World->ChunkWorkQueueCount)
@@ -584,11 +588,10 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
                         if (AtomicCompareExchange(&World->ChunkWorkWriteIndex, WriteIndex + 1, WriteIndex) == WriteIndex)
                         {
                             Work = World->ChunkWorkResults + (WriteIndex % World->ChunkWorkQueueCount);
-                            Work->Type = ChunkWork_BuildMesh;
-                            Work->Chunk = Chunk;
-                            break;
                         }
                     }
+                    Work->Type = ChunkWork_BuildMesh;
+                    Work->Chunk = Chunk;
 
                     u64 FirstIndex = AtomicAdd(&World->VertexBufferWriteIndex, Mesh.VertexCount);
                     u64 OnePastLastIndex = FirstIndex + Mesh.VertexCount;
