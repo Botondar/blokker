@@ -31,6 +31,8 @@ static_assert(sizeof(f64) == 8);
 constexpr u32 INVALID_INDEX_U32 = 0xFFFFFFFFu;
 constexpr u64 INVALID_INDEX_U64 = 0xFFFFFFFFFFFFFFFFu;
 
+#define Assert(...) assert(__VA_ARGS__)
+
 struct buffer
 {
     u64 Size;
@@ -121,6 +123,7 @@ struct function<ret_type(args...)>
         impl_base* Impl = new(Data) impl<function_type>(Function);
         if (Impl)
         {
+            Assert((void*)Impl == (void*)Data);
             IsValid = true;
         }
         return (*this);
