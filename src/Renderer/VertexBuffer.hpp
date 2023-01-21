@@ -31,7 +31,7 @@ struct vulkan_vertex_buffer
 bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Device, memory_arena* Arena);
 
 vulkan_vertex_buffer_block* VB_Allocate(vulkan_vertex_buffer* VB, u32 VertexCount);
-void VB_Free(vulkan_vertex_buffer* VB, u32 AllocationIndex);
+void VB_Free(vulkan_vertex_buffer* VB, vulkan_vertex_buffer_block* Block);
 
 void VB_Defragment(vulkan_vertex_buffer* VB);
 

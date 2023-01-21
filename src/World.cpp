@@ -244,11 +244,12 @@ static chunk* ReserveChunk(world* World, vec2i P)
         {
             DebugPrint("WARNING: Evicting chunk { %d, %d }\n", Result->P.x, Result->P.y);
 
-            if (Result->OldVertexBlock != nullptr)
+            if (Result->OldVertexBlock)
             {
                 if (Result->OldAllocationLastRenderedInFrameIndex < World->FrameIndex - 1)
                 {
                     VB_Free(&World->Renderer->VB, Result->OldVertexBlock);
+                    Result->OldVertexBlock = nullptr;
                 }
                 else
                 {
@@ -256,13 +257,22 @@ static chunk* ReserveChunk(world* World, vec2i P)
                     assert(!"Unimplemented code path");
                 }
             }
+            if (Result->VertexBlock)
+            {
+                if (Result->LastRenderedInFrameIndex < World->FrameIndex - 1)
+                {
+                    VB_Free(&World->Renderer->VB, Result->VertexBlock);
+                }
+                else
+                {
+                    // Preserve the current allocation, it will get freed once the GPU is no longer using it
+                    Result->OldVertexBlock = Result->VertexBlock;
+                    Result->OldAllocationLastRenderedInFrameIndex = Result->LastRenderedInFrameIndex;
+                }
 
-            // Preserve the current allocation, it will get freed once the GPU is no longer using it
-            Result->OldVertexBlock = Result->VertexBlock;
-            Result->OldAllocationLastRenderedInFrameIndex = Result->LastRenderedInFrameIndex;
-
-            Result->VertexBlock = nullptr;
-            Result->LastRenderedInFrameIndex = 0;
+                Result->VertexBlock = nullptr;
+                Result->LastRenderedInFrameIndex = 0;
+            }
         }
 
         Result->P = P;
@@ -869,7 +879,6 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
         TIMED_BLOCK("ChunkUpdate");
 
         World->ChunkRenderDataCount = 0;
-
         for (u32 i = 0; i < World->MaxChunkCount; i++)
         {
             chunk* Chunk = World->Chunks + i;
@@ -887,44 +896,6 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
                     Chunk->OldVertexBlock = nullptr;
                 }
             }
-#if 0
-            if ((Chunk->Flags & CHUNK_STATE_MESHED_BIT) &&
-                (Chunk->Flags & CHUNK_STATE_MESH_DIRTY_BIT))
-            {
-                assert(Chunk->OldAllocationIndex == INVALID_INDEX_U32);
-
-                Chunk->OldAllocationIndex = Chunk->AllocationIndex;
-                Chunk->LastRenderedInFrameIndex = Chunk->OldAllocationLastRenderedInFrameIndex;
-
-                chunk_mesh Mesh = BuildMesh(Chunk, World, TransientArena);
-
-                if (Mesh.VertexCount)
-                {
-                    Chunk->AllocationIndex = VB_Allocate(&World->Renderer->VB, Mesh.VertexCount);
-                    u64 Offset = VB_GetAllocationMemoryOffset(&World->Renderer->VB, Chunk->AllocationIndex);
-                    Chunk->LastRenderedInFrameIndex = 0;
-
-                    u64 MemorySize = (u64)Mesh.VertexCount * sizeof(terrain_vertex);
-                    if (StagingHeap_Copy(&World->Renderer->StagingHeap,
-                        World->Renderer->RenderDevice.TransferQueue,
-                        World->Renderer->TransferCmdBuffer,
-                        Offset, World->Renderer->VB.Buffer,
-                        (u64)MemorySize, Mesh.VertexData))
-                    {
-                        Chunk->Flags &= ~CHUNK_STATE_MESH_DIRTY_BIT;
-                        Chunk->Flags |= CHUNK_STATE_UPLOADED_BIT;
-                    }
-                    else
-                    {
-                        assert(!"Chunk upload failed");
-                    }
-                }
-                else
-                {
-                    assert(!"Invalid VertexData");
-                }
-            }
-#endif
 
             if (Chunk->Flags & CHUNK_STATE_UPLOADED_BIT)
             {
@@ -937,6 +908,37 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
                     .LastRenderedInFrameIndex = &Chunk->LastRenderedInFrameIndex,
                 };
             }
+        }
+    }
+
+    if (World->FrameIndex % 500 == 0)
+    {
+        u64 ChunkCount = 0;
+        chunk** Chunks = PushArray<chunk*>(TransientArena, World->MaxChunkCount);
+        for (u64 i = 0; i < World->MaxChunkCount; i++)
+        {
+            chunk* Chunk = World->Chunks + i;
+            if (Chunk->VertexBlock || Chunk->OldVertexBlock)
+            {
+                Chunks[ChunkCount++] = Chunk;
+            }
+        }
+
+        vulkan_vertex_buffer_block* Sentinel = &World->Renderer->VB.UsedBlockSentinel;
+        for (vulkan_vertex_buffer_block* It = Sentinel->Next; It != Sentinel; It = It->Next)
+        {
+            bool BlockFound = false;
+            for (u64 i = 0; i < ChunkCount; i++)
+            {
+                chunk* Chunk = Chunks[i];
+                if (Chunk->VertexBlock == It ||
+                    Chunk->OldVertexBlock == It)
+                {
+                    BlockFound = true;
+                    break;
+                }
+            }
+            Assert(BlockFound);
         }
     }
 }

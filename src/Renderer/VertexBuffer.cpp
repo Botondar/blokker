@@ -60,7 +60,7 @@ static void InsertVertexBlock(vulkan_vertex_buffer_block* Sentinel, vulkan_verte
     Block->Prev = InsertBefore->Prev;
     Block->Next->Prev = Block->Prev->Next = Block;
 
-    VerifyListIntegrity(Sentinel);
+    //VerifyListIntegrity(Sentinel);
 }
 
 static void RemoveVertexBlock(vulkan_vertex_buffer_block* Sentinel, vulkan_vertex_buffer_block* Block)
@@ -69,7 +69,7 @@ static void RemoveVertexBlock(vulkan_vertex_buffer_block* Sentinel, vulkan_verte
     Block->Next->Prev = Block->Prev;
     Block->Prev = Block->Next = nullptr;
 
-    VerifyListIntegrity(Sentinel);
+    //VerifyListIntegrity(Sentinel);
 }
 
 bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Device, memory_arena* Arena)
