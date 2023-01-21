@@ -10,6 +10,7 @@ LIBS = kernel32.lib user32.lib vulkan-1.lib
 SHADER_OPT = --target-env=vulkan1.2 -std=450core -I "src/shader/" -O
 
 SHADERS = "shader/shader.vs" "shader/shader.fs" "shader/imshader.vs" "shader/imshader.fs" "shader/imguishader.vs" "shader/imguishader.fs"
+ALL_SOURCES = "src/*.cpp" "src/*.hpp" "src/Renderer/*.cpp" "src/Renderer/*.hpp"
 
 all: "build" "build/win32_platform.obj" "build/game.obj" "build/imgui.lib" "build/blokker.exe" $(SHADERS)
 
@@ -20,9 +21,9 @@ clean:
 "build":
 	@mkdir build
 
-"build/win32_platform.obj": "src/Win32_Main.cpp" "src/Platform.hpp"
+"build/win32_platform.obj": $(ALL_SOURCES)
 	@cl -nologo $(LANG) $(WARNINGS) $(DEFINES) $(FP_ENV) $(OPTIMIZATION) $(MISC) -c "src/Win32_Main.cpp" -Fo:$@ -Fd:"build/"
-"build/game.obj": "src/*.cpp" "src/*.hpp" "src/Renderer/*.cpp" "src/Renderer/*.hpp"
+"build/game.obj": $(ALL_SOURCES)
 	@cl -nologo $(LANG) $(WARNINGS) $(DEFINES) $(FP_ENV) $(OPTIMIZATION) $(MISC) -c "src/Game.cpp" -Fo:$@ -Fd:"build/"
 "build/imgui.lib": "src/imgui/*.cpp" "src/imgui/*.h"
 	@cl -nologo $(LANG) -W4 -WX -Zi -O2 -Oi -c -Fe:"build/imgui.lib" -Fo:"build/imgui.obj" -Fd:"build/" "src/imgui/build.cpp"

@@ -244,11 +244,11 @@ static chunk* ReserveChunk(world* World, vec2i P)
         {
             DebugPrint("WARNING: Evicting chunk { %d, %d }\n", Result->P.x, Result->P.y);
 
-            if (Result->OldAllocationIndex != INVALID_INDEX_U32)
+            if (Result->OldVertexBlock != nullptr)
             {
-                if (Result->OldAllocationIndex < World->FrameIndex - 1)
+                if (Result->OldAllocationLastRenderedInFrameIndex < World->FrameIndex - 1)
                 {
-                    VB_Free(&World->Renderer->VB, Result->OldAllocationIndex);
+                    VB_Free(&World->Renderer->VB, Result->OldVertexBlock);
                 }
                 else
                 {
@@ -258,10 +258,10 @@ static chunk* ReserveChunk(world* World, vec2i P)
             }
 
             // Preserve the current allocation, it will get freed once the GPU is no longer using it
-            Result->OldAllocationIndex = Result->AllocationIndex;
+            Result->OldVertexBlock = Result->VertexBlock;
             Result->OldAllocationLastRenderedInFrameIndex = Result->LastRenderedInFrameIndex;
 
-            Result->AllocationIndex = INVALID_INDEX_U32;
+            Result->VertexBlock = nullptr;
             Result->LastRenderedInFrameIndex = 0;
         }
 
@@ -633,8 +633,8 @@ bool Initialize(world* World)
         chunk* Chunk = World->Chunks + i;
         chunk_data* ChunkData = World->ChunkData + i;
 
-        Chunk->AllocationIndex = INVALID_INDEX_U32;
-        Chunk->OldAllocationIndex = INVALID_INDEX_U32;
+        Chunk->VertexBlock = nullptr;
+        Chunk->OldVertexBlock = nullptr;
         Chunk->Data = ChunkData;
     }
 
@@ -782,12 +782,12 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
             else if (Work->Type == ChunkWork_BuildMesh)
             {
                 u64 Count = Work->Mesh.OnePastLastIndex - Work->Mesh.FirstIndex;
-                Chunk->OldAllocationIndex = Chunk->AllocationIndex;
-                Chunk->AllocationIndex = VB_Allocate(&World->Renderer->VB, (u32)Count);
-                if (Chunk->AllocationIndex != INVALID_INDEX_U32)
+                Chunk->OldVertexBlock = Chunk->VertexBlock;
+                Chunk->VertexBlock = VB_Allocate(&World->Renderer->VB, (u32)Count);
+                if (Chunk->VertexBlock)
                 {
                     u64 Size = Count * sizeof(terrain_vertex);
-                    u64 BaseOffset = VB_GetAllocationMemoryOffset(&World->Renderer->VB, Chunk->AllocationIndex);
+                    u64 BaseOffset = VB_GetAllocationMemoryOffset(Chunk->VertexBlock);
 
                     u64 HeadCount = Count;
                     u64 TailCount = 0;
@@ -828,8 +828,8 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
                     else
                     {
                         assert(!"Upload failed");
-                        VB_Free(&World->Renderer->VB, Chunk->AllocationIndex);
-                        Chunk->AllocationIndex = INVALID_INDEX_U32;
+                        VB_Free(&World->Renderer->VB, Chunk->VertexBlock);
+                        Chunk->VertexBlock = nullptr;
                     }
 
                     if (World->VertexBufferReadIndex == Work->Mesh.FirstIndex)
@@ -879,12 +879,12 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
                 continue;
             }
 
-            if (Chunk->OldAllocationIndex != INVALID_INDEX_U32)
+            if (Chunk->OldVertexBlock)
             {
                 if (Chunk->OldAllocationLastRenderedInFrameIndex < World->FrameIndex - 1)
                 {
-                    VB_Free(&World->Renderer->VB, Chunk->OldAllocationIndex);
-                    Chunk->OldAllocationIndex = INVALID_INDEX_U32;
+                    VB_Free(&World->Renderer->VB, Chunk->OldVertexBlock);
+                    Chunk->OldVertexBlock = nullptr;
                 }
             }
 #if 0
@@ -933,7 +933,7 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
                 World->ChunkRenderData[World->ChunkRenderDataCount++] = 
                 {
                     .P = Chunk->P,
-                    .AllocationIndex = Chunk->AllocationIndex,
+                    .VertexBlock = Chunk->VertexBlock,
                     .LastRenderedInFrameIndex = &Chunk->LastRenderedInFrameIndex,
                 };
             }

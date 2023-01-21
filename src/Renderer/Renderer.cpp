@@ -402,7 +402,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
     }
 
     // Vertex buffer
-    if (!VB_Create(&Renderer->VB, Renderer->RenderDevice.MemoryTypes.DeviceLocal, 1024*1024*1024, Renderer->RenderDevice.Device))
+    if (!VB_Create(&Renderer->VB, Renderer->RenderDevice.MemoryTypes.DeviceLocal, 1024*1024*1024, Renderer->RenderDevice.Device, Arena))
     {
         return false;
     }
@@ -2936,18 +2936,7 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
     for (u32 i = 0; i < Count; i++)
     {
         chunk_render_data* Chunk = Chunks + i;
-        if (Chunk->AllocationIndex == INVALID_INDEX_U32)
-        {
-            continue;
-        }
-
-        vulkan_vertex_buffer_allocation Allocation = Frame->Renderer->VB.Allocations[Chunk->AllocationIndex];
-        if (Allocation.BlockIndex == INVALID_INDEX_U32)
-        {
-            assert(!"Invalid code path");
-            continue;
-        }
-
+        
         vec2 ChunkP = { (f32)Chunk->P.x, (f32)Chunk->P.y };
         vec3 ChunkP3 = { ChunkP.x, ChunkP.y, 0.0f };
 
@@ -2960,8 +2949,13 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
             u32 InstanceOffset = (u32)Frame->ChunkPositions.ChunkAt++;
             memcpy(Frame->ChunkPositions.Mapping + InstanceOffset, &ChunkP, sizeof(ChunkP));
 
-            vulkan_vertex_buffer_block Block = Frame->Renderer->VB.Blocks[Allocation.BlockIndex];
-            FirstCommand[Frame->DrawCommands.DrawIndex++] = VkDrawIndirectCommand{ Block.VertexCount, 1, Block.VertexOffset, InstanceOffset, };
+            FirstCommand[Frame->DrawCommands.DrawIndex++] = 
+            { 
+                .vertexCount = Chunk->VertexBlock->VertexCount,
+                .instanceCount = 1, 
+                .firstVertex = Chunk->VertexBlock->VertexOffset, 
+                .firstInstance = InstanceOffset, 
+            };
             DrawCount++;
         }
     }

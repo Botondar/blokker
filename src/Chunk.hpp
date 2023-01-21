@@ -119,17 +119,17 @@ struct chunk
 
     chunk_data* Data;
 
-    u32 AllocationIndex; // in VB
+    struct vulkan_vertex_buffer_block* VertexBlock;
     u64 LastRenderedInFrameIndex;
 
-    u32 OldAllocationIndex;
+    struct vulkan_vertex_buffer_block* OldVertexBlock;
     u64 OldAllocationLastRenderedInFrameIndex;
 };
 
 struct chunk_render_data
 {
     vec2i P;
-    u32 AllocationIndex;
+    struct vulkan_vertex_buffer_block* VertexBlock;
     u64* LastRenderedInFrameIndex;
 };
 

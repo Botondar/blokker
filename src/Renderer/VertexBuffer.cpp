@@ -1,6 +1,78 @@
 #include "VertexBuffer.hpp"
 
-bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Device)
+static void VerifyListIntegrity(vulkan_vertex_buffer_block* Sentinel)
+{
+    for (vulkan_vertex_buffer_block* It = Sentinel->Next;
+         It != Sentinel;
+         It = It->Next)
+    {
+        Assert(It == It->Next->Prev);
+        Assert(It == It->Prev->Next);
+
+        if (It->Next != Sentinel)
+        {
+            Assert(It->Next->VertexOffset >= It->VertexOffset);
+        }
+    }
+    Assert(Sentinel == Sentinel->Prev->Next);
+    Assert(Sentinel == Sentinel->Next->Prev);
+}
+
+static vulkan_vertex_buffer_block* GetBlockFromPool(vulkan_vertex_buffer* VB)
+{
+    vulkan_vertex_buffer_block* Sentinel = &VB->BlockPoolSentinel;
+    if (Sentinel->Next == Sentinel)
+    {
+        static constexpr u32 BlockIncrementCount = 8192;
+
+        vulkan_vertex_buffer_block* Blocks = PushArray<vulkan_vertex_buffer_block>(VB->Arena, BlockIncrementCount);
+        Assert(Blocks);
+
+        for (u32 i = 0 ; i < BlockIncrementCount; i++)
+        {
+            Blocks[i].Next = &Blocks[(i + 1) % BlockIncrementCount];
+            Blocks[i].Next->Prev = &Blocks[i];
+        }
+        Sentinel->Next = Blocks;
+        Sentinel->Prev = Blocks + (BlockIncrementCount - 1);
+        Sentinel->Prev->Next = Sentinel->Next->Prev = Sentinel;
+    }
+    vulkan_vertex_buffer_block* Result = Sentinel->Next;
+    Sentinel->Next = Result->Next;
+    Sentinel->Next->Prev = Sentinel;
+    Result->Next = Result->Prev = nullptr;
+    return(Result);
+}
+
+static void InsertVertexBlock(vulkan_vertex_buffer_block* Sentinel, vulkan_vertex_buffer_block* Block)
+{
+    vulkan_vertex_buffer_block* InsertBefore = Sentinel;
+    for (vulkan_vertex_buffer_block* It = Sentinel->Next; It != Sentinel; It = It->Next)
+    {
+        if (It->VertexOffset > Block->VertexOffset)
+        {
+            InsertBefore = It;
+            break;
+        }
+    }
+
+    Block->Next = InsertBefore;
+    Block->Prev = InsertBefore->Prev;
+    Block->Next->Prev = Block->Prev->Next = Block;
+
+    VerifyListIntegrity(Sentinel);
+}
+
+static void RemoveVertexBlock(vulkan_vertex_buffer_block* Sentinel, vulkan_vertex_buffer_block* Block)
+{
+    Block->Prev->Next = Block->Next;
+    Block->Next->Prev = Block->Prev;
+    Block->Prev = Block->Next = nullptr;
+
+    VerifyListIntegrity(Sentinel);
+}
+
+bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Device, memory_arena* Arena)
 {
     assert(VB);
     memset(VB, 0, sizeof(vulkan_vertex_buffer));
@@ -11,6 +83,7 @@ bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Dev
     assert(VertexCount64 <= 0xFFFFFFFF);
 
     u32 VertexCount = (u32)VertexCount64;
+
 
     VkBufferCreateInfo BufferInfo = 
     {
@@ -52,30 +125,20 @@ bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Dev
             {
                 if (vkBindBufferMemory(Device, Buffer, Memory, 0) == VK_SUCCESS)
                 {
+                    VB->Arena = Arena;
                     VB->MemorySize = Size;
                     VB->Memory = Memory;
                     VB->Buffer = Buffer;
                     VB->MaxVertexCount = VertexCount;
                     
-                    // Init memory blocks
-                    {
-                        VB->BlockCount = 1;
-                        VB->Blocks[0] = 
-                        {
-                            .VertexCount = VB->MaxVertexCount,
-                            .VertexOffset = 0,
-                            .Flags = 0,
-                        };
-                    }
+                    VB->FreeBlockSentinel.Next = VB->FreeBlockSentinel.Prev = &VB->FreeBlockSentinel;
+                    VB->UsedBlockSentinel.Next = VB->UsedBlockSentinel.Prev = &VB->UsedBlockSentinel;
+                    VB->BlockPoolSentinel.Next = VB->BlockPoolSentinel.Prev = &VB->BlockPoolSentinel;
 
-                    // Init allocation queue
-                    VB->FreeAllocationRead = 0;
-                    VB->FreeAllocationWrite = 0;
-                    VB->FreeAllocationCount = vulkan_vertex_buffer::MaxAllocationCount;
-                    for (u32 i = 0; i < vulkan_vertex_buffer::MaxAllocationCount; i++)
-                    {
-                        VB->FreeAllocationIndices[i] = i;
-                    }
+                    vulkan_vertex_buffer_block* FirstFreeBlock = GetBlockFromPool(VB);
+                    FirstFreeBlock->VertexOffset = 0;
+                    FirstFreeBlock->VertexCount = VB->MaxVertexCount;
+                    InsertVertexBlock(&VB->FreeBlockSentinel, FirstFreeBlock);
 
                     Result = true;
                 }
@@ -91,141 +154,59 @@ bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Dev
             }
         }
     }
-
-    return Result;
+    return(Result);
 }
 
-u32 VB_Allocate(vulkan_vertex_buffer* VB, u32 VertexCount)
+vulkan_vertex_buffer_block* VB_Allocate(vulkan_vertex_buffer* VB, u32 VertexCount)
 {
-    assert(VB);
-    
-    u32 Result = INVALID_INDEX_U32;
-    if (VB->FreeAllocationCount)
+    vulkan_vertex_buffer_block* Result = nullptr;
+    for (vulkan_vertex_buffer_block* It = VB->FreeBlockSentinel.Next; 
+         It != &VB->FreeBlockSentinel;
+         It = It->Next)
     {
-        u32 AllocationIndex = VB->FreeAllocationIndices[VB->FreeAllocationRead];
-        vulkan_vertex_buffer_allocation* Allocation = VB->Allocations + AllocationIndex;
-        Allocation->BlockIndex = INVALID_INDEX_U32;
-
-        auto FindAllocation = [&]() -> void
+        if (VertexCount <= It->VertexCount)
         {
-            for (u32 i = 0; i < VB->BlockCount; i++)
-            {
-                vulkan_vertex_buffer_block* Block = VB->Blocks + i;
-                if (!(Block->Flags & VBBLOCK_ALLOCATED_BIT) && (VertexCount <= Block->VertexCount))
-                {
-                    if (Block->VertexCount == VertexCount)
-                    {
-                        Block->Flags |= VBBLOCK_ALLOCATED_BIT;
-                        Allocation->BlockIndex = i;
-                    }
-                    else
-                    {
-                        if (VB->BlockCount != vulkan_vertex_buffer::MaxAllocationCount)
-                        {
-                            vulkan_vertex_buffer_block* NextBlock = &VB->Blocks[VB->BlockCount++];
-                            assert(!(NextBlock->Flags & VBBLOCK_ALLOCATED_BIT));
-
-                            NextBlock->VertexCount = Block->VertexCount - VertexCount;
-                            NextBlock->VertexOffset = Block->VertexOffset + VertexCount;
-                            NextBlock->Flags &= ~VBBLOCK_ALLOCATED_BIT;
-                            NextBlock->AllocationIndex = INVALID_INDEX_U32;
-
-                            Block->VertexCount = VertexCount;
-                            Block->Flags |= VBBLOCK_ALLOCATED_BIT;
-                            Block->AllocationIndex = AllocationIndex;
-
-                            Allocation->BlockIndex = i;
-                        }
-                        else
-                        {
-                            assert(!"Unimplemented code path");
-                        }
-                    }
-
-                    break;
-                }
-            }
-        };
-        FindAllocation();
-
-        // Defragment and try again
-        if (Allocation->BlockIndex == INVALID_INDEX_U32)
-        {
-            VB_Defragment(VB);
-            FindAllocation();
-        }
-
-        if (Allocation->BlockIndex != INVALID_INDEX_U32)
-        {
-            VB->FreeAllocationRead++;
-            VB->FreeAllocationRead %= vulkan_vertex_buffer::MaxAllocationCount;
-            VB->FreeAllocationCount--;
-
-            VB->MemoryUsage += (u64)VertexCount * sizeof(terrain_vertex);
-
-            Result = AllocationIndex;
-        }
-        else
-        {
-            assert(!"Fatal error");
+            Result = It;
+            break;
         }
     }
-    return Result;
+
+    if (Result)
+    {
+        RemoveVertexBlock(&VB->FreeBlockSentinel, Result);
+        if (Result->VertexCount != VertexCount)
+        {
+            vulkan_vertex_buffer_block* NewFreeBlock = GetBlockFromPool(VB);
+            NewFreeBlock->VertexCount = Result->VertexCount - VertexCount;
+            NewFreeBlock->VertexOffset = Result->VertexOffset + VertexCount;
+            InsertVertexBlock(&VB->FreeBlockSentinel, NewFreeBlock);
+
+            Result->VertexCount = VertexCount;
+        }
+        InsertVertexBlock(&VB->UsedBlockSentinel, Result);
+        VB->MemoryUsage += VertexCount * sizeof(terrain_vertex);
+    }
+    else
+    {
+        Assert(!"Failed to find sufficient vertex block");
+    }
+    return(Result);
 }
 
-void VB_Free(vulkan_vertex_buffer* VB, u32 AllocationIndex)
+void VB_Free(vulkan_vertex_buffer* VB, vulkan_vertex_buffer_block* Block)
 {
-    assert(VB);
-    
-    if (AllocationIndex != INVALID_INDEX_U32)
-    {
-        assert(AllocationIndex < vulkan_vertex_buffer::MaxAllocationCount);
-        
-        vulkan_vertex_buffer_block* Block = VB->Blocks + VB->Allocations[AllocationIndex].BlockIndex;
-
-        Block->Flags &= ~VBBLOCK_ALLOCATED_BIT;
-        Block->AllocationIndex = INVALID_INDEX_U32;
-
-        VB->FreeAllocationIndices[VB->FreeAllocationWrite++] = AllocationIndex;
-        VB->FreeAllocationWrite %= vulkan_vertex_buffer::MaxAllocationCount;
-        VB->FreeAllocationCount++;
-
-        VB->MemoryUsage -= (u64)Block->VertexCount * sizeof(terrain_vertex);
-    }
+    VB->MemoryUsage -= Block->VertexCount * sizeof(terrain_vertex);
+    RemoveVertexBlock(&VB->UsedBlockSentinel, Block);
+    InsertVertexBlock(&VB->FreeBlockSentinel, Block);
 }
 
 void VB_Defragment(vulkan_vertex_buffer* VB)
 {
-    TIMED_FUNCTION();
-
-    assert(VB);
-
-    u32 FreeBlockCount = 0;
-    u32 FreeBlocks[VB->MaxAllocationCount];
-    u32 AllocatedBlockCount = 0;
-    u32 AllocatedBlocks[VB->MaxAllocationCount];
-
-    for (u32 i = 0; i < VB->BlockCount; i++)
-    {
-        vulkan_vertex_buffer_block* Block = VB->Blocks + i;
-        if (Block->Flags & VBBLOCK_ALLOCATED_BIT)
-        {
-            AllocatedBlocks[AllocatedBlockCount++] = i;
-        }
-        else
-        {
-            FreeBlocks[FreeBlockCount++] = i;
-        }
-    }
-
-    assert(!"Unimplemented code path");
+    Assert(!"Unimplemented code path");
 }
 
-u64 VB_GetAllocationMemoryOffset(const vulkan_vertex_buffer* VB, u32 AllocationIndex)
+u64 VB_GetAllocationMemoryOffset(vulkan_vertex_buffer_block* Block)
 {
-    assert(VB);
-
-    u32 BlockIndex = VB->Allocations[AllocationIndex].BlockIndex;
-    u64 Result = (u64)VB->Blocks[BlockIndex].VertexOffset * sizeof(terrain_vertex);
-    return Result;
+    u64 Result = Block->VertexOffset * sizeof(terrain_vertex);
+    return(Result);
 }

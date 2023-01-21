@@ -206,7 +206,7 @@ bool Game_Initialize(game_memory* Memory)
     Game->Renderer = PushStruct<renderer>(&Game->PrimaryArena);
     if (Game->Renderer)
     {
-        if (!Renderer_Initialize(Game->Renderer, &Game->TransientArena))
+        if (!Renderer_Initialize(Game->Renderer, &Game->PrimaryArena))
         {
             return false;
         }
@@ -229,7 +229,6 @@ bool Game_Initialize(game_memory* Memory)
         return false;
     }
     
-    DebugPrint("Game init done.\n");
     return true;
 }
 

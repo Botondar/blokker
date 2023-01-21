@@ -561,7 +561,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     }
 #endif
 
-    static constexpr u32 WorkerCount = 1;
+    static constexpr u32 WorkerCount = 3;
     Win32State.WorkerSemaphore = CreateSemaphoreA(nullptr, 0, WorkerCount, nullptr);
     if (!Win32State.WorkerSemaphore || Win32State.WorkerSemaphore == INVALID_HANDLE_VALUE)
     {
