@@ -109,6 +109,9 @@ struct world
     static constexpr u64 VertexBufferCount = VertexBufferSize / sizeof(terrain_vertex);
     static_assert((VertexBufferSize % sizeof(terrain_vertex)) == 0);
 
+    b32 IsLastMeshValid;
+    u64 LastMeshFirstIndex;
+    u64 LastMeshOnePastLastIndex;
     u64 VertexBufferReadIndex;
     u64 VertexBufferWriteIndex;
     terrain_vertex* VertexBuffer;

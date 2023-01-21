@@ -837,18 +837,38 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
                     }
                     else
                     {
-                        assert(!"Upload failed");
+                        Assert(!"Upload failed");
                         VB_Free(&World->Renderer->VB, Chunk->VertexBlock);
                         Chunk->VertexBlock = nullptr;
                     }
 
+                    // NOTE(boti): In rare cases it's possible for the meshes to be written into the vertex ring buffer
+                    //             in a different order than the one they arrive in in the ChunkWorkResults queue.
+                    //             We maintain the information of the last mesh for this reason, which seems sufficient for the 99.9%
+                    //             case because this race condition only happens when two (or more) threads finish meshing at the exact same
+                    //             time, but if it does become an issue later on, we could maintain a small buffer of the last meshes.
                     if (World->VertexBufferReadIndex == Work->Mesh.FirstIndex)
                     {
                         AtomicExchange(&World->VertexBufferReadIndex, Work->Mesh.OnePastLastIndex);
+                        if (World->IsLastMeshValid)
+                        {
+                            if (World->LastMeshFirstIndex == World->VertexBufferReadIndex)
+                            {
+                                AtomicExchange(&World->VertexBufferReadIndex, World->LastMeshOnePastLastIndex);
+                                World->IsLastMeshValid = false;
+                            }
+                            else
+                            {
+                                Assert(!"Too many out of order mesh chunk works");
+                            }
+                        }
                     }
                     else
                     {
-                        assert(!"Unimplemented code path");
+                        Assert(!World->IsLastMeshValid);
+                        World->IsLastMeshValid = true;
+                        World->LastMeshFirstIndex = Work->Mesh.FirstIndex;
+                        World->LastMeshOnePastLastIndex = Work->Mesh.OnePastLastIndex;
                     }
                 }
                 else
