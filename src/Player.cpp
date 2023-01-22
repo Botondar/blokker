@@ -183,7 +183,7 @@ void Update(player* Player, world* World, f32 dt)
                     int MinCoord;
                     if (!Intersect(PlayerBox, BlockBox, Overlap, MinCoord))
                     {
-                        SetVoxelTypeAt(World, PlacementP, VOXEL_TREE_TRUNK);
+                        SetVoxelTypeAt(World, PlacementP, VOXEL_LEAVES);
                         Player->TimeSinceLastBlockPlacement = 0.0f;
                     }
                 }

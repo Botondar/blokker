@@ -72,6 +72,7 @@ constexpr u16 VOXEL_STONE = 2;
 constexpr u16 VOXEL_COAL = 3;
 constexpr u16 VOXEL_IRON = 4;
 constexpr u16 VOXEL_TREE_TRUNK = 5;
+constexpr u16 VOXEL_LEAVES = 6;
 
 enum voxel_flags : u32
 {
@@ -94,7 +95,8 @@ static const voxel_desc VoxelDescs[] =
     { VOXEL_FLAGS_SOLID,    { 3, 3, 3, 3, 3, 3 } },
     { VOXEL_FLAGS_SOLID,    { 4, 4, 4, 4, 4, 4 } },
     { VOXEL_FLAGS_SOLID,    { 5, 5, 5, 5, 5, 5 } },
-    { VOXEL_FLAGS_SOLID,    { 6, 6, 6, 6, 7, 7 } }
+    { VOXEL_FLAGS_SOLID,    { 6, 6, 6, 6, 7, 7 } },
+    { VOXEL_FLAGS_SOLID,    { 8, 8, 8, 8, 8, 8 } },
 };
 static constexpr u32 VoxelDescCount = CountOf(VoxelDescs);
 
