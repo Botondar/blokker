@@ -77,7 +77,7 @@ static void Game_Update(game_state* Game, game_io* IO)
             }
 
             ImGui::Checkbox("Debug camera", &Game->World->Debug.IsDebugCameraEnabled);
-            ImGui::Text("DebugCameraP: { %.1f, %.1f, %.1f }", 
+            ImGui::Text("DebugCameraP: { %.1f, %.1f, %.1f }",
                 Game->World->Debug.DebugCamera.P.x,
                 Game->World->Debug.DebugCamera.P.y,
                 Game->World->Debug.DebugCamera.P.z);

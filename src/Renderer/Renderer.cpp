@@ -936,6 +936,8 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             "texture/stone_side.bmp",
             "texture/coal_side.bmp",
             "texture/iron_side.bmp",
+            "texture/trunk_side.bmp",
+            "texture/trunk_top.bmp",
         };
         constexpr u32 TextureCount = CountOf(TexturePaths);
         static_assert(TextureCount <= TexMaxArrayCount);
