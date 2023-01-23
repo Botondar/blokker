@@ -157,6 +157,11 @@ struct renderer
 bool Renderer_ResizeRenderTargets(renderer* Renderer);
 bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena);
 
+// NOTE(boti): Texture data must be RGBA8 format
+bool Renderer_CreateVoxelTextureArray(renderer* Renderer, 
+                                      u32 Width, u32 Height, 
+                                      u32 MipCount, u32 ArrayCount,
+                                      const u8* Data);
 bool Renderer_CreateImGuiTexture(renderer* Renderer, u32 Width, u32 Height, const u8* Data);
 
 renderer_frame_params* Renderer_NewFrame(renderer* Renderer);

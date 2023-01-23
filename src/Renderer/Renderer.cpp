@@ -798,301 +798,6 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         }
     }
 
-    // Textures
-    {
-        constexpr u32 TexWidth = 16;
-        constexpr u32 TexHeight = 16;
-        constexpr u32 TexMaxArrayCount = 64;
-        constexpr u32 TexMipCount = 4;
-        
-        // Pixel count for all mip levels
-        u32 TexturePixelCount = 0;
-        {
-            u32 CurrentWidth = TexWidth;
-            u32 CurrentHeight = TexHeight;
-            for (u32 i = 0; i < TexMipCount; i++)
-            {
-                TexturePixelCount += CurrentWidth*CurrentHeight;
-                CurrentWidth /= 2;
-                CurrentHeight /= 2;
-            }
-        }
-        u64 ArenaSave = Arena->Used;
-        u32* PixelBuffer = PushArray<u32>(Arena, TexWidth*TexHeight*TexMaxArrayCount);
-        u32* PixelBufferAt = PixelBuffer;
-        struct image
-        {
-            u32 Width;
-            u32 Height;
-            VkFormat Format;
-            u32* Pixels;
-        };
-
-        auto LoadBMP = [&PixelBufferAt, &Arena](const char* Path, image* Image) -> bool
-        {
-            bool Result = false;
-
-            u64 ArenaSave = Arena->Used;
-            buffer Buffer = LoadEntireFile(Path, Arena);
-            if (Buffer.Data)
-            {
-                bmp_file* Bitmap = (bmp_file*)Buffer.Data;
-                if ((Bitmap->File.Tag == BMP_FILE_TAG) && (Bitmap->File.Offset == offsetof(bmp_file, Data)))
-                {
-                    if ((Bitmap->Info.HeaderSize == sizeof(bmp_info_header)) &&
-                        (Bitmap->Info.Planes == 1) &&
-                        (Bitmap->Info.BitCount == 24) &&
-                        (Bitmap->Info.Compression == BMP_COMPRESSION_NONE))
-                    {
-                        Image->Width = (u32)Bitmap->Info.Width;
-                        Image->Height = (u32)Abs(Bitmap->Info.Height); // TODO: flip on negative height
-                        Image->Format = VK_FORMAT_R8G8B8A8_SRGB;
-
-                        assert((Image->Width == TexWidth) && (Image->Height == TexHeight));
-
-                        u32 PixelCount = Image->Width * Image->Height;
-                        Image->Pixels = PixelBufferAt;
-                        PixelBufferAt += PixelCount;
-
-                        if (Image->Pixels)
-                        {
-                            u8* Src = Bitmap->Data;
-                            u32* Dest = Image->Pixels;
-
-                            for (u32 i = 0; i < PixelCount; i++)
-                            {
-                                u8 B = *Src++;
-                                u8 G = *Src++;
-                                u8 R = *Src++;
-
-                                *Dest++ = PackColor(R, G, B);
-                            }
-
-                            // Generate mips
-                            {
-                                u32* PrevMipLevel = Image->Pixels;
-                                
-                                u32 PrevWidth = TexWidth;
-                                u32 PrevHeight = TexHeight;
-                                u32 CurrentWidth = TexWidth / 2;
-                                u32 CurrentHeight = TexHeight / 2;
-                                for (u32 i = 0; i < TexMipCount - 1; i++)
-                                {
-                                    u32 MipSize = CurrentWidth*CurrentHeight;
-                                    u32* CurrentMipLevel = PixelBufferAt;
-                                    PixelBufferAt += MipSize;
-                                    
-                                    for (u32 y = 0; y < CurrentHeight; y++)
-                                    {
-                                        for (u32 x = 0; x < CurrentWidth; x++)
-                                        {
-                                            u32 Index00 = (2*x + 0) + (2*y + 0)*PrevWidth;
-                                            u32 Index10 = (2*x + 1) + (2*y + 0)*PrevWidth;
-                                            u32 Index01 = (2*x + 0) + (2*y + 1)*PrevWidth;
-                                            u32 Index11 = (2*x + 1) + (2*y + 1)*PrevWidth;
-
-                                            u32 c00 = PrevMipLevel[Index00];
-                                            u32 c10 = PrevMipLevel[Index10];
-                                            u32 c01 = PrevMipLevel[Index01];
-                                            u32 c11 = PrevMipLevel[Index11];
-
-                                            vec3 C00 = UnpackColor3(c00);
-                                            vec3 C10 = UnpackColor3(c10);
-                                            vec3 C01 = UnpackColor3(c01);
-                                            vec3 C11 = UnpackColor3(c11);
-
-                                            vec3 Out = 0.25f * (C00 + C10 + C01 + C11);
-
-                                            u32 OutIndex = x + y*CurrentWidth;
-                                            CurrentMipLevel[OutIndex] = PackColor(Out);
-                                        }
-                                    }
-
-                                    PrevMipLevel = CurrentMipLevel;
-
-                                    PrevWidth = CurrentWidth;
-                                    PrevHeight = CurrentHeight;
-
-                                    CurrentWidth /= 2;
-                                    CurrentHeight /= 2;
-                                }
-
-                                Result = true;
-                            }
-                        }
-                    }
-                }
-                Arena->Used = ArenaSave; // Free the allocation for the loaded file
-            }
-
-            return Result;
-        };
-
-        static const char* TexturePaths[] = 
-        {
-            "texture/ground_side.bmp",
-            "texture/ground_top.bmp",
-            "texture/ground_bottom.bmp",
-            "texture/stone_side.bmp",
-            "texture/coal_side.bmp",
-            "texture/iron_side.bmp",
-            "texture/trunk_side.bmp",
-            "texture/trunk_top.bmp",
-            "texture/leaves_side.bmp",
-        };
-        constexpr u32 TextureCount = CountOf(TexturePaths);
-        static_assert(TextureCount <= TexMaxArrayCount);
-        image Images[TextureCount];
-        for (u32 i = 0; i < TextureCount; i++)
-        {
-            if (!LoadBMP(TexturePaths[i], &Images[i]))
-            {
-                return false;
-            }
-        }
-
-        u32 TotalTexMemorySize = (u32)(PixelBufferAt - PixelBuffer) * sizeof(u32);
-
-        {
-            VkImageCreateInfo CreateInfo = 
-            {
-                .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT,
-                .imageType = VK_IMAGE_TYPE_2D,
-                .format = VK_FORMAT_R8G8B8A8_UNORM,
-                .extent = { TexWidth, TexHeight, 1 },
-                .mipLevels = TexMipCount,
-                .arrayLayers = TextureCount,
-                .samples = VK_SAMPLE_COUNT_1_BIT,
-                .tiling = VK_IMAGE_TILING_OPTIMAL,
-                .usage = VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-                .queueFamilyIndexCount = 0,
-                .pQueueFamilyIndices = nullptr,
-                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-            };
-
-            VkImage Image = VK_NULL_HANDLE;
-            if (vkCreateImage(Renderer->RenderDevice.Device, &CreateInfo, nullptr, &Image) == VK_SUCCESS)
-            {
-                VkMemoryRequirements MemoryRequirements = {};
-                vkGetImageMemoryRequirements(Renderer->RenderDevice.Device, Image, &MemoryRequirements);
-
-                u32 MemoryType = 0;
-                if (BitScanForward(&MemoryType, MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.DeviceLocal))
-                {
-                    VkMemoryAllocateInfo AllocInfo = 
-                    {
-                        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                        .pNext = nullptr,
-                        .allocationSize = MemoryRequirements.size,
-                        .memoryTypeIndex = MemoryType,
-                    };
-
-                    VkDeviceMemory Memory;
-                    if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
-                    {
-                        if (vkBindImageMemory(Renderer->RenderDevice.Device, Image, Memory, 0) == VK_SUCCESS)
-                        {
-                            if (StagingHeap_CopyImage(&Renderer->StagingHeap, 
-                                Renderer->RenderDevice.TransferQueue,
-                                Renderer->TransferCmdBuffer,
-                                Image, 
-                                TexWidth, TexHeight, TexMipCount, TextureCount,
-                                VK_FORMAT_R8G8B8A8_UNORM,
-                                PixelBuffer))
-                            {
-                                VkImageViewCreateInfo ViewInfo = 
-                                {
-                                    .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                                    .pNext = nullptr,
-                                    .flags = 0,
-                                    .image = Image,
-                                    .viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-                                    .format = VK_FORMAT_R8G8B8A8_SRGB,
-                                    .components = {},
-                                    .subresourceRange = 
-                                    {
-                                        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                                        .baseMipLevel = 0,
-                                        .levelCount = TexMipCount,
-                                        .baseArrayLayer = 0,
-                                        .layerCount = TextureCount,
-                                    },
-                                };
-
-                                VkImageView ImageView = VK_NULL_HANDLE;
-                                if (vkCreateImageView(Renderer->RenderDevice.Device, &ViewInfo, nullptr, &ImageView) == VK_SUCCESS)
-                                {
-                                    VkDescriptorImageInfo ImageInfo = 
-                                    {
-                                        .sampler = VK_NULL_HANDLE,
-                                        .imageView = ImageView,
-                                        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                                    };
-                                    VkWriteDescriptorSet DescriptorWrite = 
-                                    {
-                                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                                        .pNext = nullptr,
-                                        .dstSet = Renderer->DescriptorSet,
-                                        .dstBinding = 0,
-                                        .dstArrayElement = 0,
-                                        .descriptorCount = 1,
-                                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                                        .pImageInfo = &ImageInfo,
-                                        .pBufferInfo = nullptr,
-                                        .pTexelBufferView = nullptr,
-                                    };
-                                    vkUpdateDescriptorSets(Renderer->RenderDevice.Device, 1, &DescriptorWrite, 0, nullptr);
-
-                                    Renderer->Tex = Image;
-                                    Renderer->TexView = ImageView;
-                                    Renderer->TexMemory = Memory;
-                                }
-                                else
-                                {
-                                    vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
-                                    vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
-                                    return false;
-                                }
-
-                            }
-                            else
-                            {
-                                vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
-                                vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
-                                return false;
-                            }
-                        }
-                        else
-                        {
-                            vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
-                            vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
-                            return false;
-                        }
-                    }
-                    else
-                    {
-                        vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
-                        return false;
-                    }
-                }
-                else
-                {
-                    vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
-                    return false;
-                }
-            }
-            else
-            {
-                return false;
-            }
-        }
-
-        Arena->Used = ArenaSave;
-    }
-
     // Main pipeline
     {
         // Create pipeline layout
@@ -2164,6 +1869,133 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
     }
 
     return true;
+}
+
+bool Renderer_CreateVoxelTextureArray(renderer* Renderer, 
+                                      u32 Width, u32 Height, 
+                                      u32 MipCount, u32 ArrayCount,
+                                      const u8* Data)
+{
+    bool Result = false;
+
+    Assert(Renderer->Tex == VK_NULL_HANDLE &&
+           Renderer->TexView == VK_NULL_HANDLE &&
+           Renderer->TexMemory == VK_NULL_HANDLE);
+
+    VkFormat Format = VK_FORMAT_R8G8B8A8_SRGB;
+
+    VkImageCreateInfo ImageInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = Format,
+        .extent = { Width, Height, 1 },
+        .mipLevels = MipCount,
+        .arrayLayers = ArrayCount,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = nullptr,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+
+    };
+    VkImage Image = VK_NULL_HANDLE;
+    if (vkCreateImage(Renderer->RenderDevice.Device, &ImageInfo, nullptr, &Image) == VK_SUCCESS)
+    {
+        VkMemoryRequirements MemoryRequirements = {};
+        vkGetImageMemoryRequirements(Renderer->RenderDevice.Device, Image, &MemoryRequirements);
+
+        u32 MemoryTypes = Renderer->RenderDevice.MemoryTypes.DeviceLocal;
+        MemoryTypes &= MemoryRequirements.memoryTypeBits;
+
+        u32 MemoryTypeIndex = 0;
+        if (BitScanForward(&MemoryTypeIndex, MemoryTypes))
+        {
+            VkMemoryAllocateInfo AllocInfo =
+            {
+                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                .pNext = nullptr,
+                .allocationSize = MemoryRequirements.size,
+                .memoryTypeIndex = MemoryTypeIndex,
+            };
+
+            VkDeviceMemory Memory = VK_NULL_HANDLE;
+            if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
+            {
+                if (vkBindImageMemory(Renderer->RenderDevice.Device, Image, Memory, 0) == VK_SUCCESS)
+                {
+                    VkImageViewCreateInfo ViewInfo = 
+                    {
+                        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                        .pNext = nullptr,
+                        .flags = 0,
+                        .image = Image,
+                        .viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+                        .format = Format,
+                        .components = {},
+                        .subresourceRange = 
+                        {
+                            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                            .baseMipLevel = 0,
+                            .levelCount = MipCount,
+                            .baseArrayLayer = 0,
+                            .layerCount = ArrayCount,
+                        },
+                    };
+                    VkImageView View = VK_NULL_HANDLE;
+                    if (vkCreateImageView(Renderer->RenderDevice.Device, &ViewInfo, nullptr, &View) == VK_SUCCESS)
+                    {
+                        if (StagingHeap_CopyImage(
+                            &Renderer->StagingHeap, Renderer->RenderDevice.TransferQueue,
+                            Renderer->TransferCmdBuffer,
+                            Image,
+                            Width, Height, MipCount, ArrayCount, Format, Data))
+                        {
+                            VkDescriptorImageInfo ImageDescriptor = 
+                            {
+                                .sampler = VK_NULL_HANDLE,
+                                .imageView = View,
+                                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            };
+                            VkWriteDescriptorSet DescriptorWrite = 
+                            {
+                                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                                .pNext = nullptr,
+                                .dstSet = Renderer->DescriptorSet,
+                                .dstBinding = 0,
+                                .dstArrayElement = 0,
+                                .descriptorCount = 1,
+                                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                                .pImageInfo = &ImageDescriptor,
+                                .pBufferInfo = nullptr,
+                                .pTexelBufferView = nullptr,
+                            };
+                            vkUpdateDescriptorSets(Renderer->RenderDevice.Device, 1, &DescriptorWrite, 0, nullptr);
+
+                            Renderer->Tex = Image;
+                            Renderer->TexView = View;
+                            Renderer->TexMemory = Memory;
+
+                            Memory = VK_NULL_HANDLE;
+                            View = VK_NULL_HANDLE;
+                            Image = VK_NULL_HANDLE;
+
+                            Result = true;
+                        }
+                        vkDestroyImageView(Renderer->RenderDevice.Device, View, nullptr);
+                    }
+                }
+            }
+            vkFreeMemory(Renderer->RenderDevice.Device, Memory, nullptr);
+        }
+        vkDestroyImage(Renderer->RenderDevice.Device, Image, nullptr);
+    }
+
+    return(Result);
 }
 
 bool Renderer_CreateImGuiTexture(renderer* Renderer, u32 Width, u32 Height, const u8* Data)
