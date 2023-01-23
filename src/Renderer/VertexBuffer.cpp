@@ -198,6 +198,23 @@ void VB_Free(vulkan_vertex_buffer* VB, vulkan_vertex_buffer_block* Block)
     VB->MemoryUsage -= Block->VertexCount * sizeof(terrain_vertex);
     RemoveVertexBlock(&VB->UsedBlockSentinel, Block);
     InsertVertexBlock(&VB->FreeBlockSentinel, Block);
+
+    for (vulkan_vertex_buffer_block* It = VB->FreeBlockSentinel.Next;
+         It != &VB->FreeBlockSentinel;
+         It = It->Next)
+    {
+        while (It->VertexOffset + It->VertexCount == It->Next->VertexOffset)
+        {
+            vulkan_vertex_buffer_block* Next = It->Next;
+            It->VertexCount += It->Next->VertexCount;
+            It->Next = It->Next->Next;
+            It->Next->Prev = It;
+
+            Next->Prev = &VB->BlockPoolSentinel;
+            Next->Next = VB->BlockPoolSentinel.Next;
+            Next->Prev->Next = Next->Next->Prev = Next;
+        }
+    }
 }
 
 void VB_Defragment(vulkan_vertex_buffer* VB)
