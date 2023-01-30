@@ -9,11 +9,31 @@ typedef function<void(memory_arena*)> work_function;
 
 // Work queue is an opaque type to the game
 struct platform_work_queue;
-void AddWork(platform_work_queue* Queue, work_function Work);
-void WaitForAllWork(platform_work_queue* Queue);
+
+typedef void (add_work_func)(platform_work_queue* Queue, work_function Function);
+typedef void (wait_for_all_work_func)(platform_work_queue* Queue);
+typedef void (debug_print_func)(const char* Format, ...);
+typedef void (log_msg_func)(const char* Function, int Line, const char* Format, ...);
+typedef buffer (load_entire_file_func)(const char* Path, memory_arena* Arena);
+typedef VkSurfaceKHR (create_vulkan_surface_func)(VkInstance VulkanInstance);
+typedef bool (toggle_cursor_func)();
+typedef s64 (get_performance_counter_func)();
+typedef f32 (get_elapsed_time_func)(s64 Start, s64 End);
+typedef f32 (get_time_from_counter_func)(s64 Counter);
 
 struct platform_api
 {
+    add_work_func* AddWork;
+    wait_for_all_work_func* WaitForAllWork;
+    debug_print_func* DebugPrint;
+    log_msg_func* LogMsg;
+    load_entire_file_func* LoadEntireFile;
+    create_vulkan_surface_func* CreateVulkanSurface;
+    toggle_cursor_func* ToggleCursor;
+    get_performance_counter_func* GetPerformanceCounter;
+    get_elapsed_time_func* GetElapsedTime;
+    get_time_from_counter_func* GetTimeFromCounter;
+
     platform_work_queue* HighPriorityQueue;
     platform_work_queue* LowPriorityQueue;
 };
@@ -75,30 +95,5 @@ struct game_io
     bool LeftAlt;
 };
 
-//
-// Global platform API
-// TODO(boti): move these to game_memory::platform_api
-//
-void DebugPrint_(const char* Format, ...);
-
-#if DEVELOPER
-#define DebugPrint(...) DebugPrint_(__VA_ARGS__)
-#else
-#define DebugPrint(...)
-#endif
-
-void PlatformLog_(const char* Function, int Line, const char* Format, ...);
-#define LogMsg(fmt, ...) PlatformLog_(__FUNCTION__, __LINE__, fmt, __VA_ARGS__)
-
 // TODO: runtime variable?
 constexpr u64 PLATFORM_PAGE_SIZE = 4096;
-
-buffer LoadEntireFile(const char* Path, memory_arena* Arena);
-
-VkSurfaceKHR CreateVulkanSurface(VkInstance vkInstance);
-
-bool ToggleCursor();
-
-s64 GetPerformanceCounter();
-f32 GetElapsedTime(s64 Start, s64 End);
-f32 GetTimeFromCounter(s64 Counter);

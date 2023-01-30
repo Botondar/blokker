@@ -112,7 +112,7 @@ void profiler::DrawEntry(
 {
     ImGui::TreePush(Entry->Name);
 
-    f32 Time = GetTimeFromCounter(Entry->CounterSum);
+    f32 Time = Platform.GetTimeFromCounter(Entry->CounterSum);
     u64 ExtraLength = Entry->Extra ? strlen(Entry->Extra) : 0;
     ImGui::Text("%s%.*s: %.2fms (%.1f%%) | Called %u times",
         Entry->Name, ExtraLength, Entry->Extra,
@@ -136,7 +136,7 @@ void profiler::DoGUI()
     if (Stats && Stats->EntryPoolAt)
     {
         const profiler_entry* Root = Stats->EntryPool + Stats->EntryStack[0];
-        f32 Time = GetTimeFromCounter(Root->CounterSum);
+        f32 Time = Platform.GetTimeFromCounter(Root->CounterSum);
 
         DrawEntry(Stats, Root, Time);
     }
@@ -148,9 +148,9 @@ void profiler::PrintFrom(const frame_statistics* Stats, const profiler_entry* En
 {
     constexpr size_t PaddingMax = 64;
 
-    f32 Time = GetTimeFromCounter(Entry->CounterSum);
+    f32 Time = Platform.GetTimeFromCounter(Entry->CounterSum);
     u64 ExtraLength = Entry->Extra ? strlen(Entry->Extra) : 0;
-    DebugPrint("%.*s%s%.*s: || %.2fms (%.1f%%) || x%lli\n",
+    Platform.DebugPrint("%.*s%s%.*s: || %.2fms (%.1f%%) || x%lli\n",
         PaddingAt, Padding, 
         Entry->Name, ExtraLength, Entry->Extra,
         1000.0f * Time, 100.0f * Time / ParentTime, Entry->CallCount);
@@ -180,10 +180,10 @@ void profiler::Print(f32 MinTime) const
             memset(Padding, '-', PaddingMax);
 
             const profiler_entry* Root = Stats->EntryPool + Stats->EntryStack[0];
-            f32 RootTime = GetTimeFromCounter(Root->CounterSum); // Special case for root so we get 100% time
+            f32 RootTime = Platform.GetTimeFromCounter(Root->CounterSum); // Special case for root so we get 100% time
             if (RootTime >= MinTime)
             {
-                DebugPrint("======================\n");
+                Platform.DebugPrint("======================\n");
                 PrintFrom(Stats, Root, RootTime, Padding, PaddingAt);
             }
         }
@@ -196,12 +196,12 @@ void profiler::Print(f32 MinTime) const
 
 timed_block::timed_block(const char* Name, const char* Extra) : Name(Name), Extra(Extra)
 {
-    StartCounter = GetPerformanceCounter();
+    StartCounter = Platform.GetPerformanceCounter();
     GlobalProfiler.Begin(Name, Extra);
 }
 
 timed_block::~timed_block()
 {
-    EndCounter = GetPerformanceCounter();
+    EndCounter = Platform.GetPerformanceCounter();
     GlobalProfiler.End(Name, Extra, EndCounter - StartCounter);
 }

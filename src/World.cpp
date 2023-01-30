@@ -242,7 +242,7 @@ static chunk* ReserveChunk(world* World, vec2i P)
     {
         if (Result->Flags & CHUNK_STATE_GENERATED_BIT)
         {
-            DebugPrint("WARNING: Evicting chunk { %d, %d }\n", Result->P.x, Result->P.y);
+            Platform.DebugPrint("WARNING: Evicting chunk { %d, %d }\n", Result->P.x, Result->P.y);
 
             if (Result->OldVertexBlock)
             {
@@ -537,7 +537,7 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
             ((Chunk->Flags & CHUNK_STATE_GENERATED_BIT) == 0))
         {
             Chunk->InGenerationQueue = true;
-            AddWork(Platform.LowPriorityQueue,
+            Platform.AddWork(Platform.LowPriorityQueue,
                 [Chunk, World](memory_arena* Arena)
                 {
                     Generate(Chunk, World);
@@ -581,7 +581,7 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
                 Platform.HighPriorityQueue : Platform.LowPriorityQueue;
 
             Chunk->InMeshQueue = true;
-            AddWork(Queue,
+            Platform.AddWork(Queue,
                 [Chunk, World](memory_arena* Arena)
                 {
                     chunk_mesh Mesh = BuildMesh(Chunk, World, Arena);

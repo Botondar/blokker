@@ -240,7 +240,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         return false;
     }
 
-    Renderer->Surface = CreateVulkanSurface(Renderer->RenderDevice.Instance);
+    Renderer->Surface = Platform.CreateVulkanSurface(Renderer->RenderDevice.Instance);
     if (Renderer->Surface == VK_NULL_HANDLE)
     {
         return false;
@@ -578,8 +578,8 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         VkShaderModule VSModule, FSModule;
         {
             u64 ArenaSave = Arena->Used;
-            buffer VSBin = LoadEntireFile("shader/shader.vs", Arena);
-            buffer FSBin = LoadEntireFile("shader/shader.fs", Arena);
+            buffer VSBin = Platform.LoadEntireFile("shader/shader.vs", Arena);
+            buffer FSBin = Platform.LoadEntireFile("shader/shader.fs", Arena);
             
             assert((VSBin.Size > 0) && (FSBin.Size > 0));
             
@@ -1014,8 +1014,8 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         VkShaderModule VSModule, FSModule;
         {
             u64 ArenaSave = Arena->Used;
-            buffer VSBin = LoadEntireFile("shader/imguishader.vs", Arena);
-            buffer FSBin = LoadEntireFile("shader/imguishader.fs", Arena);
+            buffer VSBin = Platform.LoadEntireFile("shader/imguishader.vs", Arena);
+            buffer FSBin = Platform.LoadEntireFile("shader/imguishader.fs", Arena);
             
             assert((VSBin.Size > 0) && (FSBin.Size > 0));
             
@@ -1329,8 +1329,8 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         VkShaderModule VSModule, FSModule;
         {
             u64 ArenaSave = Arena->Used;
-            buffer VSBin = LoadEntireFile("shader/imshader.vs", Arena);
-            buffer FSBin = LoadEntireFile("shader/imshader.fs", Arena);
+            buffer VSBin = Platform.LoadEntireFile("shader/imshader.vs", Arena);
+            buffer FSBin = Platform.LoadEntireFile("shader/imshader.fs", Arena);
             
             assert((VSBin.Size > 0) && (FSBin.Size > 0));
             
@@ -2876,7 +2876,7 @@ void Renderer_RenderImGui(renderer_frame_params* Frame)
         }
         else
         {
-            DebugPrint("WARNING: not enough memory for ImGui\n");
+            Platform.DebugPrint("WARNING: not enough memory for ImGui\n");
         }
     }
 }

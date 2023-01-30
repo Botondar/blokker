@@ -57,7 +57,9 @@ struct win32_state
 };
 static win32_state Win32State;
 
-static DWORD __stdcall WorkerThread(void* Param)
+static void WinDebugPrint(const char* Format, ...);
+
+static DWORD __stdcall WinWorkerThread(void* Param)
 {
     HANDLE Semaphore = Win32State.WorkerSemaphore;
     platform_work_queue* HighPriorityQueue = &Win32State.HighPriorityQueue;
@@ -68,7 +70,7 @@ static DWORD __stdcall WorkerThread(void* Param)
     Arena.Base = (u8*)VirtualAlloc(nullptr, Arena.Size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
     if (!Arena.Base)
     {
-        DebugPrint("Failed to allocate thread memory");
+        WinDebugPrint("Failed to allocate thread memory");
         ExitProcess(1);
     }
 
@@ -109,7 +111,7 @@ static DWORD __stdcall WorkerThread(void* Param)
     //return(0);
 }
 
-void AddWork(platform_work_queue* Queue, work_function Work)
+static void WinAddWork(platform_work_queue* Queue, work_function Work)
 {
     u32 WriteIndex = Queue->WriteIndex;
     while (WriteIndex - Queue->ReadIndex >= Queue->MaxWorkCount)
@@ -125,7 +127,7 @@ void AddWork(platform_work_queue* Queue, work_function Work)
     ReleaseSemaphore(Win32State.WorkerSemaphore, 1, nullptr);
 }
 
-void WaitForAllWork(platform_work_queue* Queue)
+static void WinWaitForAllWork(platform_work_queue* Queue)
 {
     while (Queue->Completion != Queue->CompletionGoal)
     {
@@ -157,7 +159,7 @@ static bool SetClipCursorToWindow(bool Clip)
     return Clip;
 }
 
-bool ToggleCursor()
+static bool WinToggleCursor()
 {
     Win32State.IsCursorDisabled = !Win32State.IsCursorDisabled;
     SetClipCursorToWindow(Win32State.IsCursorDisabled);
@@ -165,26 +167,26 @@ bool ToggleCursor()
     return !Win32State.IsCursorDisabled;
 }
 
-s64 GetPerformanceCounter()
+static s64 WinGetPerformanceCounter()
 {
     s64 Result;
     QueryPerformanceCounter((LARGE_INTEGER*)&Result);
     return Result;
 }
 
-f32 GetElapsedTime(s64 Start, s64 End)
+static f32 WinGetElapsedTime(s64 Start, s64 End)
 {
     f32 Result = (End - Start) / (f32)Win32State.PerformanceFrequency;
     return Result;
 }
 
-f32 GetTimeFromCounter(s64 Counter)
+static f32 WinGetTimeFromCounter(s64 Counter)
 {
     f32 Result = Counter / (f32)Win32State.PerformanceFrequency;
     return Result;
 }
 
-static bool win32_ToggleFullscreen()
+static bool WinToggleFullscreen()
 {
     DWORD WindowStyle = GetWindowLongA(Win32State.Window, GWL_STYLE);
     bool IsFullscreen = !((WindowStyle & WS_OVERLAPPEDWINDOW) != 0);
@@ -218,7 +220,7 @@ static bool win32_ToggleFullscreen()
     return Win32State.IsFullscreen;
 }
 
-VkSurfaceKHR CreateVulkanSurface(VkInstance vkInstance)
+static VkSurfaceKHR WinCreateVulkanSurface(VkInstance vkInstance)
 {
     VkSurfaceKHR Surface = VK_NULL_HANDLE;
     
@@ -240,7 +242,7 @@ VkSurfaceKHR CreateVulkanSurface(VkInstance vkInstance)
     return Surface;
 }
 
-void DebugPrint_(const char* Format, ...)
+void WinDebugPrint(const char* Format, ...)
 {
     constexpr size_t BufferSize = 768;
     char Buff[BufferSize];
@@ -262,7 +264,7 @@ void DebugPrint_(const char* Format, ...)
     }
 }
 
-void PlatformLog_(const char* Function, int Line, const char* Format, ...)
+void WinLogMsg(const char* Function, int Line, const char* Format, ...)
 {
     constexpr size_t BufferSize = 768;
     char Message[BufferSize];
@@ -287,7 +289,7 @@ void PlatformLog_(const char* Function, int Line, const char* Format, ...)
     }
 }
 
-buffer LoadEntireFile(const char* Path, memory_arena* Arena)
+static buffer WinLoadEntireFile(const char* Path, memory_arena* Arena)
 {
     buffer Buffer = {};
 
@@ -322,7 +324,7 @@ buffer LoadEntireFile(const char* Path, memory_arena* Arena)
     return(Buffer);
 }
 
-static LRESULT CALLBACK MainWindowProc(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
+static LRESULT CALLBACK WinMainWindowProc(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
 {
     LRESULT Result = 0;
     switch (Message)
@@ -352,7 +354,7 @@ static LRESULT CALLBACK MainWindowProc(HWND Window, UINT Message, WPARAM WParam,
             {
                 if (Win32State.IsCursorDisabled)
                 {
-                    ToggleCursor();
+                    WinToggleCursor();
                 }
             }
         } break;
@@ -362,7 +364,7 @@ static LRESULT CALLBACK MainWindowProc(HWND Window, UINT Message, WPARAM WParam,
             {
                 if (Win32State.IsCursorDisabled)
                 {
-                    ToggleCursor();
+                    WinToggleCursor();
                 }
             }
         } break;
@@ -385,7 +387,7 @@ static LRESULT CALLBACK MainWindowProc(HWND Window, UINT Message, WPARAM WParam,
             bool IsDown = !(LParam & (1 << 31));
             if (IsDown && (WParam == VK_F11))
             {
-                win32_ToggleFullscreen();
+                WinToggleFullscreen();
             }
         } break;
         default:
@@ -570,13 +572,13 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     for (u32 ThreadIndex = 0; ThreadIndex < WorkerCount; ThreadIndex++)
     {
         DWORD WorkerID;
-        HANDLE WorkerHandle = CreateThread(nullptr, 0, &WorkerThread, nullptr, 0, &WorkerID);
+        HANDLE WorkerHandle = CreateThread(nullptr, 0, &WinWorkerThread, nullptr, 0, &WorkerID);
     }
 
     WNDCLASSA WindowClass = 
     {
         .style = CS_HREDRAW | CS_VREDRAW,
-        .lpfnWndProc = &MainWindowProc,
+        .lpfnWndProc = &WinMainWindowProc,
         .hInstance = Instance,
         .hCursor = LoadCursorA(nullptr, IDC_ARROW),
         .lpszClassName = Win32_ClassName,
@@ -626,6 +628,18 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     {
         Memory.MemorySize = GiB(4);
         Memory.Memory = VirtualAlloc(nullptr, Memory.MemorySize, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+
+        Memory.Platform.AddWork = &WinAddWork;
+        Memory.Platform.WaitForAllWork = &WinWaitForAllWork;
+        Memory.Platform.DebugPrint = &WinDebugPrint;
+        Memory.Platform.LogMsg = &WinLogMsg;
+        Memory.Platform.LoadEntireFile = &WinLoadEntireFile;
+        Memory.Platform.CreateVulkanSurface = &WinCreateVulkanSurface;
+        Memory.Platform.ToggleCursor = &WinToggleCursor;
+        Memory.Platform.GetPerformanceCounter = &WinGetPerformanceCounter;
+        Memory.Platform.GetElapsedTime = &WinGetElapsedTime;
+        Memory.Platform.GetTimeFromCounter = &WinGetTimeFromCounter;
+
         Memory.Platform.HighPriorityQueue = &Win32State.HighPriorityQueue;
         Memory.Platform.LowPriorityQueue = &Win32State.LowPriorityQueue;
 

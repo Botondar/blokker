@@ -28,7 +28,7 @@ static void Game_Update(game_state* Game, game_io* IO)
 
     if (IO->EscapePressed)
     {
-        IO->IsCursorEnabled = ToggleCursor();
+        IO->IsCursorEnabled = Platform.ToggleCursor();
     }
     if (IO->BacktickPressed)
     {
@@ -179,6 +179,8 @@ static bool Game_InitImGui(game_state* Game)
 
 bool Game_Initialize(game_memory* Memory)
 {
+    Platform = Memory->Platform;
+
     game_state* Game = nullptr;
     {
         memory_arena BootstrapArena = InitializeArena(Memory->MemorySize, Memory->Memory);
@@ -236,7 +238,7 @@ bool Game_Initialize(game_memory* Memory)
             u32* PixelBufferAt = PixelBuffer;
             for (u32 TextureIndex = 0; TextureIndex < TextureCount; TextureIndex++)
             {
-                buffer BitmapBuffer = LoadEntireFile(TexturePaths[TextureIndex], &Game->TransientArena);
+                buffer BitmapBuffer = Platform.LoadEntireFile(TexturePaths[TextureIndex], &Game->TransientArena);
                 if (BitmapBuffer.Data)
                 {
                     Assert(BitmapBuffer.Size >= sizeof(bmp_file));

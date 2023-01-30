@@ -11,7 +11,7 @@ static VkBool32 VKAPI_PTR VulkanDebugCallback(
     const VkDebugUtilsMessengerCallbackDataEXT* CallbackData,
     void* UserData)
 {
-    DebugPrint("%s\n", CallbackData->pMessage);
+    Platform.DebugPrint("%s\n", CallbackData->pMessage);
     return VK_FALSE;
 }
 
@@ -151,7 +151,7 @@ static bool RenderDevice_ChooseAndCreateDevice(
     // TODO(boti): for now, we ignore all devices with index > 8
     if (PhysicalDeviceCount > MaxPhysicalDeviceCount)
     {
-        DebugPrint("WARNING: Too many devices\n");
+        Platform.DebugPrint("WARNING: Too many devices\n");
         assert(false);
         PhysicalDeviceCount = MaxPhysicalDeviceCount;
     }
@@ -167,7 +167,7 @@ static bool RenderDevice_ChooseAndCreateDevice(
         vkGetPhysicalDeviceQueueFamilyProperties(PhysicalDevices[i], &Desc->QueueFamilyCount, Desc->QueueFamilyProps);
         if (Desc->QueueFamilyCount > Desc->MaxQueueFamilyCount)
         {
-            DebugPrint("WARNING: Too many queue families\n");
+            Platform.DebugPrint("WARNING: Too many queue families\n");
             assert(false);
             Desc->QueueFamilyCount = Desc->MaxQueueFamilyCount;
         }
