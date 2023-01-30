@@ -655,8 +655,8 @@ bool Initialize(world* World)
 
     World->Debug.DebugCamera.FieldOfView = ToRadians(90.0f);
 
-    Perlin2_Init(&World->Perlin2, 0);
-    Perlin3_Init(&World->Perlin3, 0);
+    Perlin2_Init(&World->Perlin2, 1);
+    Perlin3_Init(&World->Perlin3, 1);
 
     return true;
 }

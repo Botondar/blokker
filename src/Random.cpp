@@ -1,13 +1,19 @@
 #include "Random.hpp"
-#include <random>
-#include <functional>
 #include <Common.hpp>
+
+static u32 XorShift32(u32 Seed)
+{
+    u32 Result = Seed;
+    Result ^= Result << 13;
+    Result ^= Result >> 17;
+    Result ^= Result << 5;
+    return(Result);
+}
 
 void Perlin2_Init(perlin2* Perlin, u32 Seed)
 {
     assert(Perlin);
 
-    std::mt19937 Twister(Seed);
     for (u32 i = 0; i < perlin2::TableCount; i++)
     {
         Perlin->Permutation[i] = i;
@@ -15,7 +21,8 @@ void Perlin2_Init(perlin2* Perlin, u32 Seed)
 
     for (u32 i = perlin2::TableCount - 1; i > 1; i--)
     {
-        u32 j = Twister() % (i + 1);
+        Seed = XorShift32(Seed);
+        u32 j = Seed % (i + 1);
         {
             u32 Temp = Perlin->Permutation[i];
             Perlin->Permutation[i] = Perlin->Permutation[j];
@@ -109,11 +116,6 @@ f32 SampleNoise01(const perlin2* Perlin, vec2 P)
 void Perlin3_Init(perlin3* Perlin, u32 Seed)
 {
     assert(Perlin);
-
-    std::mt19937 Twister(Seed);
-    std::uniform_real_distribution<f32> Distribution(0.0f, 2.0f*PI);
-    auto Dice = std::bind(Distribution, Twister);
-
     for (u32 i = 0; i < Perlin->TableCount; i++)
     {
         Perlin->Permutation[i] = i;
@@ -121,7 +123,8 @@ void Perlin3_Init(perlin3* Perlin, u32 Seed)
 
     for (u32 i = Perlin->TableCount - 1; i > 1; i--)
     {
-        u32 j = Twister() % (i + 1);
+        Seed = XorShift32(Seed);
+        u32 j = Seed % (i + 1);
         {
             u32 Temp = Perlin->Permutation[i];
             Perlin->Permutation[i] = Perlin->Permutation[j];
