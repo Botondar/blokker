@@ -73,6 +73,7 @@ constexpr u16 VOXEL_COAL = 3;
 constexpr u16 VOXEL_IRON = 4;
 constexpr u16 VOXEL_TREE_TRUNK = 5;
 constexpr u16 VOXEL_LEAVES = 6;
+constexpr u16 VOXEL_INVALID = 0xFFFFu;
 
 enum voxel_flags : u32
 {
