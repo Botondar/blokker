@@ -177,167 +177,111 @@ static bool Game_InitImGui(game_state* Game)
     return Result;
 }
 
-extern "C" bool Game_Initialize(game_memory* Memory)
+static bool InitializeTextures(renderer* Renderer, memory_arena* Arena)
 {
-    Platform = Memory->Platform;
-
-    game_state* Game = nullptr;
+    bool Result = false;
+    const char* TexturePaths[] = 
     {
-        memory_arena BootstrapArena = InitializeArena(Memory->MemorySize, Memory->Memory);
-        Game = Memory->Game = PushStruct<game_state>(&BootstrapArena);
-        if (Game)
+        "texture/ground_side.bmp",
+        "texture/ground_top.bmp",
+        "texture/ground_bottom.bmp",
+        "texture/stone_side.bmp",
+        "texture/coal_side.bmp",
+        "texture/iron_side.bmp",
+        "texture/trunk_side.bmp",
+        "texture/trunk_top.bmp",
+        "texture/leaves_side.bmp",
+    };
+    constexpr u32 TextureCount = CountOf(TexturePaths);
+
+    constexpr u32 TextureWidth = 16;
+    constexpr u32 TextureHeight = 16;
+    constexpr u32 TextureMipCount = 4;
+
+    u32 TexelCountPerTexture = 0;
+    for (u32 i = 0; i < TextureMipCount; i++)
+    {
+        TexelCountPerTexture += (TextureWidth >> i) * (TextureHeight >> i);
+    }
+
+    u32* PixelBuffer = PushArray<u32>(Arena, TexelCountPerTexture * TextureCount);
+    u32* PixelBufferAt = PixelBuffer;
+    for (u32 TextureIndex = 0; TextureIndex < TextureCount; TextureIndex++)
+    {
+        buffer BitmapBuffer = Platform.LoadEntireFile(TexturePaths[TextureIndex], Arena);
+        if (BitmapBuffer.Data)
         {
-            Game->PrimaryArena = BootstrapArena;
-            u64 TransientMemorySize = MiB(512);
-            void* TransientMemory = PushSize(&Game->PrimaryArena, TransientMemorySize, KiB(64));
-            if (TransientMemory)
+            Assert(BitmapBuffer.Size >= sizeof(bmp_file));
+            bmp_file* Bitmap = (bmp_file*)BitmapBuffer.Data;
+                    
+            if ((Bitmap->File.Tag == BMP_FILE_TAG) && 
+                (Bitmap->File.Offset == offsetof(bmp_file, Data)) &&
+                (Bitmap->Info.HeaderSize == sizeof(bmp_info_header)) &&
+                (Bitmap->Info.Planes == 1) &&
+                (Bitmap->Info.BitCount == 24) &&
+                (Bitmap->Info.Compression == BMP_COMPRESSION_NONE))
             {
-                Game->TransientArena = InitializeArena(TransientMemorySize, TransientMemory);
+                Assert(((u32)Bitmap->Info.Width == TextureWidth) &&
+                       ((u32)Abs(Bitmap->Info.Height) == TextureHeight));
+
+                u32* ImageBase = PixelBufferAt;
+
+                u8* Src = Bitmap->Data;
+                for (u32 y = 0; y < TextureHeight; y++)
+                {
+                    for (u32 x = 0; x < TextureWidth; x++)
+                    {
+                        u8 B = *Src++;
+                        u8 G = *Src++;
+                        u8 R = *Src++;
+                        *PixelBufferAt++ = PackColor(R, G, B);
+                    }
+                }
+
+                u32* PrevMipLevel = ImageBase;
+                for (u32 Mip = 1; Mip < TextureMipCount; Mip++)
+                {
+                    u32 PrevWidth = TextureWidth >> (Mip - 1);
+                    u32 PrevHeight = TextureHeight >> (Mip - 1);
+                    u32 CurrentWidth = PrevWidth >> 1;
+                    u32 CurrentHeight = PrevHeight >> 1;
+                    for (u32 y = 0; y < CurrentHeight; y++)
+                    {
+                        for (u32 x = 0; x < CurrentWidth; x++)
+                        {
+                            u32 Color00 = PrevMipLevel[(2*x + 0) + (2*y + 0)*PrevWidth];
+                            u32 Color10 = PrevMipLevel[(2*x + 1) + (2*y + 0)*PrevWidth];
+                            u32 Color01 = PrevMipLevel[(2*x + 0) + (2*y + 1)*PrevWidth];
+                            u32 Color11 = PrevMipLevel[(2*x + 1) + (2*y + 1)*PrevWidth];
+
+                            vec3 C00 = UnpackColor3(Color00);
+                            vec3 C10 = UnpackColor3(Color10);
+                            vec3 C01 = UnpackColor3(Color01);
+                            vec3 C11 = UnpackColor3(Color11);
+
+                            vec3 Color = 0.25f * (C00 + C10 + C01 + C11);
+                            *PixelBufferAt++ = PackColor(Color);
+                        }
+                    }
+
+                    ImageBase += PrevWidth*PrevHeight;
+                }
             }
             else
             {
-                return false;
+                Assert(!"Unsupported bitmap format");
             }
         }
         else
         {
-            return false;
+            Assert(!"Failed to load bitmap");
         }
     }
 
-    Game->Renderer = PushStruct<renderer>(&Game->PrimaryArena);
-    if (Game->Renderer)
-    {
-        if (Renderer_Initialize(Game->Renderer, &Game->PrimaryArena))
-        {
-            const char* TexturePaths[] = 
-            {
-                "texture/ground_side.bmp",
-                "texture/ground_top.bmp",
-                "texture/ground_bottom.bmp",
-                "texture/stone_side.bmp",
-                "texture/coal_side.bmp",
-                "texture/iron_side.bmp",
-                "texture/trunk_side.bmp",
-                "texture/trunk_top.bmp",
-                "texture/leaves_side.bmp",
-            };
-            constexpr u32 TextureCount = CountOf(TexturePaths);
-
-            constexpr u32 TextureWidth = 16;
-            constexpr u32 TextureHeight = 16;
-            constexpr u32 TextureMipCount = 4;
-
-            u32 TexelCountPerTexture = 0;
-            for (u32 i = 0; i < TextureMipCount; i++)
-            {
-                TexelCountPerTexture += (TextureWidth >> i) * (TextureHeight >> i);
-            }
-
-            u32* PixelBuffer = PushArray<u32>(&Game->TransientArena, TexelCountPerTexture * TextureCount);
-            u32* PixelBufferAt = PixelBuffer;
-            for (u32 TextureIndex = 0; TextureIndex < TextureCount; TextureIndex++)
-            {
-                buffer BitmapBuffer = Platform.LoadEntireFile(TexturePaths[TextureIndex], &Game->TransientArena);
-                if (BitmapBuffer.Data)
-                {
-                    Assert(BitmapBuffer.Size >= sizeof(bmp_file));
-                    bmp_file* Bitmap = (bmp_file*)BitmapBuffer.Data;
-                    
-                    if ((Bitmap->File.Tag == BMP_FILE_TAG) && 
-                        (Bitmap->File.Offset == offsetof(bmp_file, Data)) &&
-                        (Bitmap->Info.HeaderSize == sizeof(bmp_info_header)) &&
-                        (Bitmap->Info.Planes == 1) &&
-                        (Bitmap->Info.BitCount == 24) &&
-                        (Bitmap->Info.Compression == BMP_COMPRESSION_NONE))
-                    {
-                        Assert(((u32)Bitmap->Info.Width == TextureWidth) &&
-                               ((u32)Abs(Bitmap->Info.Height) == TextureHeight));
-
-                        u32* ImageBase = PixelBufferAt;
-
-                        u8* Src = Bitmap->Data;
-                        for (u32 y = 0; y < TextureHeight; y++)
-                        {
-                            for (u32 x = 0; x < TextureWidth; x++)
-                            {
-                                u8 B = *Src++;
-                                u8 G = *Src++;
-                                u8 R = *Src++;
-                                *PixelBufferAt++ = PackColor(R, G, B);
-                            }
-                        }
-
-                        u32* PrevMipLevel = ImageBase;
-                        for (u32 Mip = 1; Mip < TextureMipCount; Mip++)
-                        {
-                            u32 PrevWidth = TextureWidth >> (Mip - 1);
-                            u32 PrevHeight = TextureHeight >> (Mip - 1);
-                            u32 CurrentWidth = PrevWidth >> 1;
-                            u32 CurrentHeight = PrevHeight >> 1;
-                            for (u32 y = 0; y < CurrentHeight; y++)
-                            {
-                                for (u32 x = 0; x < CurrentWidth; x++)
-                                {
-                                    u32 Color00 = PrevMipLevel[(2*x + 0) + (2*y + 0)*PrevWidth];
-                                    u32 Color10 = PrevMipLevel[(2*x + 1) + (2*y + 0)*PrevWidth];
-                                    u32 Color01 = PrevMipLevel[(2*x + 0) + (2*y + 1)*PrevWidth];
-                                    u32 Color11 = PrevMipLevel[(2*x + 1) + (2*y + 1)*PrevWidth];
-
-                                    vec3 C00 = UnpackColor3(Color00);
-                                    vec3 C10 = UnpackColor3(Color10);
-                                    vec3 C01 = UnpackColor3(Color01);
-                                    vec3 C11 = UnpackColor3(Color11);
-
-                                    vec3 Color = 0.25f * (C00 + C10 + C01 + C11);
-                                    *PixelBufferAt++ = PackColor(Color);
-                                }
-                            }
-
-                            ImageBase += PrevWidth*PrevHeight;
-                        }
-                    }
-                    else
-                    {
-                        Assert(!"Unsupported bitmap format");
-                    }
-                }
-                else
-                {
-                    Assert(!"Failed to load bitmap");
-                }
-            }
-
-            if (!Renderer_CreateVoxelTextureArray(Game->Renderer, TextureWidth, TextureHeight, TextureMipCount,
-                                                 TextureCount, (u8*)PixelBuffer))
-            {
-                return false;
-            }
-        }
-        else
-        {
-            return false;
-        }
-    }
-    else
-    {
-        return false;
-    }
-    
-    if (!Game_InitImGui(Game))
-    {
-        return false;
-    }
-
-    Game->World = PushStruct<world>(&Game->PrimaryArena);
-    Game->World->Arena = &Game->PrimaryArena;
-    Game->World->Renderer = Game->Renderer;
-    if (!Initialize(Game->World))
-    {
-        return false;
-    }
-    
-    return true;
+    Result = Renderer_CreateVoxelTextureArray(Renderer, 
+                                              TextureWidth, TextureHeight, TextureMipCount,
+                                              TextureCount, (u8*)PixelBuffer);
+    return(Result);
 }
 
 platform_api Platform;
@@ -348,6 +292,58 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
 
     Platform = Memory->Platform;
 
+    game_state* Game = Memory->Game;
+    if (!Game)
+    {
+        memory_arena BootstrapArena = InitializeArena(Memory->MemorySize, Memory->Memory);
+        Game = Memory->Game = PushStruct<game_state>(&BootstrapArena);
+
+        bool InitializationSuccessful = false;
+        if (Game)
+        {
+            Game->PrimaryArena = BootstrapArena;
+            u64 TransientMemorySize = MiB(512);
+            void* TransientMemory = PushSize(&Game->PrimaryArena, TransientMemorySize, KiB(64));
+            if (TransientMemory)
+            {
+                Game->TransientArena = InitializeArena(TransientMemorySize, TransientMemory);
+
+                Game->Renderer = PushStruct<renderer>(&Game->PrimaryArena);
+                if (Game->Renderer)
+                {
+                    if (Renderer_Initialize(Game->Renderer, &Game->PrimaryArena))
+                    {
+                        if (InitializeTextures(Game->Renderer, &Game->TransientArena))
+                        {
+                            if (Game_InitImGui(Game))
+                            {
+                                InitializationSuccessful = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!InitializationSuccessful)
+        {
+            IO->ShouldQuit = true;
+            return;
+        }
+    }
+
+    if (!Game->World)
+    {
+        Game->World = PushStruct<world>(&Game->PrimaryArena);
+        Game->World->Arena = &Game->PrimaryArena;
+        Game->World->Renderer = Game->Renderer;
+        if (!Initialize(Game->World))
+        {
+            IO->ShouldQuit = true;
+            return;
+        }
+    }
+
     // Disable stepping if there was giant lag-spike
     // TODO: The physics step should subdivide the frame when dt gets too large
     if (IO->DeltaTime > 0.4f)
@@ -355,7 +351,6 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
         IO->DeltaTime = 0.0f;
     }
 
-    game_state* Game = Memory->Game;
     Game->FrameIndex = IO->FrameIndex;
     Game_Update(Game, IO);
     Game_Render(Game, IO);

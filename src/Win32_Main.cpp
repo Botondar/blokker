@@ -647,11 +647,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         }
     }
 
-    if(!Game_Initialize(&Memory))
-    {
-        return -1;
-    }
-
     game_io IO = {};
 
     f32 Time = 0.0f;
