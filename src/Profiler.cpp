@@ -8,7 +8,7 @@
 
 #include <imgui/imgui.h>
 
-profiler GlobalProfiler;
+//profiler GlobalProfiler;
 
 void profiler::Reset()
 {
@@ -197,11 +197,11 @@ void profiler::Print(f32 MinTime) const
 timed_block::timed_block(const char* Name, const char* Extra) : Name(Name), Extra(Extra)
 {
     StartCounter = Platform.GetPerformanceCounter();
-    GlobalProfiler.Begin(Name, Extra);
+    //GlobalProfiler.Begin(Name, Extra);
 }
 
 timed_block::~timed_block()
 {
     EndCounter = Platform.GetPerformanceCounter();
-    GlobalProfiler.End(Name, Extra, EndCounter - StartCounter);
+    //GlobalProfiler.End(Name, Extra, EndCounter - StartCounter);
 }

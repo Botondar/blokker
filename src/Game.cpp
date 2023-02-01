@@ -6,10 +6,8 @@
 
 #include "Renderer/Renderer.cpp"
 
-#include "Math.cpp"
-#include "Random.cpp"
 #include "Common.cpp"
-#include "Memory.cpp"
+#include "Random.cpp"
 #include "Camera.cpp"
 #include "Chunk.cpp"
 #include "Shapes.cpp"
@@ -113,7 +111,7 @@ static void Game_Update(game_state* Game, game_io* IO)
 
         ImGui::End();
 
-        GlobalProfiler.DoGUI();
+        //GlobalProfiler.DoGUI();
     }
 
     Game->TransientArena.Used = 0; // Reset temporary memory

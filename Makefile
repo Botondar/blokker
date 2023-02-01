@@ -12,7 +12,7 @@ SHADER_OPT = --target-env=vulkan1.2 -std=450core -I "src/shader/" -O
 SHADERS = "shader/shader.vs" "shader/shader.fs" "shader/imshader.vs" "shader/imshader.fs" "shader/imguishader.vs" "shader/imguishader.fs"
 ALL_SOURCES = "src/*.cpp" "src/*.hpp" "src/Renderer/*.cpp" "src/Renderer/*.hpp"
 
-all: "build" "build/win32_platform.obj" "build/game.obj" "build/imgui.lib" "build/blokker.exe" $(SHADERS)
+all: "build" "build/win32_platform.obj" "build/game.obj" "build/imgui.lib" "build/blokker.exe" "build/game.dll" $(SHADERS)
 
 clean:
 	@del /Q "build\*.*"
@@ -28,7 +28,9 @@ clean:
 "build/imgui.lib": "src/imgui/*.cpp" "src/imgui/*.h"
 	@cl -nologo $(LANG) -W4 -WX -Zi -O2 -Oi -c -Fe:"build/imgui.lib" -Fo:"build/imgui.obj" -Fd:"build/" "src/imgui/build.cpp"
 	@lib -nologo -OUT:$@ "build/imgui.obj"
-"build/blokker.exe": "build/win32_platform.obj" "build/game.obj" "build/imgui.lib"
+"build/game.dll": "build/game.obj" "build/imgui.lib"
+    @link -nologo -DEBUG:FULL -DLL -EXPORT:Game_UpdateAndRender -LIBPATH:$(VULKAN_SDK)/Lib/ -LIBPATH:lib/ -OUT:$@ $** $(LIBS)
+"build/blokker.exe": "build/win32_platform.obj"
 	@link -nologo -DEBUG:FULL -LIBPATH:$(VULKAN_SDK)/Lib/ -LIBPATH:lib/ -OUT:$@ $** $(LIBS)
 	
 # The shaders might benefit from an actual build-system...

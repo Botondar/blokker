@@ -85,4 +85,4 @@ struct timed_block
     ~timed_block();
 };
 
-extern profiler GlobalProfiler;
+//extern profiler GlobalProfiler;

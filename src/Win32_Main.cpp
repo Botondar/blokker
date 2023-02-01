@@ -622,6 +622,21 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         }
     }
 
+    update_and_render_func* Game_UpdateAndRender = nullptr;
+    HMODULE GameDLL = LoadLibraryA("build/game.dll");
+    if (GameDLL)
+    {
+        Game_UpdateAndRender = (update_and_render_func*)GetProcAddress(GameDLL, "Game_UpdateAndRender");
+        if (!Game_UpdateAndRender)
+        {
+            return -1;
+        }
+    }
+    else
+    {
+        return -1;
+    }
+
     game_memory Memory = {};
     {
         Memory.MemorySize = GiB(4);
@@ -700,7 +715,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
             Sleep(5);
         }
 
-        GlobalProfiler.Reset();
+        //GlobalProfiler.Reset();
 
         s64 EndTime;
         QueryPerformanceCounter((LARGE_INTEGER*)&EndTime);
