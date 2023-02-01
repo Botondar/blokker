@@ -100,6 +100,4 @@ struct game_io
 constexpr u64 PLATFORM_PAGE_SIZE = 4096;
 
 // Implemented by the game
-//extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO);
-
 typedef void (update_and_render_func)(game_memory* Memory, game_io* IO);
