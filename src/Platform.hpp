@@ -63,6 +63,7 @@ enum mouse_button : u32
 
 struct game_io
 {
+    u32 FrameIndex;
     f32 DeltaTime;
 
     // ShouldQuit is both whether a quit request happened in the platform layer
@@ -97,3 +98,7 @@ struct game_io
 
 // TODO: runtime variable?
 constexpr u64 PLATFORM_PAGE_SIZE = 4096;
+
+// Implemented by the game
+extern "C" bool Game_Initialize(game_memory* Memory);
+extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO);

@@ -21,6 +21,3 @@ struct game_state
     renderer* Renderer;
     world* World;
 };
-
-bool Game_Initialize(game_memory* Memory);
-void Game_UpdateAndRender(game_memory* Memory, game_io* IO);

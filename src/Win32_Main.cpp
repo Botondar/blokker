@@ -13,9 +13,7 @@
 
 #include <Platform.hpp>
 
-#include <Common.hpp>
 #include <Renderer/Renderer.hpp>
-#include <Game.hpp>
 #include <Profiler.hpp>
 
 static const char* Win32_ClassName = "wndclass_blokker";
@@ -699,7 +697,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         IO.IsCursorEnabled = !Win32State.IsCursorDisabled;
         IO.IsMinimized = Win32State.IsMinimized;
 
-        Memory.Game->FrameIndex = FrameCount;
         Game_UpdateAndRender(&Memory, &IO);
 
         // Since there's no rendering when we're minimzed we don't want to be burning the CPU
@@ -715,7 +712,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
         IO.DeltaTime = (EndTime - StartTime) / (f32)Win32State.PerformanceFrequency;
         //DebugPrint("%llu. Frame ended\n", FrameCount);
-        FrameCount++;
+        IO.FrameIndex++;
     }
     
     if (Win32State.IsCursorDisabled)

@@ -177,7 +177,7 @@ static bool Game_InitImGui(game_state* Game)
     return Result;
 }
 
-bool Game_Initialize(game_memory* Memory)
+extern "C" bool Game_Initialize(game_memory* Memory)
 {
     Platform = Memory->Platform;
 
@@ -342,7 +342,7 @@ bool Game_Initialize(game_memory* Memory)
 
 platform_api Platform;
 
-void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
+extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
 {
     TIMED_FUNCTION();
 
@@ -356,6 +356,7 @@ void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
     }
 
     game_state* Game = Memory->Game;
+    Game->FrameIndex = IO->FrameIndex;
     Game_Update(Game, IO);
     Game_Render(Game, IO);
 }
