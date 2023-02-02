@@ -6,10 +6,10 @@
 #include <cassert>
 #include <cstring>
 
-#include <imgui/imgui.h>
+//#include <imgui/imgui.h>
 
 //profiler GlobalProfiler;
-
+#if 0
 void profiler::Reset()
 {
     StatsBufferAt = (StatsBufferAt + 1) % MaxStatBufferCount;
@@ -205,3 +205,4 @@ timed_block::~timed_block()
     EndCounter = Platform.GetPerformanceCounter();
     //GlobalProfiler.End(Name, Extra, EndCounter - StartCounter);
 }
+#endif

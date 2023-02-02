@@ -28,7 +28,7 @@ clean:
 "build/imgui.lib": "src/imgui/*.cpp" "src/imgui/*.h"
 	@cl -nologo $(LANG) -W4 -WX -Zi -O2 -Oi -c -Fe:"build/imgui.lib" -Fo:"build/imgui.obj" -Fd:"build/" "src/imgui/build.cpp"
 	@lib -nologo -OUT:$@ "build/imgui.obj"
-"build/game.dll": "build/game.obj" "build/imgui.lib"
+"build/game.dll": "build/game.obj"
     @link -nologo -DEBUG:FULL -DLL -EXPORT:Game_UpdateAndRender -LIBPATH:$(VULKAN_SDK)/Lib/ -LIBPATH:lib/ -OUT:$@ $** $(LIBS)
 "build/blokker.exe": "build/win32_platform.obj"
 	@link -nologo -DEBUG:FULL -LIBPATH:$(VULKAN_SDK)/Lib/ -LIBPATH:lib/ -OUT:$@ $** $(LIBS)

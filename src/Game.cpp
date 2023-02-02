@@ -33,6 +33,7 @@ static void Game_Update(game_state* Game, game_io* IO)
         Game->World->Debug.IsDebuggingEnabled = !Game->World->Debug.IsDebuggingEnabled;
     }
 
+#if 0
     // ImGui
     {
         // TODO: pass input
@@ -113,6 +114,7 @@ static void Game_Update(game_state* Game, game_io* IO)
 
         //GlobalProfiler.DoGUI();
     }
+#endif
 
     Game->TransientArena.Used = 0; // Reset temporary memory
     Game->World->FrameIndex = Game->FrameIndex;
@@ -128,8 +130,10 @@ static void Game_Render(game_state* Game, game_io* IO)
     renderer* Renderer = Game->Renderer;
     if (IO->IsMinimized)
     {
+#if 0
         // HACK: Call ImGui rendering here so that we don't crash on the next ImGui::NewFrame();
         ImGui::Render();
+#endif
         return;
     }
     if (IO->NeedRendererResize)
@@ -150,6 +154,9 @@ static void Game_Render(game_state* Game, game_io* IO)
 
 static bool Game_InitImGui(game_state* Game)
 {
+#if 1
+    bool Result = true;
+#else
     bool Result = false;
 
     ImGui::CreateContext();
@@ -171,7 +178,7 @@ static bool Game_InitImGui(game_state* Game)
         IO.Fonts->SetTexID((ImTextureID)(u64)Game->Renderer->ImGuiTextureID);
         Result = true;
     }
-    
+#endif
     return Result;
 }
 

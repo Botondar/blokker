@@ -38,6 +38,9 @@ struct win32_state
     HINSTANCE Instance;
     HWND Window;
 
+    HMODULE GameDLL;
+    update_and_render_func* Game_UpdateAndRender;
+
     WINDOWPLACEMENT PrevWindowPlacement = { sizeof(WINDOWPLACEMENT) };
     DWORD WindowStyle;
     BOOL WasWindowResized;
@@ -479,6 +482,29 @@ static bool win32_ProcessInput(game_io* Input)
                             Input->MPressed = true;
                         }
                     } break;
+                    case VK_F10:
+                    {
+                        WinWaitForAllWork(&Win32State.HighPriorityQueue);
+                        WinWaitForAllWork(&Win32State.LowPriorityQueue);
+
+                        FreeLibrary(Win32State.GameDLL);
+                        Win32State.GameDLL = nullptr;
+                        Win32State.Game_UpdateAndRender = nullptr;
+
+                        Win32State.GameDLL = LoadLibraryA("build/game.dll");
+                        if (Win32State.GameDLL)
+                        {
+                            Win32State.Game_UpdateAndRender = (update_and_render_func*)GetProcAddress(Win32State.GameDLL, "Game_UpdateAndRender");
+                            if (!Win32State.Game_UpdateAndRender)
+                            {
+                                Assert(!"Couldn't load game function");
+                            }
+                        }
+                        else
+                        {
+                            Assert(!"Couldn't load game DLL");
+                        }
+                    }
                 }
             } break;
             case WM_LBUTTONDOWN:
@@ -622,12 +648,11 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         }
     }
 
-    update_and_render_func* Game_UpdateAndRender = nullptr;
-    HMODULE GameDLL = LoadLibraryA("build/game.dll");
-    if (GameDLL)
+    Win32State.GameDLL = LoadLibraryA("build/game.dll");
+    if (Win32State.GameDLL)
     {
-        Game_UpdateAndRender = (update_and_render_func*)GetProcAddress(GameDLL, "Game_UpdateAndRender");
-        if (!Game_UpdateAndRender)
+        Win32State.Game_UpdateAndRender = (update_and_render_func*)GetProcAddress(Win32State.GameDLL, "Game_UpdateAndRender");
+        if (!Win32State.Game_UpdateAndRender)
         {
             return -1;
         }
@@ -707,7 +732,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         IO.IsCursorEnabled = !Win32State.IsCursorDisabled;
         IO.IsMinimized = Win32State.IsMinimized;
 
-        Game_UpdateAndRender(&Memory, &IO);
+        Win32State.Game_UpdateAndRender(&Memory, &IO);
 
         // Since there's no rendering when we're minimzed we don't want to be burning the CPU
         if (Win32State.IsMinimized)

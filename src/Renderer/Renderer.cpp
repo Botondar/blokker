@@ -3,7 +3,7 @@
 #include <Platform.hpp>
 #include <Profiler.hpp>
 
-#include <imgui/imgui.h>
+//#include <imgui/imgui.h>
 
 #include "RenderDevice.cpp"
 #include "RTHeap.cpp"
@@ -873,6 +873,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         vkDestroyShaderModule(Renderer->RenderDevice.Device, FSModule, nullptr);
     }
 
+#if 0
     // ImGui pipeline
     {
         // Sampler
@@ -1296,6 +1297,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         vkDestroyShaderModule(Renderer->RenderDevice.Device, VSModule, nullptr);
         vkDestroyShaderModule(Renderer->RenderDevice.Device, FSModule, nullptr);
     }
+#endif
 
     // ImPipeline
     {
@@ -2782,7 +2784,7 @@ void Renderer_ImmediateRectOutline2D(renderer_frame_params* Frame, outline_type 
 void Renderer_RenderImGui(renderer_frame_params* Frame)
 {
     TIMED_FUNCTION();
-
+#if 0
     ImGui::Render();
 
     ImDrawData* DrawData = ImGui::GetDrawData();
@@ -2879,4 +2881,5 @@ void Renderer_RenderImGui(renderer_frame_params* Frame)
             Platform.DebugPrint("WARNING: not enough memory for ImGui\n");
         }
     }
+#endif
 }
