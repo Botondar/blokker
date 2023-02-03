@@ -873,7 +873,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         vkDestroyShaderModule(Renderer->RenderDevice.Device, FSModule, nullptr);
     }
 
-#if 0
+#if 1
     // ImGui pipeline
     {
         // Sampler
@@ -2784,7 +2784,7 @@ void Renderer_ImmediateRectOutline2D(renderer_frame_params* Frame, outline_type 
 void Renderer_RenderImGui(renderer_frame_params* Frame)
 {
     TIMED_FUNCTION();
-#if 0
+#if 1
     ImGui::Render();
 
     ImDrawData* DrawData = ImGui::GetDrawData();

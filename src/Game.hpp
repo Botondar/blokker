@@ -7,8 +7,6 @@
 #include <Renderer/Renderer.hpp>
 #include <World.hpp>
 
-//#include <imgui/imgui.h>
-
 extern platform_api Platform; // Global platform API (accessible from all .cpp files)
 
 struct game_state

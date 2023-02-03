@@ -189,6 +189,17 @@ static f32 WinGetTimeFromCounter(s64 Counter)
     return Result;
 }
 
+static void* WinImGuiAlloc(size_t Size, void* User)
+{
+    void* Result = HeapAlloc(GetProcessHeap(), 0, Size);
+    return(Result);
+}
+
+static void WinImGuiFree(void* Address, void* User)
+{
+    HeapFree(GetProcessHeap(), 0, Address);
+}
+
 static bool WinToggleFullscreen()
 {
     DWORD WindowStyle = GetWindowLongA(Win32State.Window, GWL_STYLE);
@@ -245,7 +256,7 @@ static VkSurfaceKHR WinCreateVulkanSurface(VkInstance vkInstance)
     return Surface;
 }
 
-void WinDebugPrint(const char* Format, ...)
+static void WinDebugPrint(const char* Format, ...)
 {
     constexpr size_t BufferSize = 768;
     char Buff[BufferSize];
@@ -267,7 +278,7 @@ void WinDebugPrint(const char* Format, ...)
     }
 }
 
-void WinLogMsg(const char* Function, int Line, const char* Format, ...)
+static void WinLogMsg(const char* Function, int Line, const char* Format, ...)
 {
     constexpr size_t BufferSize = 768;
     char Message[BufferSize];
@@ -663,6 +674,11 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         Memory.MemorySize = GiB(4);
         Memory.Memory = VirtualAlloc(nullptr, Memory.MemorySize, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
 
+        if (!Memory.Memory)
+        {
+            return -1;
+        }
+
         Memory.Platform.AddWork = &WinAddWork;
         Memory.Platform.WaitForAllWork = &WinWaitForAllWork;
         Memory.Platform.DebugPrint = &WinDebugPrint;
@@ -677,10 +693,11 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         Memory.Platform.HighPriorityQueue = &Win32State.HighPriorityQueue;
         Memory.Platform.LowPriorityQueue = &Win32State.LowPriorityQueue;
 
-        if (!Memory.Memory)
-        {
-            return -1;
-        }
+        Memory.ImGuiAlloc = &WinImGuiAlloc;
+        Memory.ImGuiFree = &WinImGuiFree;
+
+        ImGui::SetAllocatorFunctions(Memory.ImGuiAlloc, Memory.ImGuiFree, nullptr);
+        Memory.ImGuiCtx = ImGui::CreateContext();
     }
 
     game_io IO = {};

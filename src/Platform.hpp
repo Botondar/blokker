@@ -5,6 +5,8 @@
 #include <vulkan/vulkan.h>
 #include <Memory.hpp>
 
+#include <imgui/imgui.h>
+
 typedef function<void(memory_arena*)> work_function;
 
 // Work queue is an opaque type to the game
@@ -46,6 +48,10 @@ struct game_memory
     platform_api Platform;
 
     struct game_state* Game;
+
+    ImGuiContext* ImGuiCtx;
+    ImGuiMemAllocFunc ImGuiAlloc;
+    ImGuiMemFreeFunc ImGuiFree;
 };
 
 //
