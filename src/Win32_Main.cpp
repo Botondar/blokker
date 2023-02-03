@@ -795,6 +795,9 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         ShowCursor(TRUE);
     }
 
+    WinWaitForAllWork(&Win32State.HighPriorityQueue);
+    WinWaitForAllWork(&Win32State.LowPriorityQueue);
+    FreeLibrary(Win32State.GameDLL);
     DeleteFile(Win32_GameDLLTempPath);
     return 0;
 }
