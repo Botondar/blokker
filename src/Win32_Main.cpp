@@ -712,14 +712,12 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
             BY_HANDLE_FILE_INFORMATION Info = {};
             if (GetFileInformationByHandle(GameDLLFile, &Info))
             {
-                u64 OldWriteTime = ((u64)GameDLLWriteTime.dwHighDateTime << 32) | GameDLLWriteTime.dwLowDateTime;
-                u64 CurrentWriteTime = ((u64)Info.ftLastWriteTime.dwHighDateTime << 32) | Info.ftLastWriteTime.dwLowDateTime;
-                if (CurrentWriteTime > OldWriteTime)
+                if (CompareFileTime(&GameDLLWriteTime, &Info.ftLastWriteTime) != 0)
                 {
+                    GameDLLWriteTime = Info.ftLastWriteTime;
+
                     WinWaitForAllWork(&Win32State.HighPriorityQueue);
                     WinWaitForAllWork(&Win32State.LowPriorityQueue);
-
-                    GameDLLWriteTime = Info.ftLastWriteTime;
 
                     FreeLibrary(Win32State.GameDLL);
                     Win32State.GameDLL = nullptr;
