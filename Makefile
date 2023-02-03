@@ -1,3 +1,13 @@
+!if [echo %DATE%_%TIME% > datetime.tmp] == 0
+DATETIME = \
+!include datetime.tmp
+DATETIME = $(DATETIME:.=)
+DATETIME = $(DATETIME::=)
+DATETIME = $(DATETIME:-=)
+!if [del datetime.tmp]
+!endif
+!endif
+
 # Flags
 LANG = -std:c++20 -arch:AVX2 -MT -EHsc
 WARNINGS = -W4 -WX -wd4201 -wd4100 -wd4189 -wd4200 -wd4505
@@ -6,6 +16,8 @@ FP_ENV = -fp:strict -fp:except-
 OPTIMIZATION = -Zi -O2 -Oi
 MISC = -GT -Isrc/ -I$(VULKAN_SDK)/Include/
 LIBS = kernel32.lib user32.lib vulkan-1.lib
+
+COMMON = $(LANG) $(WARNINGS) $(FP_ENV) $(OPTIMIZATION)
 
 SHADER_OPT = --target-env=vulkan1.2 -std=450core -I "src/shader/" -O
 
@@ -21,7 +33,7 @@ clean:
 "build":
 	@mkdir build
 
-"build/win32_platform.obj": $(ALL_SOURCES)
+"build/win32_platform.obj": "src/Win32_Main.cpp"
 	@cl -nologo $(LANG) $(WARNINGS) $(DEFINES) $(FP_ENV) $(OPTIMIZATION) $(MISC) -c "src/Win32_Main.cpp" -Fo:$@ -Fd:"build/"
 "build/game.obj": $(ALL_SOURCES)
 	@cl -nologo $(LANG) $(WARNINGS) $(DEFINES) $(FP_ENV) $(OPTIMIZATION) $(MISC) -c "src/Game.cpp" -Fo:$@ -Fd:"build/"
@@ -29,7 +41,8 @@ clean:
 	@cl -nologo $(LANG) -W4 -WX -Zi -O2 -Oi -c -Fe:"build/imgui.lib" -Fo:"build/imgui.obj" -Fd:"build/" "src/imgui/build.cpp"
 	@lib -nologo -OUT:$@ "build/imgui.obj"
 "build/game.dll": "build/game.obj"
-    @link -nologo -DEBUG:FULL -DLL -EXPORT:Game_UpdateAndRender -LIBPATH:$(VULKAN_SDK)/Lib/ -LIBPATH:lib/ -OUT:$@ $** $(LIBS)
+    @del /Q "build\game*.pdb"
+    @link -nologo -DEBUG:FULL -DLL -INCREMENTAL:NO -EXPORT:Game_UpdateAndRender -LIBPATH:$(VULKAN_SDK)/Lib/ -LIBPATH:lib/ -PDB:"build/game$(DATETIME).pdb" -OUT:$@ $** $(LIBS)
 "build/blokker.exe": "build/win32_platform.obj"
 	@link -nologo -DEBUG:FULL -LIBPATH:$(VULKAN_SDK)/Lib/ -LIBPATH:lib/ -OUT:$@ $** $(LIBS)
 	

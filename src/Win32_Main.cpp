@@ -18,6 +18,8 @@
 
 static const char* Win32_ClassName = "wndclass_blokker";
 static const char* Win32_WindowTitle = "Blokker";
+static const char* Win32_GameDLLPath = "build/game.dll";
+static const char* Win32_GameDLLTempPath = "build/game-temp.dll";
 
 struct platform_work_queue
 {
@@ -482,29 +484,6 @@ static bool win32_ProcessInput(game_io* Input)
                             Input->MPressed = true;
                         }
                     } break;
-                    case VK_F10:
-                    {
-                        WinWaitForAllWork(&Win32State.HighPriorityQueue);
-                        WinWaitForAllWork(&Win32State.LowPriorityQueue);
-
-                        FreeLibrary(Win32State.GameDLL);
-                        Win32State.GameDLL = nullptr;
-                        Win32State.Game_UpdateAndRender = nullptr;
-
-                        Win32State.GameDLL = LoadLibraryA("build/game.dll");
-                        if (Win32State.GameDLL)
-                        {
-                            Win32State.Game_UpdateAndRender = (update_and_render_func*)GetProcAddress(Win32State.GameDLL, "Game_UpdateAndRender");
-                            if (!Win32State.Game_UpdateAndRender)
-                            {
-                                Assert(!"Couldn't load game function");
-                            }
-                        }
-                        else
-                        {
-                            Assert(!"Couldn't load game DLL");
-                        }
-                    }
                 }
             } break;
             case WM_LBUTTONDOWN:
@@ -648,7 +627,24 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         }
     }
 
-    Win32State.GameDLL = LoadLibraryA("build/game.dll");
+    HANDLE GameDLLFile = CreateFileA(Win32_GameDLLPath, 0, FILE_SHARE_READ|FILE_SHARE_WRITE, nullptr, 
+                                     OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    FILETIME GameDLLWriteTime = {};
+    {
+        BY_HANDLE_FILE_INFORMATION Info = {};
+        if (GetFileInformationByHandle(GameDLLFile, &Info))
+        {
+            GameDLLWriteTime = Info.ftLastWriteTime;
+        }
+        else
+        {
+            Assert(!"Couldn't retrieve game DLL file info");
+        }
+    }
+
+    CopyFile(Win32_GameDLLPath, Win32_GameDLLTempPath, FALSE);
+
+    Win32State.GameDLL = LoadLibraryA(Win32_GameDLLTempPath);
     if (Win32State.GameDLL)
     {
         Win32State.Game_UpdateAndRender = (update_and_render_func*)GetProcAddress(Win32State.GameDLL, "Game_UpdateAndRender");
@@ -694,6 +690,49 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     bool IsRunning = true;
     while (IsRunning) 
     {
+        // DLL reload
+        {
+            BY_HANDLE_FILE_INFORMATION Info = {};
+            if (GetFileInformationByHandle(GameDLLFile, &Info))
+            {
+                u64 OldWriteTime = ((u64)GameDLLWriteTime.dwHighDateTime << 32) | GameDLLWriteTime.dwLowDateTime;
+                u64 CurrentWriteTime = ((u64)Info.ftLastWriteTime.dwHighDateTime << 32) | Info.ftLastWriteTime.dwLowDateTime;
+                if (CurrentWriteTime > OldWriteTime)
+                {
+                    WinWaitForAllWork(&Win32State.HighPriorityQueue);
+                    WinWaitForAllWork(&Win32State.LowPriorityQueue);
+
+                    GameDLLWriteTime = Info.ftLastWriteTime;
+
+                    FreeLibrary(Win32State.GameDLL);
+                    Win32State.GameDLL = nullptr;
+                    Win32State.Game_UpdateAndRender = nullptr;
+
+                    CopyFile(Win32_GameDLLPath, Win32_GameDLLTempPath, FALSE);
+
+                    Win32State.GameDLL = LoadLibraryA(Win32_GameDLLTempPath);
+                    if (Win32State.GameDLL)
+                    {
+                        Win32State.Game_UpdateAndRender = (update_and_render_func*)GetProcAddress(Win32State.GameDLL, "Game_UpdateAndRender");
+                        if (!Win32State.Game_UpdateAndRender)
+                        {
+                            Assert(!"Couldn't load game dll function");
+                            return -1;
+                        }
+                    }
+                    else
+                    {
+                        Assert(!"Couldn't reload game DLL");
+                        return -1;
+                    }
+                }
+            }
+            else
+            {
+                Assert(!"Couldn't retrieve game DLL file info");
+            }
+        }
+
         s64 StartTime;
         QueryPerformanceCounter((LARGE_INTEGER*)&StartTime);
 
@@ -756,5 +795,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         ShowCursor(TRUE);
     }
 
+    DeleteFile(Win32_GameDLLTempPath);
     return 0;
 }

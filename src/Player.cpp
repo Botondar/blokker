@@ -218,7 +218,11 @@ void Update(player* Player, world* World, f32 dt)
         if (Player->Control.IsJumping)
         {
             constexpr f32 DesiredJumpHeight = 1.2f; // This is here just for reference
+#if 1
             constexpr f32 JumpVelocity = 7.7459667f; // sqrt(2 * Gravity * DesiredJumpHeight)
+#else
+            constexpr f32 JumpVelocity = 25.0f;
+#endif
             Player->Velocity.z += JumpVelocity;
         }
 
