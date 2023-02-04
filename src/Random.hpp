@@ -4,6 +4,15 @@
 #include <Math.hpp>
 #include <Intrinsics.hpp>
 
+inline u32 XorShift32(u32 Seed)
+{
+    u32 Result = Seed;
+    Result ^= Result << 13;
+    Result ^= Result >> 17;
+    Result ^= Result << 5;
+    return(Result);
+}
+
 struct perlin2
 {
     static constexpr u32 TableCount = 256;
