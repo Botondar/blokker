@@ -2384,7 +2384,7 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        .clearValue =  { .color = { 0.0f, 1.0f, 1.0f, 0.0f, }, },
+        .clearValue =  { .color = { 0.0f, 0.6f, 1.0f, 0.0f, }, },
     };
     VkRenderingAttachmentInfoKHR DepthAttachment = 
     {
