@@ -66,7 +66,7 @@ inline u64 AlignToPow2(u64 Value, u64 Alignment)
 }
 
 // NOTE(boti): 
-//     Work function is a type-erased function pointer that can hold 56 bytes of arguments directly.
+//     Work function is a type-erased function pointer that can hold 60 bytes of arguments directly.
 //     There are no allocations or real C++ ownership/copy/move/destruction etc. semantics here,
 //     so the caller _must_ manage the lifetime of all arguments _not_ passed by value.
 template<typename T> struct function {};

@@ -171,22 +171,22 @@ static bool WinToggleCursor()
     return !Win32State.IsCursorDisabled;
 }
 
-static s64 WinGetPerformanceCounter()
+static counter WinGetPerformanceCounter()
 {
-    s64 Result;
-    QueryPerformanceCounter((LARGE_INTEGER*)&Result);
+    counter Result;
+    QueryPerformanceCounter((LARGE_INTEGER*)&Result.Value);
     return Result;
 }
 
-static f32 WinGetElapsedTime(s64 Start, s64 End)
+static f32 WinGetElapsedTime(counter Start, counter End)
 {
-    f32 Result = (End - Start) / (f32)Win32State.PerformanceFrequency;
+    f32 Result = (End.Value - Start.Value) / (f32)Win32State.PerformanceFrequency;
     return Result;
 }
 
-static f32 WinGetTimeFromCounter(s64 Counter)
+static f32 WinGetTimeFromCounter(counter Counter)
 {
-    f32 Result = Counter / (f32)Win32State.PerformanceFrequency;
+    f32 Result = Counter.Value / (f32)Win32State.PerformanceFrequency;
     return Result;
 }
 
@@ -793,9 +793,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
             }
         }
 
-        s64 StartTime;
-        QueryPerformanceCounter((LARGE_INTEGER*)&StartTime);
-
+        counter StartCounter = WinGetPerformanceCounter();
         Time += IO.DeltaTime;
 
 #if DEVELOPER && 0
@@ -842,6 +840,10 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         // Audio update
         {
             static f32 AudioTime = 0.0f;
+            while (AudioTime >= 1.0f)
+            {
+                AudioTime -= 1.0f;
+            }
             f32 dtAudio = 1.0f / DeviceFormat->Format.nSamplesPerSec;
             u32 PaddingFrameCount = 0;
             AudioClient->GetCurrentPadding(&PaddingFrameCount);
@@ -858,7 +860,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                 f32 Sample = 0.0f;
                 {
                     f32 BaseFrequency = 2.0f * PI * 220.0f;
-                    for (u32 i = 0; i < 16; i++)
+                    for (u32 i = 0; i < 1; i++)
                     {
                         f32 Amplitude = 2.5e-2f * Exp(-(f32)i);
                         Sample += Amplitude * Sin((i + 1) * BaseFrequency * AudioTime);
@@ -874,10 +876,8 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
         //GlobalProfiler.Reset();
 
-        s64 EndTime;
-        QueryPerformanceCounter((LARGE_INTEGER*)&EndTime);
-
-        IO.DeltaTime = (EndTime - StartTime) / (f32)Win32State.PerformanceFrequency;
+        counter EndCounter = WinGetPerformanceCounter();
+        IO.DeltaTime = WinGetElapsedTime(StartCounter, EndCounter);
         //DebugPrint("%llu. Frame ended\n", FrameCount);
         IO.FrameIndex++;
     }

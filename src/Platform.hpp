@@ -2,15 +2,20 @@
 
 #include <Common.hpp>
 #include <Math.hpp>
-#include <vulkan/vulkan.h>
 #include <Memory.hpp>
 
+#include <vulkan/vulkan.h>
 #include <imgui/imgui.h>
 
 typedef function<void(memory_arena*)> work_function;
 
 // Work queue is an opaque type to the game
 struct platform_work_queue;
+
+struct counter
+{
+    s64 Value;
+};
 
 typedef void (add_work_func)(platform_work_queue* Queue, work_function Function);
 typedef void (wait_for_all_work_func)(platform_work_queue* Queue);
@@ -19,9 +24,9 @@ typedef void (log_msg_func)(const char* Function, int Line, const char* Format, 
 typedef buffer (load_entire_file_func)(const char* Path, memory_arena* Arena);
 typedef VkSurfaceKHR (create_vulkan_surface_func)(VkInstance VulkanInstance);
 typedef bool (toggle_cursor_func)();
-typedef s64 (get_performance_counter_func)();
-typedef f32 (get_elapsed_time_func)(s64 Start, s64 End);
-typedef f32 (get_time_from_counter_func)(s64 Counter);
+typedef counter (get_performance_counter_func)();
+typedef f32 (get_elapsed_time_func)(counter Start, counter End);
+typedef f32 (get_time_from_counter_func)(counter Counter);
 
 struct platform_api
 {
@@ -38,6 +43,20 @@ struct platform_api
 
     platform_work_queue* HighPriorityQueue;
     platform_work_queue* LowPriorityQueue;
+};
+
+struct audio_sample
+{
+    f32 Left;
+    f32 Right;
+};
+
+struct game_audio
+{
+    u32 ReadAt;
+    u32 WriteAt;
+    u32 BufferSampleCount;
+    audio_sample* Samples;
 };
 
 struct game_memory
@@ -71,6 +90,8 @@ struct game_io
 {
     u32 FrameIndex;
     f32 DeltaTime;
+
+    game_audio Audio;
 
     // ShouldQuit is both whether a quit request happened in the platform layer
     // _and_ something the game code can set to quit the app
