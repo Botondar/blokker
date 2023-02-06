@@ -17,7 +17,7 @@ DEFINES = -DDEVELOPER=1 -DPLATFORM_WIN32=1 -DWIN32_LEAN_AND_MEAN=1 -DNOMINMAX=1
 FP_ENV = -fp:strict -fp:except-
 OPTIMIZATION = -Zi -O2 -Oi
 MISC = -GT -Isrc/ -I$(VULKAN_SDK)/Include/
-LIBS = kernel32.lib user32.lib vulkan-1.lib
+LIBS = kernel32.lib user32.lib ole32.lib vulkan-1.lib
 
 COMMON = $(LANG) $(DEFINES) $(WARNINGS) $(FP_ENV) $(OPTIMIZATION)
 
