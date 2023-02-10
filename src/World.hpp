@@ -30,6 +30,52 @@ inline vec2i GetChunkP(vec2i WorldP)
 // World
 //
 
+enum chunk_work_type
+{
+    ChunkWork_Generate,
+    ChunkWork_BuildMesh,
+};
+
+struct chunk_work
+{
+    chunk_work_type Type;
+    b32 IsReady;
+    chunk* Chunk;
+    union
+    {
+        struct
+        {
+            u32 FirstIndex;
+            u32 OnePastLastIndex;
+        } Mesh;
+    };
+};
+
+struct chunk_work_queue
+{
+    static constexpr u32 MaxWorkCount = 1024;
+    volatile u32 ReadIndex;
+    volatile u32 WriteIndex;
+    chunk_work WorkResults[MaxWorkCount];
+
+    static constexpr u32 VertexBufferSize = MiB(32);
+    static constexpr u32 VertexBufferCount = VertexBufferSize / sizeof(terrain_vertex);
+    static_assert((VertexBufferSize % sizeof(terrain_vertex)) == 0);
+
+    u32 VertexReadIndex;
+    u32 VertexWriteIndex;
+    terrain_vertex* VertexBuffer;
+
+    // NOTE(boti): In rare cases it's possible for the meshes to be written into the vertex ring buffer
+    //             in a different order than the one they arrive in in the WorkResults queue.
+    //             We maintain the information of the last mesh for this reason, which seems sufficient for the 99.9%
+    //             case because this race condition only happens when two (or more) threads finish meshing at the exact same
+    //             time, but if it does become an issue later on, we could maintain a small buffer of the last meshes.
+    b32 IsLastMeshValid;
+    u32 LastMeshFirstIndex;
+    u32 LastMeshOnePastLastIndex;
+};
+
 struct map_view
 {
     static constexpr f32 PitchMax = ToRadians(-15.0f);
@@ -49,27 +95,6 @@ struct map_view
     void ResetAll(world* World);
     void Reset(world* World);
     mat2 GetAxesXY() const;
-};
-
-enum chunk_work_type
-{
-    ChunkWork_Generate,
-    ChunkWork_BuildMesh,
-};
-
-struct chunk_work
-{
-    chunk_work_type Type;
-    b32 IsReady;
-    chunk* Chunk;
-    union
-    {
-        struct
-        {
-            u64 FirstIndex;
-            u64 OnePastLastIndex;
-        } Mesh;
-    };
 };
 
 struct world
@@ -98,23 +123,7 @@ struct world
     u32 ChunkRenderDataCount;
     chunk_render_data ChunkRenderData[MaxChunkCount];
 
-    static constexpr u32 ChunkWorkQueueCount = MaxChunkCount;
-    volatile u32 ChunkWorkReadIndex;
-    volatile u32 ChunkWorkWriteIndex;
-    chunk_work ChunkWorkResults[ChunkWorkQueueCount];
-
-    static constexpr u64 MaxVertexCountPerChunk = 6*2*3 * CHUNK_DIM_XY * CHUNK_DIM_XY * CHUNK_DIM_Z;
-    static constexpr u64 MaxMeshMemoryPerChunk = MaxVertexCountPerChunk * sizeof(terrain_vertex);
-    static constexpr u64 VertexBufferSize = MiB(32);
-    static constexpr u64 VertexBufferCount = VertexBufferSize / sizeof(terrain_vertex);
-    static_assert((VertexBufferSize % sizeof(terrain_vertex)) == 0);
-
-    b32 IsLastMeshValid;
-    u64 LastMeshFirstIndex;
-    u64 LastMeshOnePastLastIndex;
-    u64 VertexBufferReadIndex;
-    u64 VertexBufferWriteIndex;
-    terrain_vertex* VertexBuffer;
+    chunk_work_queue ChunkWorkQueue;
 
     player Player;
 
@@ -130,6 +139,8 @@ struct world
     map_view MapView;
 };
 
+static chunk_work* GetNextChunkWorkToWrite(chunk_work_queue* Queue);
+
 // From chunk position
 chunk* GetChunkFromP(world* World, vec2i P);
 // From voxel position
@@ -142,7 +153,6 @@ void ResetPlayer(world* World);
 
 bool Initialize(world* World);
 
-// TODO(boti): remove dt from HandleInput
 void HandleInput(world* World, game_io* IO);
 void Update(world* World, game_io* IO, memory_arena* TransientArena);
 void World_Render(world* World, renderer_frame_params* Frame);

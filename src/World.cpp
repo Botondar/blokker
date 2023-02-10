@@ -18,6 +18,24 @@ static chunk* FindPlayerChunk(world* World);
 // Implementations
 //
 
+static chunk_work* GetNextChunkWorkToWrite(chunk_work_queue* Queue)
+{
+    chunk_work* Result = nullptr;
+    while (!Result)
+    {
+        u32 WriteIndex = Queue->WriteIndex;
+        while (WriteIndex - Queue->ReadIndex == Queue->MaxWorkCount)
+        {
+            SpinWait;
+        }
+        if (AtomicCompareExchange(&Queue->WriteIndex, WriteIndex + 1, WriteIndex) == WriteIndex)
+        {
+            Result = Queue->WorkResults + (WriteIndex % Queue->MaxWorkCount);
+        }
+    }
+    return(Result);
+}
+
 // TODO(boti): rename, I don't understand this anymore without looking at the implementation
 void map_view::ResetAll(world* World)
 {
@@ -542,20 +560,7 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
                 {
                     Generate(Chunk, World);
 
-                    chunk_work* Work = nullptr;
-                    while (!Work)
-                    {
-                        u32 WriteIndex = World->ChunkWorkWriteIndex;
-                        while (WriteIndex - World->ChunkWorkReadIndex == World->ChunkWorkQueueCount)
-                        {
-                            SpinWait;
-                        }
-                        if (AtomicCompareExchange(&World->ChunkWorkWriteIndex, WriteIndex + 1, WriteIndex) == WriteIndex)
-                        {
-                            Work = World->ChunkWorkResults + (WriteIndex % World->ChunkWorkQueueCount);
-                        }
-                    }
-
+                    chunk_work* Work = GetNextChunkWorkToWrite(&World->ChunkWorkQueue);
                     Work->Type = ChunkWork_Generate;
                     Work->Chunk = Chunk;
                     AtomicExchange(&Work->IsReady, true);
@@ -584,34 +589,24 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
             Platform.AddWork(Queue,
                 [Chunk, World](memory_arena* Arena)
                 {
-                    chunk_mesh Mesh = BuildMesh(Chunk, World, Arena);
-                    assert(Mesh.VertexCount <= World->VertexBufferCount);
+                    chunk_work_queue* Queue = &World->ChunkWorkQueue;
 
-                    chunk_work* Work = nullptr;
-                    while (!Work)
-                    {
-                        u32 WriteIndex = World->ChunkWorkWriteIndex;
-                        while (WriteIndex - World->ChunkWorkReadIndex == World->ChunkWorkQueueCount)
-                        {
-                            SpinWait;
-                        }
-                        if (AtomicCompareExchange(&World->ChunkWorkWriteIndex, WriteIndex + 1, WriteIndex) == WriteIndex)
-                        {
-                            Work = World->ChunkWorkResults + (WriteIndex % World->ChunkWorkQueueCount);
-                        }
-                    }
+                    chunk_mesh Mesh = BuildMesh(Chunk, World, Arena);
+                    assert(Mesh.VertexCount <= Queue->VertexBufferCount);
+
+                    chunk_work* Work = GetNextChunkWorkToWrite(Queue);
                     Work->Type = ChunkWork_BuildMesh;
                     Work->Chunk = Chunk;
 
-                    u64 FirstIndex = AtomicAdd(&World->VertexBufferWriteIndex, Mesh.VertexCount);
-                    u64 OnePastLastIndex = FirstIndex + Mesh.VertexCount;
-                    while (OnePastLastIndex - AtomicLoad(&World->VertexBufferReadIndex) >= World->VertexBufferCount)
+                    u32 FirstIndex = AtomicAdd(&Queue->VertexWriteIndex, Mesh.VertexCount);
+                    u32 OnePastLastIndex = FirstIndex + Mesh.VertexCount;
+                    while (OnePastLastIndex - AtomicLoad(&Queue->VertexReadIndex) >= Queue->VertexBufferCount)
                     {
                         SpinWait;
                     }
                     for (u64 i = 0; i < Mesh.VertexCount; i++)
                     {
-                        World->VertexBuffer[(FirstIndex + i) % World->VertexBufferCount] = Mesh.VertexData[i];
+                        Queue->VertexBuffer[(FirstIndex + i) % Queue->VertexBufferCount] = Mesh.VertexData[i];
                     }
                     Work->Mesh.FirstIndex = FirstIndex;
                     Work->Mesh.OnePastLastIndex = OnePastLastIndex;
@@ -631,8 +626,8 @@ bool Initialize(world* World)
         return false;
     }
 
-    World->VertexBuffer = PushArray<terrain_vertex>(World->Arena, World->VertexBufferCount);
-    if (!World->VertexBuffer)
+    World->ChunkWorkQueue.VertexBuffer = PushArray<terrain_vertex>(World->Arena, World->ChunkWorkQueue.VertexBufferCount);
+    if (!World->ChunkWorkQueue.VertexBuffer)
     {
         return false;
     }
@@ -771,9 +766,10 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
 
     do
     {
-        for (; World->ChunkWorkReadIndex < World->ChunkWorkWriteIndex; AtomicIncrement(&World->ChunkWorkReadIndex))
+        chunk_work_queue* Queue = &World->ChunkWorkQueue;
+        for (; Queue->ReadIndex < Queue->WriteIndex; AtomicIncrement(&Queue->ReadIndex))
         {
-            chunk_work* Work = World->ChunkWorkResults + (World->ChunkWorkReadIndex % World->ChunkWorkQueueCount);
+            chunk_work* Work = Queue->WorkResults + (Queue->ReadIndex % Queue->MaxWorkCount);
             while (AtomicLoad(&Work->IsReady) == false)
             {
                 SpinWait;
@@ -801,11 +797,11 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
 
                     u64 HeadCount = Count;
                     u64 TailCount = 0;
-                    u64 FirstIndexModCount = Work->Mesh.FirstIndex % World->VertexBufferCount;
-                    u64 OnePastLastIndexModCount = Work->Mesh.OnePastLastIndex % World->VertexBufferCount;
+                    u64 FirstIndexModCount = Work->Mesh.FirstIndex % Queue->VertexBufferCount;
+                    u64 OnePastLastIndexModCount = Work->Mesh.OnePastLastIndex % Queue->VertexBufferCount;
                     if (OnePastLastIndexModCount < FirstIndexModCount)
                     {
-                        HeadCount = World->VertexBufferCount - FirstIndexModCount;
+                        HeadCount = Queue->VertexBufferCount - FirstIndexModCount;
                         TailCount = OnePastLastIndexModCount;
                     }
                     u64 HeadSize = HeadCount * sizeof(terrain_vertex);
@@ -823,11 +819,11 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
                     };
 
                     bool CopyResult = CopyVertexData(BaseOffset, HeadSize, 
-                                                     World->VertexBuffer + FirstIndexModCount);
+                                                     Queue->VertexBuffer + FirstIndexModCount);
                     if (TailCount != 0)
                     {
                         CopyResult &= CopyVertexData(BaseOffset + HeadSize, TailSize,
-                                                     World->VertexBuffer);
+                                                     Queue->VertexBuffer);
                     }
 
                     if (CopyResult)
@@ -842,20 +838,15 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
                         Chunk->VertexBlock = nullptr;
                     }
 
-                    // NOTE(boti): In rare cases it's possible for the meshes to be written into the vertex ring buffer
-                    //             in a different order than the one they arrive in in the ChunkWorkResults queue.
-                    //             We maintain the information of the last mesh for this reason, which seems sufficient for the 99.9%
-                    //             case because this race condition only happens when two (or more) threads finish meshing at the exact same
-                    //             time, but if it does become an issue later on, we could maintain a small buffer of the last meshes.
-                    if (World->VertexBufferReadIndex == Work->Mesh.FirstIndex)
+                    if (Queue->VertexReadIndex == Work->Mesh.FirstIndex)
                     {
-                        AtomicExchange(&World->VertexBufferReadIndex, Work->Mesh.OnePastLastIndex);
-                        if (World->IsLastMeshValid)
+                        AtomicExchange(&Queue->VertexReadIndex, Work->Mesh.OnePastLastIndex);
+                        if (Queue->IsLastMeshValid)
                         {
-                            if (World->LastMeshFirstIndex == World->VertexBufferReadIndex)
+                            if (Queue->LastMeshFirstIndex == Queue->VertexReadIndex)
                             {
-                                AtomicExchange(&World->VertexBufferReadIndex, World->LastMeshOnePastLastIndex);
-                                World->IsLastMeshValid = false;
+                                AtomicExchange(&Queue->VertexReadIndex, Queue->LastMeshOnePastLastIndex);
+                                Queue->IsLastMeshValid = false;
                             }
                             else
                             {
@@ -865,10 +856,10 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
                     }
                     else
                     {
-                        Assert(!World->IsLastMeshValid);
-                        World->IsLastMeshValid = true;
-                        World->LastMeshFirstIndex = Work->Mesh.FirstIndex;
-                        World->LastMeshOnePastLastIndex = Work->Mesh.OnePastLastIndex;
+                        Assert(!Queue->IsLastMeshValid);
+                        Queue->IsLastMeshValid = true;
+                        Queue->LastMeshFirstIndex = Work->Mesh.FirstIndex;
+                        Queue->LastMeshOnePastLastIndex = Work->Mesh.OnePastLastIndex;
                     }
                 }
                 else
