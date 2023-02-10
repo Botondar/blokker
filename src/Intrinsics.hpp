@@ -25,6 +25,7 @@ inline u32 BitScanReverse(u32* ScanResult, u32 Value);
 //
 // Atomics
 //
+
 // NOTE(boti): Returns *Dest (original value)
 inline u32 AtomicExchange(volatile u32* Dest, u32 Value);
 // NOTE(boti): Returns *Dest (original value)
@@ -41,6 +42,9 @@ inline u64 AtomicCompareExchange(volatile u64* Dest, u64 Value, u64 Comparand);
 inline u64 AtomicIncrement(volatile u64* Dest);
 inline u64 AtomicAdd(volatile u64* Dest, u64 Value);
 inline u64 AtomicLoad(volatile const u64* Value);
+
+inline void* AtomicExchangePointer(void* volatile* Dest, void* Value);
+inline void* AtomicCompareExchangePointer(void* volatile* Dest, void* Value, void* Comparand);
 
 struct ticket_mutex
 {
@@ -122,6 +126,15 @@ inline u64 AtomicAdd(volatile u64* Dest, u64 Value)
 inline u64 AtomicLoad(volatile const u64* Value)
 {
     return *Value;
+}
+
+inline void* AtomicExchangePointer(void* volatile* Dest, void* Value)
+{
+    return _InterlockedExchangePointer(Dest, Value);
+}
+inline void* AtomicCompareExchangePointer(void* volatile* Dest, void* Value, void* Comparand)
+{
+    return _InterlockedCompareExchangePointer(Dest, Value, Comparand);
 }
 
 inline void BeginTicketMutex(ticket_mutex* Mutex)

@@ -21,6 +21,8 @@ LIBS = kernel32.lib user32.lib ole32.lib vulkan-1.lib
 
 COMMON = $(LANG) $(DEFINES) $(WARNINGS) $(FP_ENV) $(OPTIMIZATION)
 
+GAME_EXPORTS = -EXPORT:Game_UpdateAndRender -EXPORT:Game_GetAudioSamples
+
 # GLSL
 SHADER_OPT = --target-env=vulkan1.2 -std=450core -I "src/shader/" -O
 
@@ -45,7 +47,7 @@ clean:
 # NOTE(boti): we need unique .pdb names for hot-reloading, but we don't want them to keep piling up so they deleted here explicitly
 "build/game.dll": $(ALL_SOURCES) "build/imgui.lib"
     @del /Q "build\game*.pdb"
-    @cl -nologo $(COMMON) $(MISC) "src/Game.cpp" -Fo:"build/" -Fd:"build/" -link -DLL -PDB:"build/game$(DATETIME).pdb" -EXPORT:Game_UpdateAndRender -OUT:"build/game.dll" -LIBPATH:$(VULKAN_SDK)/Lib/ vulkan-1.lib "build\imgui.lib"
+    @cl -nologo $(COMMON) $(MISC) "src/Game.cpp" -Fo:"build/" -Fd:"build/" -link -DLL -PDB:"build/game$(DATETIME).pdb" $(GAME_EXPORTS) -OUT:"build/game.dll" -LIBPATH:$(VULKAN_SDK)/Lib/ vulkan-1.lib "build\imgui.lib"
 	
 # The shaders might benefit from an actual build-system...
 "shader/shader.vs": "src/shader/shader.glsl"

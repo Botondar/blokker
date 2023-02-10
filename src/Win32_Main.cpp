@@ -43,6 +43,7 @@ struct win32_state
 
     HMODULE GameDLL;
     update_and_render_func* Game_UpdateAndRender;
+    get_audio_samples_func* Game_GetAudioSamples;
 
     WINDOWPLACEMENT PrevWindowPlacement = { sizeof(WINDOWPLACEMENT) };
     DWORD WindowStyle;
@@ -62,6 +63,97 @@ struct win32_state
 static win32_state Win32State;
 
 static void WinDebugPrint(const char* Format, ...);
+
+static DWORD __stdcall WinAudioThread(void* Param)
+{
+    game_memory* GameMemory = (game_memory*)Param;
+
+    HRESULT Result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(Result)) return 1;
+
+    IMMDeviceEnumerator* DeviceEnumerator = nullptr;
+    IMMDevice* Device = nullptr;
+    IAudioClient* AudioClient = nullptr;
+    WAVEFORMATEXTENSIBLE* DeviceFormat = nullptr;
+    IAudioRenderClient* RenderClient = nullptr;
+
+    Result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&DeviceEnumerator));
+    if (FAILED(Result)) return 1;
+
+    Result = DeviceEnumerator->GetDefaultAudioEndpoint(EDataFlow::eRender, ERole::eMultimedia, &Device);
+    if (FAILED(Result)) return 1;
+
+    Result = Device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)&AudioClient);
+    if (FAILED(Result)) return 1;
+
+    WAVEFORMATEXTENSIBLE RequestFormat = 
+    {
+        .Format = 
+        {
+            .wFormatTag = WAVE_FORMAT_EXTENSIBLE,
+            .nChannels = 2,
+            .nSamplesPerSec = 48000,
+            .nAvgBytesPerSec = 2 * 48000 * 4,
+            .nBlockAlign = 8,
+            .wBitsPerSample = 32,
+            .cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX),
+        },
+        .Samples = { .wValidBitsPerSample = 32, },
+        .dwChannelMask = SPEAKER_FRONT_LEFT|SPEAKER_FRONT_RIGHT,
+        .SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
+    };
+    WAVEFORMATEXTENSIBLE* ClosestFormat = nullptr;
+    Result = AudioClient->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED, (WAVEFORMATEX*)&RequestFormat, (WAVEFORMATEX**)&ClosestFormat);
+    if (Result == S_FALSE)
+    {
+        Assert(!"No suitable format");
+    }
+    else if (Result != S_OK)
+    {
+        Assert(!"No suitable format");
+        return 1;
+    }
+
+    constexpr REFERENCE_TIME Milliseconds = 10 * 1000;
+    REFERENCE_TIME BufferDuration = 10 * Milliseconds;
+    Result = AudioClient->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, 
+                                     BufferDuration, 0, (WAVEFORMATEX*)&RequestFormat, nullptr);
+    if (FAILED(Result)) return 1;
+
+    HANDLE AudioEvent = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+    if (!AudioEvent) return 1;
+
+    Result = AudioClient->SetEventHandle(AudioEvent);
+    if (FAILED(Result)) return 1;
+
+    Result = AudioClient->GetService(IID_PPV_ARGS(&RenderClient));
+    if (FAILED(Result)) return 1;
+
+    u32 BufferSize =  0;
+    AudioClient->GetBufferSize(&BufferSize);
+
+    AudioClient->Start();
+    for (;;)
+    {
+        WaitForSingleObjectEx(AudioEvent, INFINITE, FALSE);
+        
+        u32 Padding = 0;
+        AudioClient->GetCurrentPadding(&Padding);
+        u32 SampleCount = BufferSize - Padding;
+
+        u8* Dest = nullptr;
+        if (SUCCEEDED(RenderClient->GetBuffer(SampleCount, &Dest)))
+        {
+            memset(Dest, 0, sizeof(audio_sample) * SampleCount);
+            if (Win32State.Game_GetAudioSamples)
+            {
+                Win32State.Game_GetAudioSamples(GameMemory, SampleCount, (audio_sample*)Dest);
+            }
+            RenderClient->ReleaseBuffer(SampleCount, 0);
+        }
+    }
+    //return(0);
+}
 
 static DWORD __stdcall WinWorkerThread(void* Param)
 {
@@ -562,7 +654,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     Win32State.HasDebugger = IsDebuggerPresent();
     QueryPerformanceFrequency((LARGE_INTEGER*)&Win32State.PerformanceFrequency);
     
-    if (CoInitializeEx(nullptr, COINIT_MULTITHREADED) != S_OK)
+    if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)))
     {
         return -1;
     }
@@ -644,76 +736,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         }
     }
 
-    // Init Audio
-    IMMDeviceEnumerator* DeviceEnumerator = nullptr;
-    IMMDevice* DefaultDevice = nullptr;
-    IAudioClient* AudioClient = nullptr;
-    WAVEFORMATEXTENSIBLE* DeviceFormat = nullptr;
-    u64 AudioBufferDurationInSeconds = 1;
-    REFERENCE_TIME BufferDuration = AudioBufferDurationInSeconds * 10 * 1000 * 1000;
-    IAudioRenderClient* RenderClient = nullptr;
-    u32 AudioBufferFrameCount = 0;
-    u32 AudioBufferSampleCount = 0;
-    {
-        HRESULT ErrorCode = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&DeviceEnumerator));
-        if (ErrorCode != S_OK) return -1;
-
-        ErrorCode = DeviceEnumerator->GetDefaultAudioEndpoint(EDataFlow::eRender, ERole::eMultimedia, &DefaultDevice);
-        if (ErrorCode != S_OK) return -1;
-
-        ErrorCode = DefaultDevice->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)&AudioClient);
-        if (ErrorCode != S_OK) return -1;
-
-        ErrorCode = AudioClient->GetMixFormat((WAVEFORMATEX**)&DeviceFormat);
-        if (ErrorCode != S_OK) return -1;
-
-        Assert((DeviceFormat->Format.nChannels == 2) &&
-               (DeviceFormat->Format.cbSize >= sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)) &&
-               (DeviceFormat->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT));
-
-        ErrorCode = AudioClient->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, 
-                                            BufferDuration, 0, (WAVEFORMATEX*)DeviceFormat, nullptr);
-        if (ErrorCode != S_OK) return -1;
-        ErrorCode = AudioClient->GetService(IID_PPV_ARGS(&RenderClient));
-        if (ErrorCode != S_OK) return -1;
-
-        AudioBufferFrameCount = (u32)(AudioBufferDurationInSeconds * DeviceFormat->Format.nAvgBytesPerSec / (DeviceFormat->Format.wBitsPerSample / 8));
-        AudioBufferSampleCount = AudioBufferFrameCount / DeviceFormat->Format.nChannels;
-    }
-
-    AudioClient->Start();
-
-    HANDLE GameDLLFile = CreateFileA(Win32_GameDLLPath, 0, FILE_SHARE_READ|FILE_SHARE_WRITE, nullptr, 
-                                     OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    FILETIME GameDLLWriteTime = {};
-    {
-        BY_HANDLE_FILE_INFORMATION Info = {};
-        if (GetFileInformationByHandle(GameDLLFile, &Info))
-        {
-            GameDLLWriteTime = Info.ftLastWriteTime;
-        }
-        else
-        {
-            Assert(!"Couldn't retrieve game DLL file info");
-        }
-    }
-
-    CopyFileA(Win32_GameDLLPath, Win32_GameDLLTempPath, FALSE);
-
-    Win32State.GameDLL = LoadLibraryA(Win32_GameDLLTempPath);
-    if (Win32State.GameDLL)
-    {
-        Win32State.Game_UpdateAndRender = (update_and_render_func*)GetProcAddress(Win32State.GameDLL, "Game_UpdateAndRender");
-        if (!Win32State.Game_UpdateAndRender)
-        {
-            return -1;
-        }
-    }
-    else
-    {
-        return -1;
-    }
-
     game_memory Memory = {};
     {
         Memory.MemorySize = GiB(4);
@@ -745,6 +767,41 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         Memory.ImGuiCtx = ImGui::CreateContext();
     }
 
+    DWORD AudioThreadID;
+    HANDLE AudioThread = CreateThread(nullptr, 0, &WinAudioThread, &Memory, 0, &AudioThreadID);
+
+    HANDLE GameDLLFile = CreateFileA(Win32_GameDLLPath, 0, FILE_SHARE_READ|FILE_SHARE_WRITE, nullptr, 
+                                     OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    FILETIME GameDLLWriteTime = {};
+    {
+        BY_HANDLE_FILE_INFORMATION Info = {};
+        if (GetFileInformationByHandle(GameDLLFile, &Info))
+        {
+            GameDLLWriteTime = Info.ftLastWriteTime;
+        }
+        else
+        {
+            Assert(!"Couldn't retrieve game DLL file info");
+        }
+    }
+
+    CopyFileA(Win32_GameDLLPath, Win32_GameDLLTempPath, FALSE);
+
+    Win32State.GameDLL = LoadLibraryA(Win32_GameDLLTempPath);
+    if (Win32State.GameDLL)
+    {
+        Win32State.Game_UpdateAndRender = (update_and_render_func*)GetProcAddress(Win32State.GameDLL, "Game_UpdateAndRender");
+        Win32State.Game_GetAudioSamples = (get_audio_samples_func*)GetProcAddress(Win32State.GameDLL, "Game_GetAudioSamples");
+        if (!Win32State.Game_UpdateAndRender)
+        {
+            return -1;
+        }
+    }
+    else
+    {
+        return -1;
+    }
+
     game_io IO = {};
 
     f32 Time = 0.0f;
@@ -753,6 +810,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     while (IsRunning) 
     {
         // DLL reload
+        // NOTE(boti): Intentionally left out of dt
         {
             BY_HANDLE_FILE_INFORMATION Info = {};
             if (GetFileInformationByHandle(GameDLLFile, &Info))
@@ -837,47 +895,11 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
             Sleep(5);
         }
 
-        // Audio update
-        {
-            static f32 AudioTime = 0.0f;
-            while (AudioTime >= 1.0f)
-            {
-                AudioTime -= 1.0f;
-            }
-            f32 dtAudio = 1.0f / DeviceFormat->Format.nSamplesPerSec;
-            u32 PaddingFrameCount = 0;
-            AudioClient->GetCurrentPadding(&PaddingFrameCount);
-
-            u32 AudioFrameCount = AudioBufferSampleCount - PaddingFrameCount;
-
-            u8* AudioBuffer = nullptr;
-            RenderClient->GetBuffer(AudioFrameCount, &AudioBuffer);
-
-            u32 RemainingFrames = AudioFrameCount;
-            f32* Dst = (f32*)AudioBuffer;
-            while (RemainingFrames--)
-            {
-                f32 Sample = 0.0f;
-                {
-                    f32 BaseFrequency = 2.0f * PI * 220.0f;
-                    for (u32 i = 0; i < 1; i++)
-                    {
-                        f32 Amplitude = 2.5e-2f * Exp(-(f32)i);
-                        Sample += Amplitude * Sin((i + 1) * BaseFrequency * AudioTime);
-                    }
-                }
-                *Dst++ = Sample;
-                *Dst++ = Sample;
-                AudioTime += dtAudio;
-            }
-
-            RenderClient->ReleaseBuffer(AudioFrameCount, 0);
-        }
-
         //GlobalProfiler.Reset();
 
         counter EndCounter = WinGetPerformanceCounter();
-        IO.DeltaTime = WinGetElapsedTime(StartCounter, EndCounter);
+        IO.dtCounter = { EndCounter.Value - StartCounter.Value };
+        IO.DeltaTime = WinGetTimeFromCounter(IO.dtCounter);
         //DebugPrint("%llu. Frame ended\n", FrameCount);
         IO.FrameIndex++;
     }
@@ -888,8 +910,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         ShowCursor(TRUE);
     }
 
-    AudioClient->Stop();
-
+    TerminateThread(AudioThread, 0);
     WinWaitForAllWork(&Win32State.HighPriorityQueue);
     WinWaitForAllWork(&Win32State.LowPriorityQueue);
     FreeLibrary(Win32State.GameDLL);

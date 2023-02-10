@@ -8,6 +8,7 @@
 
 #include "Common.cpp"
 #include "Random.cpp"
+#include "Audio.cpp"
 #include "Camera.cpp"
 #include "Chunk.cpp"
 #include "Shapes.cpp"
@@ -178,6 +179,124 @@ static bool Game_InitImGui(game_state* Game)
     return Result;
 }
 
+static bool InitializeSounds(game_state* Game)
+{
+    bool Result = true;
+
+    const char* SoundPaths[] = 
+    {
+        "sound/hit1.wav",
+    };
+    constexpr u32 SoundCount = CountOf(SoundPaths);
+
+    for (u32 i = 0; i < SoundCount; i++)
+    {
+        Assert(Game->SoundCount != Game->MaxSoundCount);
+        sound* Sound = Game->Sounds + Game->SoundCount++;
+
+        u64 ArenaSave = Game->TransientArena.Used;
+
+        buffer File = Platform.LoadEntireFile(SoundPaths[i], &Game->TransientArena);
+
+        constexpr u32 RiffTag = 'FFIR';
+        constexpr u32 WaveTag = 'EVAW';
+        constexpr u32 FormatTag = ' tmf';
+        constexpr u32 DataTag = 'atad';
+        struct riff_chunk
+        {
+            u32 Tag;
+            u32 Size;
+            u8 Data[];
+        };
+
+        if (File.Size > 12)
+        {
+            u32 RiffTagInFile = *(u32*)File.Data;
+            u32 WaveTagInFile = *(u32*)(File.Data + 8);
+            Assert((RiffTagInFile == RiffTag) && (WaveTagInFile == WaveTag));
+
+            u32 FileSize = *(u32*)(File.Data + 4);
+            Assert(FileSize == File.Size - 8);
+
+            riff_chunk* FormatChunk = nullptr;
+            riff_chunk* DataChunk = nullptr;
+            riff_chunk* It = (riff_chunk*)(File.Data + 12);
+
+            while ((u8*)It != File.Data + File.Size)
+            {
+                Assert((It->Data - File.Data) + It->Size <= (s64)File.Size); // Check for data size corruption
+
+                if (It->Tag == FormatTag)
+                {
+                    FormatChunk = It;
+                }
+                else if (It->Tag == DataTag)
+                {
+                    DataChunk = It;
+                }
+                else
+                {
+                    // Unknown chunk type
+                }
+                It = (riff_chunk*)(It->Data + It->Size);
+            }
+
+
+            if (FormatChunk && DataChunk)
+            {
+#pragma pack(push, 1)
+                struct wave_format
+                {
+                    u16 Tag;
+                    u16 ChannelCount;
+                    u32 SamplesPerSec;
+                    u32 BytesPerSec;
+                    u16 BlockAlign;
+                    u16 BitDepth;
+                };
+#pragma pack(pop)
+                wave_format* Format = (wave_format*)FormatChunk->Data;
+
+                // TODO(boti): resampling, format conversion
+                Assert(Format->Tag == 1 && // PCM
+                       Format->ChannelCount == 1 &&
+                       Format->SamplesPerSec == 48000 &&
+                       Format->BitDepth == 16);
+
+                Sound->ChannelCount = Format->ChannelCount;
+                Sound->SampleCount = DataChunk->Size / Format->BlockAlign;
+                u32 Footprint = DataChunk->Size;
+
+                Sound->SampleData = (u8*)PushSize(&Game->PrimaryArena, Footprint, CACHE_LINE_SIZE);
+                if (Sound->SampleData)
+                {
+                    memcpy(Sound->SampleData, DataChunk->Data, Footprint);
+                }
+                else
+                {
+                    Assert(!"Failed to allocate sound memory");
+                    Result = false;
+                    break;
+                }
+            }
+            else
+            {
+                Assert(!"No data and/or format chunk in .wav file");
+                Result = false;
+            }
+        }
+        else
+        {
+            Assert(!"Corrupt .wav file");
+            Result = false;
+        }
+
+        Game->TransientArena.Used = ArenaSave;
+    }
+
+    return(Result);
+}
+
 static bool InitializeTextures(renderer* Renderer, memory_arena* Arena)
 {
     bool Result = false;
@@ -260,7 +379,13 @@ static bool InitializeTextures(renderer* Renderer, memory_arena* Arena)
                             vec3 C01 = UnpackColor3(Color01);
                             vec3 C11 = UnpackColor3(Color11);
 
+                            C00 = C00*C00;
+                            C10 = C10*C10;
+                            C01 = C01*C01;
+                            C11 = C11*C11;
+
                             vec3 Color = 0.25f * (C00 + C10 + C01 + C11);
+                            Color = { Sqrt(Color.x), Sqrt(Color.y), Sqrt(Color.z) };
                             *PixelBufferAt++ = PackColor(Color);
                         }
                     }
@@ -284,7 +409,6 @@ static bool InitializeTextures(renderer* Renderer, memory_arena* Arena)
                                               TextureCount, (u8*)PixelBuffer);
     return(Result);
 }
-
 platform_api Platform;
 
 extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
@@ -311,16 +435,19 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
             {
                 Game->TransientArena = InitializeArena(TransientMemorySize, TransientMemory);
 
-                Game->Renderer = PushStruct<renderer>(&Game->PrimaryArena);
-                if (Game->Renderer)
+                if (InitializeSounds(Game))
                 {
-                    if (Renderer_Initialize(Game->Renderer, &Game->PrimaryArena))
+                    Game->Renderer = PushStruct<renderer>(&Game->PrimaryArena);
+                    if (Game->Renderer)
                     {
-                        if (InitializeTextures(Game->Renderer, &Game->TransientArena))
+                        if (Renderer_Initialize(Game->Renderer, &Game->PrimaryArena))
                         {
-                            if (Game_InitImGui(Game))
+                            if (InitializeTextures(Game->Renderer, &Game->TransientArena))
                             {
-                                InitializationSuccessful = true;
+                                if (Game_InitImGui(Game))
+                                {
+                                    InitializationSuccessful = true;
+                                }
                             }
                         }
                     }
@@ -333,6 +460,8 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
             IO->ShouldQuit = true;
             return;
         }
+
+        Game->HitSound = Game->Sounds + 0;
     }
 
     if (!Game->World)
@@ -355,6 +484,11 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
     }
 
     Game->FrameIndex = IO->FrameIndex;
+
+    if (Game->FrameIndex % 144 == 0)
+    {
+        PlaySound(&Game->AudioState, Game->HitSound);
+    }
     Game_Update(Game, IO);
     Game_Render(Game, IO);
 }

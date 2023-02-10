@@ -12,6 +12,7 @@ typedef function<void(memory_arena*)> work_function;
 // Work queue is an opaque type to the game
 struct platform_work_queue;
 
+// High resolution counter
 struct counter
 {
     s64 Value;
@@ -51,14 +52,6 @@ struct audio_sample
     f32 Right;
 };
 
-struct game_audio
-{
-    u32 ReadAt;
-    u32 WriteAt;
-    u32 BufferSampleCount;
-    audio_sample* Samples;
-};
-
 struct game_memory
 {
     u64 MemorySize;
@@ -90,8 +83,7 @@ struct game_io
 {
     u32 FrameIndex;
     f32 DeltaTime;
-
-    game_audio Audio;
+    counter dtCounter;
 
     // ShouldQuit is both whether a quit request happened in the platform layer
     // _and_ something the game code can set to quit the app
@@ -125,6 +117,8 @@ struct game_io
 
 // TODO: runtime variable?
 constexpr u64 PLATFORM_PAGE_SIZE = 4096;
+#define CACHE_LINE_SIZE 64
 
 // Implemented by the game
 typedef void (update_and_render_func)(game_memory* Memory, game_io* IO);
+typedef void (get_audio_samples_func)(game_memory* Memory, u32 SampleCount, audio_sample* Samples);
