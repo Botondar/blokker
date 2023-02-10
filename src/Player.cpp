@@ -121,7 +121,7 @@ void HandleInput(player* Player, game_io* IO)
     Player->Control.IsRunning = IO->LeftShift;
 }
 
-void Update(player* Player, world* World, f32 dt)
+void Update(game_state* Game, world* World, player* Player, f32 dt)
 {
     TIMED_FUNCTION();
     

@@ -880,7 +880,7 @@ void Update(game_state* Game, world* World, game_io* IO)
     while (RemainingTime > 0.0f)
     {
         f32 dt = Min(RemainingTime, MinPhysicsResolution);
-        Update(&World->Player, World, dt);
+        Update(Game, World, &World->Player, dt);
         RemainingTime -= dt;
     }
 
