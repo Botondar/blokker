@@ -769,6 +769,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
     DWORD AudioThreadID;
     HANDLE AudioThread = CreateThread(nullptr, 0, &WinAudioThread, &Memory, 0, &AudioThreadID);
+    SetThreadPriority(AudioThread, THREAD_PRIORITY_TIME_CRITICAL);
 
     HANDLE GameDLLFile = CreateFileA(Win32_GameDLLPath, 0, FILE_SHARE_READ|FILE_SHARE_WRITE, nullptr, 
                                      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
