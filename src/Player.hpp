@@ -73,4 +73,4 @@ void GetHorizontalAxes(const player* Player, vec3& Forward, vec3& Right);
 vec3 GetForwardVector(const player* Player);
 
 void HandleInput(player* Player, game_io* IO);
-void Update(game_state* Game, world* World, player* Player, f32 DeltaTime);
+void UpdatePlayer(game_state* Game, world* World, player* Player, f32 DeltaTime);

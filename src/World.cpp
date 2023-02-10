@@ -742,7 +742,7 @@ void HandleInput(world* World, game_io* IO)
     }
 }
 
-void Update(game_state* Game, world* World, game_io* IO)
+void UpdateWorld(game_state* Game, world* World, game_io* IO)
 {
     TIMED_FUNCTION();
 
@@ -880,7 +880,7 @@ void Update(game_state* Game, world* World, game_io* IO)
     while (RemainingTime > 0.0f)
     {
         f32 dt = Min(RemainingTime, MinPhysicsResolution);
-        Update(Game, World, &World->Player, dt);
+        UpdatePlayer(Game, World, &World->Player, dt);
         RemainingTime -= dt;
     }
 

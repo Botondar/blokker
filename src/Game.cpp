@@ -121,7 +121,7 @@ static void Game_Update(game_state* Game, game_io* IO)
     Game->World->FrameIndex = Game->FrameIndex;
     
     HandleInput(Game->World, IO);
-    Update(Game, Game->World, IO);
+    UpdateWorld(Game, Game->World, IO);
 }
 
 static void Game_Render(game_state* Game, game_io* IO)

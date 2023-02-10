@@ -154,7 +154,7 @@ void ResetPlayer(world* World);
 bool Initialize(world* World);
 
 void HandleInput(world* World, game_io* IO);
-void Update(game_state* Game, world* World, game_io* IO);
+void UpdateWorld(game_state* Game, world* World, game_io* IO);
 void World_Render(world* World, renderer_frame_params* Frame);
 
 bool RayCast(world* World, vec3 P, vec3 V, f32 tMax, vec3i* OutP, direction* OutDir);
