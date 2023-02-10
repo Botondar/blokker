@@ -485,10 +485,6 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
 
     Game->FrameIndex = IO->FrameIndex;
 
-    if (Game->FrameIndex % 144 == 0)
-    {
-        PlaySound(&Game->AudioState, Game->HitSound);
-    }
     Game_Update(Game, IO);
     Game_Render(Game, IO);
 }

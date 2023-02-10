@@ -190,7 +190,6 @@ void Update(game_state* Game, world* World, player* Player, f32 dt)
             }
         }
     }
-    
 
     vec3 Forward, Right;
     GetHorizontalAxes(Player, Forward, Right);
@@ -315,6 +314,7 @@ void Update(game_state* Game, world* World, player* Player, f32 dt)
 
     // Apply movement
     {
+        bool WasGrounded = Player->WasGroundedLastFrame;
         vec3 dP = (Player->Velocity + 0.5f * Acceleration * dt) * dt;
         Player->WasGroundedLastFrame = false;
 
@@ -334,6 +334,10 @@ void Update(game_state* Game, world* World, player* Player, f32 dt)
             if (Displacement.z > 0.0f)
             {
                 Player->WasGroundedLastFrame = true;
+                if (!WasGrounded)
+                {
+                    PlaySound(&Game->AudioState, Game->HitSound);
+                }
             }
         }
     }
