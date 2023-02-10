@@ -742,7 +742,7 @@ void HandleInput(world* World, game_io* IO)
     }
 }
 
-void Update(world* World, game_io* IO, memory_arena* TransientArena)
+void Update(game_state* Game, world* World, game_io* IO)
 {
     TIMED_FUNCTION();
 
@@ -754,7 +754,7 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
         World->MapView.ZoomCurrent = Lerp(World->MapView.ZoomCurrent, World->MapView.ZoomTarget, 1.0f - Exp(-20.0f * IO->DeltaTime));
     }
 
-    LoadChunksAroundPlayer(World, TransientArena);
+    LoadChunksAroundPlayer(World, &Game->TransientArena);
 
     bool WaitForPlayerChunk = false;
     chunk* PlayerChunk = FindPlayerChunk(World);
@@ -925,7 +925,7 @@ void Update(world* World, game_io* IO, memory_arena* TransientArena)
     if (World->FrameIndex % 500 == 0)
     {
         u64 ChunkCount = 0;
-        chunk** Chunks = PushArray<chunk*>(TransientArena, World->MaxChunkCount);
+        chunk** Chunks = PushArray<chunk*>(&Game->TransientArena, World->MaxChunkCount);
         for (u64 i = 0; i < World->MaxChunkCount; i++)
         {
             chunk* Chunk = World->Chunks + i;
