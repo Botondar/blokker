@@ -1,7 +1,7 @@
 #include "RTHeap.hpp"
 
 bool RTHeap_Create(
-    vulkan_rt_heap* Heap, 
+    render_target_heap* Heap, 
     u64 Size, u32 MemoryTypeBase,
     u32 MemoryRequirementCount,
     const VkMemoryRequirements* MemoryRequirements,
@@ -42,7 +42,7 @@ bool RTHeap_Create(
 }
 
 bool RTHeap_PushImage(
-    vulkan_rt_heap* Heap,
+    render_target_heap* Heap,
     VkImage Image)
 {
     assert(Heap);

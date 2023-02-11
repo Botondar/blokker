@@ -13,7 +13,7 @@ struct vulkan_physical_device_desc
     VkPhysicalDeviceMemoryProperties MemoryProps;
 };
 
-struct vulkan_render_device
+struct render_device
 {
     VkInstance Instance;
     VkDebugUtilsMessengerEXT DebugMessenger;
@@ -55,4 +55,4 @@ struct vulkan_render_device
 #endif
 };
 
-bool CreateRenderDevice(vulkan_render_device* RenderDevice);
+bool CreateRenderDevice(render_device* RenderDevice);

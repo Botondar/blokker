@@ -22,7 +22,7 @@ struct vulkan_layer_extensions
 };
 
 static bool RenderDevice_CreateInstance(
-    vulkan_render_device* Device,
+    render_device* Device,
     u32 RequiredVersionMajor, u32 RequiredVersionMinor,
     const char* Layers[], u32 LayerCount,
     const char* Extensions[], u32 ExtensionCount)
@@ -81,7 +81,7 @@ static bool RenderDevice_CreateInstance(
     return Result;
 }
 
-static bool RenderDevice_EnableDebugging(vulkan_render_device* Device)
+static bool RenderDevice_EnableDebugging(render_device* Device)
 {
     bool Result = false;
 
@@ -133,7 +133,7 @@ static u32 ChooseDevice(const vulkan_physical_device_desc* Descs, u32 Count)
 }
 
 static bool RenderDevice_ChooseAndCreateDevice(
-    vulkan_render_device* Device,
+    render_device* Device,
     const char* Layers[], u32 LayerCount,
     const char* Extensions[], u32 ExtensionCount)
 {
@@ -319,7 +319,7 @@ static bool RenderDevice_ChooseAndCreateDevice(
     return Result;
 }
 
-bool CreateRenderDevice(vulkan_render_device* RenderDevice)
+bool CreateRenderDevice(render_device* RenderDevice)
 {
     bool Result = false;
 

@@ -1,7 +1,7 @@
 #include "StagingHeap.hpp"
 
 bool StagingHeap_Create(
-    vulkan_staging_heap* Heap,
+    staging_heap* Heap,
     u64 Size,
     renderer* Renderer)
 {
@@ -111,7 +111,7 @@ bool StagingHeap_Create(
 }
 
 bool StagingHeap_Copy(
-    vulkan_staging_heap* Heap,
+    staging_heap* Heap,
     VkQueue Queue,
     VkCommandBuffer CmdBuffer,
     u64 DestOffset, VkBuffer Dest,
@@ -186,7 +186,7 @@ bool StagingHeap_Copy(
 }
 
 bool StagingHeap_CopyImage(
-    vulkan_staging_heap* Heap,
+    staging_heap* Heap,
     VkQueue Queue,
     VkCommandBuffer CmdBuffer,
     VkImage Image,

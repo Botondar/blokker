@@ -124,17 +124,17 @@ struct chunk
 
     chunk_data* Data;
 
-    struct vulkan_vertex_buffer_block* VertexBlock;
+    struct vertex_buffer_block* VertexBlock;
     u64 LastRenderedInFrameIndex;
 
-    struct vulkan_vertex_buffer_block* OldVertexBlock;
+    struct vertex_buffer_block* OldVertexBlock;
     u64 OldAllocationLastRenderedInFrameIndex;
 };
 
 struct chunk_render_data
 {
     vec2i P;
-    struct vulkan_vertex_buffer_block* VertexBlock;
+    struct vertex_buffer_block* VertexBlock;
     u64* LastRenderedInFrameIndex;
 };
 

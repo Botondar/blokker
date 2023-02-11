@@ -922,6 +922,7 @@ void UpdateWorld(game_state* Game, world* World, game_io* IO)
         }
     }
 
+#if 0
     if (World->FrameIndex % 500 == 0)
     {
         u64 ChunkCount = 0;
@@ -935,8 +936,8 @@ void UpdateWorld(game_state* Game, world* World, game_io* IO)
             }
         }
 
-        vulkan_vertex_buffer_block* Sentinel = &World->Renderer->VB.UsedBlockSentinel;
-        for (vulkan_vertex_buffer_block* It = Sentinel->Next; It != Sentinel; It = It->Next)
+        vertex_buffer_block* Sentinel = &World->Renderer->VB.UsedBlockSentinel;
+        for (vertex_buffer_block* It = Sentinel->Next; It != Sentinel; It = It->Next)
         {
             bool BlockFound = false;
             for (u64 i = 0; i < ChunkCount; i++)
@@ -952,6 +953,7 @@ void UpdateWorld(game_state* Game, world* World, game_io* IO)
             Assert(BlockFound);
         }
     }
+#endif
 }
 
 void World_Render(world* World, renderer_frame_params* FrameParams)

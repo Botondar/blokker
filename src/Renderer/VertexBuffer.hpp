@@ -3,16 +3,16 @@
 //#include <vulkan/vulkan.h>
 //#include <Common.hpp>
 
-struct vulkan_vertex_buffer_block
+struct vertex_buffer_block
 {
     u32 VertexCount;
     u32 VertexOffset;
 
-    vulkan_vertex_buffer_block* Next;
-    vulkan_vertex_buffer_block* Prev;
+    vertex_buffer_block* Next;
+    vertex_buffer_block* Prev;
 };
 
-struct vulkan_vertex_buffer
+struct vertex_buffer
 {
     static constexpr u32 MaxAllocationCount = 8192;
     memory_arena* Arena;
@@ -23,16 +23,16 @@ struct vulkan_vertex_buffer
     VkBuffer Buffer;
     u32 MaxVertexCount;
     
-    vulkan_vertex_buffer_block FreeBlockSentinel;
-    vulkan_vertex_buffer_block UsedBlockSentinel;
-    vulkan_vertex_buffer_block BlockPoolSentinel;
+    vertex_buffer_block FreeBlockSentinel;
+    vertex_buffer_block UsedBlockSentinel;
+    vertex_buffer_block BlockPoolSentinel;
 };
 
-bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Device, memory_arena* Arena);
+bool VB_Create(vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Device, memory_arena* Arena);
 
-vulkan_vertex_buffer_block* VB_Allocate(vulkan_vertex_buffer* VB, u32 VertexCount);
-void VB_Free(vulkan_vertex_buffer* VB, vulkan_vertex_buffer_block* Block);
+vertex_buffer_block* VB_Allocate(vertex_buffer* VB, u32 VertexCount);
+void VB_Free(vertex_buffer* VB, vertex_buffer_block* Block);
 
-void VB_Defragment(vulkan_vertex_buffer* VB);
+void VB_Defragment(vertex_buffer* VB);
 
-u64 VB_GetAllocationMemoryOffset(vulkan_vertex_buffer_block* Block);
+u64 VB_GetAllocationMemoryOffset(vertex_buffer_block* Block);

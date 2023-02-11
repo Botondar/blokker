@@ -1,8 +1,8 @@
 #include "VertexBuffer.hpp"
 
-static void VerifyListIntegrity(vulkan_vertex_buffer_block* Sentinel)
+static void VerifyListIntegrity(vertex_buffer_block* Sentinel)
 {
-    for (vulkan_vertex_buffer_block* It = Sentinel->Next;
+    for (vertex_buffer_block* It = Sentinel->Next;
          It != Sentinel;
          It = It->Next)
     {
@@ -18,14 +18,14 @@ static void VerifyListIntegrity(vulkan_vertex_buffer_block* Sentinel)
     Assert(Sentinel == Sentinel->Next->Prev);
 }
 
-static vulkan_vertex_buffer_block* GetBlockFromPool(vulkan_vertex_buffer* VB)
+static vertex_buffer_block* GetBlockFromPool(vertex_buffer* VB)
 {
-    vulkan_vertex_buffer_block* Sentinel = &VB->BlockPoolSentinel;
+    vertex_buffer_block* Sentinel = &VB->BlockPoolSentinel;
     if (Sentinel->Next == Sentinel)
     {
         static constexpr u32 BlockIncrementCount = 8192;
 
-        vulkan_vertex_buffer_block* Blocks = PushArray<vulkan_vertex_buffer_block>(VB->Arena, BlockIncrementCount);
+        vertex_buffer_block* Blocks = PushArray<vertex_buffer_block>(VB->Arena, BlockIncrementCount);
         Assert(Blocks);
 
         for (u32 i = 0 ; i < BlockIncrementCount; i++)
@@ -37,17 +37,17 @@ static vulkan_vertex_buffer_block* GetBlockFromPool(vulkan_vertex_buffer* VB)
         Sentinel->Prev = Blocks + (BlockIncrementCount - 1);
         Sentinel->Prev->Next = Sentinel->Next->Prev = Sentinel;
     }
-    vulkan_vertex_buffer_block* Result = Sentinel->Next;
+    vertex_buffer_block* Result = Sentinel->Next;
     Sentinel->Next = Result->Next;
     Sentinel->Next->Prev = Sentinel;
     Result->Next = Result->Prev = nullptr;
     return(Result);
 }
 
-static void InsertVertexBlock(vulkan_vertex_buffer_block* Sentinel, vulkan_vertex_buffer_block* Block)
+static void InsertVertexBlock(vertex_buffer_block* Sentinel, vertex_buffer_block* Block)
 {
-    vulkan_vertex_buffer_block* InsertBefore = Sentinel;
-    for (vulkan_vertex_buffer_block* It = Sentinel->Next; It != Sentinel; It = It->Next)
+    vertex_buffer_block* InsertBefore = Sentinel;
+    for (vertex_buffer_block* It = Sentinel->Next; It != Sentinel; It = It->Next)
     {
         if (It->VertexOffset > Block->VertexOffset)
         {
@@ -63,7 +63,7 @@ static void InsertVertexBlock(vulkan_vertex_buffer_block* Sentinel, vulkan_verte
     //VerifyListIntegrity(Sentinel);
 }
 
-static void RemoveVertexBlock(vulkan_vertex_buffer_block* Sentinel, vulkan_vertex_buffer_block* Block)
+static void RemoveVertexBlock(vertex_buffer_block* Sentinel, vertex_buffer_block* Block)
 {
     Block->Prev->Next = Block->Next;
     Block->Next->Prev = Block->Prev;
@@ -72,10 +72,10 @@ static void RemoveVertexBlock(vulkan_vertex_buffer_block* Sentinel, vulkan_verte
     //VerifyListIntegrity(Sentinel);
 }
 
-bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Device, memory_arena* Arena)
+bool VB_Create(vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Device, memory_arena* Arena)
 {
     assert(VB);
-    memset(VB, 0, sizeof(vulkan_vertex_buffer));
+    memset(VB, 0, sizeof(vertex_buffer));
     bool Result = false;
 
     Size = AlignTo(Size, sizeof(terrain_vertex));
@@ -135,7 +135,7 @@ bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Dev
                     VB->UsedBlockSentinel.Next = VB->UsedBlockSentinel.Prev = &VB->UsedBlockSentinel;
                     VB->BlockPoolSentinel.Next = VB->BlockPoolSentinel.Prev = &VB->BlockPoolSentinel;
 
-                    vulkan_vertex_buffer_block* FirstFreeBlock = GetBlockFromPool(VB);
+                    vertex_buffer_block* FirstFreeBlock = GetBlockFromPool(VB);
                     FirstFreeBlock->VertexOffset = 0;
                     FirstFreeBlock->VertexCount = VB->MaxVertexCount;
                     InsertVertexBlock(&VB->FreeBlockSentinel, FirstFreeBlock);
@@ -157,10 +157,10 @@ bool VB_Create(vulkan_vertex_buffer* VB, u32 MemoryTypes, u64 Size, VkDevice Dev
     return(Result);
 }
 
-vulkan_vertex_buffer_block* VB_Allocate(vulkan_vertex_buffer* VB, u32 VertexCount)
+vertex_buffer_block* VB_Allocate(vertex_buffer* VB, u32 VertexCount)
 {
-    vulkan_vertex_buffer_block* Result = nullptr;
-    for (vulkan_vertex_buffer_block* It = VB->FreeBlockSentinel.Next; 
+    vertex_buffer_block* Result = nullptr;
+    for (vertex_buffer_block* It = VB->FreeBlockSentinel.Next; 
          It != &VB->FreeBlockSentinel;
          It = It->Next)
     {
@@ -176,7 +176,7 @@ vulkan_vertex_buffer_block* VB_Allocate(vulkan_vertex_buffer* VB, u32 VertexCoun
         RemoveVertexBlock(&VB->FreeBlockSentinel, Result);
         if (Result->VertexCount != VertexCount)
         {
-            vulkan_vertex_buffer_block* NewFreeBlock = GetBlockFromPool(VB);
+            vertex_buffer_block* NewFreeBlock = GetBlockFromPool(VB);
             NewFreeBlock->VertexCount = Result->VertexCount - VertexCount;
             NewFreeBlock->VertexOffset = Result->VertexOffset + VertexCount;
             InsertVertexBlock(&VB->FreeBlockSentinel, NewFreeBlock);
@@ -193,19 +193,19 @@ vulkan_vertex_buffer_block* VB_Allocate(vulkan_vertex_buffer* VB, u32 VertexCoun
     return(Result);
 }
 
-void VB_Free(vulkan_vertex_buffer* VB, vulkan_vertex_buffer_block* Block)
+void VB_Free(vertex_buffer* VB, vertex_buffer_block* Block)
 {
     VB->MemoryUsage -= Block->VertexCount * sizeof(terrain_vertex);
     RemoveVertexBlock(&VB->UsedBlockSentinel, Block);
     InsertVertexBlock(&VB->FreeBlockSentinel, Block);
 
-    for (vulkan_vertex_buffer_block* It = VB->FreeBlockSentinel.Next;
+    for (vertex_buffer_block* It = VB->FreeBlockSentinel.Next;
          It != &VB->FreeBlockSentinel;
          It = It->Next)
     {
         while (It->VertexOffset + It->VertexCount == It->Next->VertexOffset)
         {
-            vulkan_vertex_buffer_block* Next = It->Next;
+            vertex_buffer_block* Next = It->Next;
             It->VertexCount += It->Next->VertexCount;
             It->Next = It->Next->Next;
             It->Next->Prev = It;
@@ -217,12 +217,12 @@ void VB_Free(vulkan_vertex_buffer* VB, vulkan_vertex_buffer_block* Block)
     }
 }
 
-void VB_Defragment(vulkan_vertex_buffer* VB)
+void VB_Defragment(vertex_buffer* VB)
 {
     Assert(!"Unimplemented code path");
 }
 
-u64 VB_GetAllocationMemoryOffset(vulkan_vertex_buffer_block* Block)
+u64 VB_GetAllocationMemoryOffset(vertex_buffer_block* Block)
 {
     u64 Result = Block->VertexOffset * sizeof(terrain_vertex);
     return(Result);

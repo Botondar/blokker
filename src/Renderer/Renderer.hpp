@@ -95,7 +95,7 @@ u64 Frame_PushToStack(renderer_frame_params* Frame, u64 Alignment, const void* D
 
 struct renderer 
 {
-    vulkan_render_device RenderDevice;
+    render_device RenderDevice;
 
     VkSurfaceFormatKHR SurfaceFormat;
     VkSurfaceKHR Surface;
@@ -112,17 +112,22 @@ struct renderer
     // Offscreen render buffers
     struct 
     {
+#if 0
+        VkImage DepthBuffer;
+        VkImageView DepthBufferView;
+#else
         VkImage DepthBuffers[2];
         VkImageView DepthBufferViews[2];
+#endif
     };
-    vulkan_rt_heap RTHeap;
+    render_target_heap RTHeap;
 
     u32 NextBufferIndex;
     renderer_frame_params FrameParams[16];
 
-    vulkan_staging_heap StagingHeap;
+    staging_heap StagingHeap;
 
-    vulkan_vertex_buffer VB;
+    vertex_buffer VB;
 
     VkPipelineLayout PipelineLayout;
     VkPipeline Pipeline;
