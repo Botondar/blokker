@@ -15,6 +15,9 @@ struct game_state
     memory_arena PrimaryArena;
     memory_arena TransientArena;
 
+    u64 TransientArenaMaxUsed;
+    u64 TransientArenaLastUsed;
+
     u64 FrameIndex;
 
     renderer* Renderer;

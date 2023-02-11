@@ -95,6 +95,19 @@ static void Game_Update(game_state* Game, game_io* IO)
 
         ImGui::Begin("Memory");
         {
+            ImGui::Text("Game: %lluMB / %lluMB (%.1f%%)\n",
+                Game->PrimaryArena.Used >> 20,
+                Game->PrimaryArena.Size >> 20,
+                100.0 * ((f64)Game->PrimaryArena.Used / (f64)Game->PrimaryArena.Size));
+
+            ImGui::Text("Temporary: %lluMB / %lluMB (%.1f%%)\n",
+                Game->TransientArenaLastUsed >> 20,
+                Game->TransientArena.Size >> 20,
+                100.0 * ((f64)Game->TransientArenaLastUsed / (f64)Game->TransientArena.Size));
+            ImGui::Text("Temporary (max): %lluMB / %lluMB (%.1f%%)\n",
+                Game->TransientArenaMaxUsed >> 20,
+                Game->TransientArena.Size >> 20,
+                100.0 * ((f64)Game->TransientArenaMaxUsed / (f64)Game->TransientArena.Size));
             ImGui::Text("RenderTarget: %lluMB / %lluMB (%.1f%%)\n",
                 Game->Renderer->RTHeap.HeapOffset >> 20,
                 Game->Renderer->RTHeap.HeapSize >> 20,
@@ -103,7 +116,6 @@ static void Game_Update(game_state* Game, game_io* IO)
                 Game->Renderer->VB.MemoryUsage >> 20,
                 Game->Renderer->VB.MemorySize >> 20,
                 100.0 * Game->Renderer->VB.MemoryUsage / Game->Renderer->VB.MemorySize);
-            ImGui::Text("Chunk header size: %d bytes", sizeof(chunk));
         }
         ImGui::End();
 
@@ -116,10 +128,8 @@ static void Game_Update(game_state* Game, game_io* IO)
         //GlobalProfiler.DoGUI();
     }
 #endif
-
-    Game->TransientArena.Used = 0; // Reset temporary memory
-    Game->World->FrameIndex = Game->FrameIndex;
     
+    Game->World->FrameIndex = Game->FrameIndex;
     HandleInput(Game->World, IO);
     UpdateWorld(Game, Game->World, IO);
 }
@@ -422,14 +432,17 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
     game_state* Game = Memory->Game;
     if (!Game)
     {
-        memory_arena BootstrapArena = InitializeArena(Memory->MemorySize, Memory->Memory);
-        Game = Memory->Game = PushStruct<game_state>(&BootstrapArena);
+        u64 TransientMemorySize = MiB(512);
+        u64 PermanentMemorySize = Memory->MemorySize - TransientMemorySize;
+        memory_arena PermanentArena = InitializeArena(PermanentMemorySize, Memory->Memory);
+        memory_arena TransientArena = InitializeArena(TransientMemorySize, (u8*)Memory->Memory + PermanentMemorySize);
+        Game = Memory->Game = PushStruct<game_state>(&PermanentArena);
 
         bool InitializationSuccessful = false;
         if (Game)
         {
-            Game->PrimaryArena = BootstrapArena;
-            u64 TransientMemorySize = MiB(512);
+            Game->PrimaryArena = PermanentArena;
+            Game->TransientArena = TransientArena;
             void* TransientMemory = PushSize(&Game->PrimaryArena, TransientMemorySize, KiB(64));
             if (TransientMemory)
             {
@@ -463,6 +476,10 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
 
         Game->HitSound = Game->Sounds + 0;
     }
+
+    Game->TransientArenaMaxUsed = Max(Game->TransientArenaMaxUsed, Game->TransientArena.Used);
+    Game->TransientArenaLastUsed = Game->TransientArena.Used;
+    Game->TransientArena.Used = 0; // Reset temporary memory
 
     if (!Game->World)
     {
