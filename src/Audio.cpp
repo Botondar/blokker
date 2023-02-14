@@ -25,6 +25,7 @@ extern "C" void Game_GetAudioSamples(game_memory* Memory, u32 SampleCount, audio
     if (Memory->Game)
     {
         game_audio* Audio = &Memory->Game->AudioState;
+        constexpr f32 MasterFader = 0.5f;
 
         for (u32 SoundIndex = 0; SoundIndex < Audio->MaxPlayingSoundCount; SoundIndex++)
         {
@@ -46,8 +47,8 @@ extern "C" void Game_GetAudioSamples(game_memory* Memory, u32 SampleCount, audio
 
                         s16 SourceSample = ((s16*)Sound->Source->SampleData)[Sound->SampleIndex++];
                         f32 Sample = SourceSample / 32768.0f;
-                        Dst->Left += Sample;
-                        Dst->Right += Sample;
+                        Dst->Left += MasterFader * Sample;
+                        Dst->Right += MasterFader * Sample;
                         Dst++;
                     }
                 }
