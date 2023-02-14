@@ -32,6 +32,13 @@ constexpr u32 INVALID_INDEX_U32 = 0xFFFFFFFFu;
 constexpr u64 INVALID_INDEX_U64 = 0xFFFFFFFFFFFFFFFFu;
 
 #define Assert(...) assert(__VA_ARGS__)
+#define FatalError(msg) Assert(!msg)
+#if DEVELOPER
+#define UnhandledError(msg) Assert(!msg)
+#else
+#define UnhandledError(...) static_assert(false, "Unhandled error in release build!");
+#endif
+
 
 struct buffer
 {
