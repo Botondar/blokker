@@ -443,6 +443,7 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
     }
 
     render_frame* FrameParams = Renderer_NewFrame(Game->Renderer, IO->NeedRendererResize);
+    IO->NeedRendererResize = false;
 
     DoDebugUI(Game, IO);
     
@@ -450,14 +451,10 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
     HandleInput(Game->World, IO);
     UpdateWorld(Game, Game->World, IO, FrameParams);
 
-    IO->NeedRendererResize = false;
-    //Renderer_BeginRendering(FrameParams);
-
     World_Render(Game->World, FrameParams);
 
     ImGui::Render();
     ImDrawData* DrawData = ImGui::GetDrawData();
     Renderer_RenderImGui(FrameParams, DrawData);
-    //Renderer_EndRendering(FrameParams);
     Renderer_SubmitFrame(Game->Renderer, FrameParams);
 }
