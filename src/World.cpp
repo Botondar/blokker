@@ -954,8 +954,6 @@ void World_Render(world* World, render_frame* FrameParams)
     }
 
     Renderer_RenderChunks(FrameParams, World->ChunkRenderDataCount, World->ChunkRenderData);
-
-    Renderer_BeginImmediate(FrameParams);
     
     // Render selected block
     if (World->Player.HasTargetBlock)
