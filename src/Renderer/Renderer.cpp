@@ -2324,7 +2324,7 @@ render_frame* Renderer_NewFrame(renderer* Renderer, bool DoResize)
     {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO,
         .pNext = nullptr,
-        .flags = 0,
+        .flags = RenderingInfo.flags & (~VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT),
         .viewMask = 0,
         .colorAttachmentCount = RenderingInfo.colorAttachmentCount,
         .pColorAttachmentFormats = ColorAttachmentFormats,
