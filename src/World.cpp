@@ -13,6 +13,7 @@ static u32 HashChunkP(const world* World, vec2i P, vec2i* Coords = nullptr);
 static void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena);
 static chunk* ReserveChunk(world* World, vec2i P);
 static chunk* FindPlayerChunk(world* World);
+static void FreeChunkMesh(world* World, chunk* Chunk);
 
 //
 // Implementations
@@ -34,6 +35,19 @@ static chunk_work* GetNextChunkWorkToWrite(chunk_work_queue* Queue)
         }
     }
     return(Result);
+}
+
+static void FreeChunkMesh(world* World, chunk* Chunk)
+{
+    if (Chunk->VertexBlock)
+    {
+        Assert(World->ChunkDeletionWriteIndex - World->ChunkDeletionReadIndex <= World->MaxChunkDeletionQueueCount);
+
+        u32 DeletionIndex = World->ChunkDeletionWriteIndex++;
+        World->ChunkDeletionQueue[DeletionIndex % World->MaxChunkDeletionQueueCount] = Chunk->VertexBlock;
+        Chunk->VertexBlock = nullptr;
+        Chunk->Flags &= ~CHUNK_STATE_MESHED_BIT;
+    }
 }
 
 // TODO(boti): rename, I don't understand this anymore without looking at the implementation
@@ -248,7 +262,6 @@ voxel_neighborhood GetVoxelNeighborhood(world* World, vec3i P)
     return Result;
 }
 
-
 static chunk* ReserveChunk(world* World, vec2i P)
 {
     chunk* Result = nullptr;
@@ -258,41 +271,7 @@ static chunk* ReserveChunk(world* World, vec2i P)
     Result = World->Chunks + Index;
     if (Result->P != P)
     {
-        if (Result->Flags & CHUNK_STATE_GENERATED_BIT)
-        {
-            Platform.DebugPrint("WARNING: Evicting chunk { %d, %d }\n", Result->P.x, Result->P.y);
-
-            if (Result->OldVertexBlock)
-            {
-                if (Result->OldAllocationLastRenderedInFrameIndex < World->FrameIndex - 1)
-                {
-                    VB_Free(&World->Renderer->VB, Result->OldVertexBlock);
-                    Result->OldVertexBlock = nullptr;
-                }
-                else
-                {
-                    // TODO(boti): the vertex memory will need to be kept alive until the GPU is no longer using it
-                    assert(!"Unimplemented code path");
-                }
-            }
-            if (Result->VertexBlock)
-            {
-                if (Result->LastRenderedInFrameIndex < World->FrameIndex - 1)
-                {
-                    VB_Free(&World->Renderer->VB, Result->VertexBlock);
-                }
-                else
-                {
-                    // Preserve the current allocation, it will get freed once the GPU is no longer using it
-                    Result->OldVertexBlock = Result->VertexBlock;
-                    Result->OldAllocationLastRenderedInFrameIndex = Result->LastRenderedInFrameIndex;
-                }
-
-                Result->VertexBlock = nullptr;
-                Result->LastRenderedInFrameIndex = 0;
-            }
-        }
-
+        FreeChunkMesh(World, Result);
         Result->P = P;
         Result->Flags = 0;
     }
@@ -639,7 +618,6 @@ bool Initialize(world* World)
         chunk_data* ChunkData = World->ChunkData + i;
 
         Chunk->VertexBlock = nullptr;
-        Chunk->OldVertexBlock = nullptr;
         Chunk->Data = ChunkData;
     }
 
@@ -742,9 +720,38 @@ void HandleInput(world* World, game_io* IO)
     }
 }
 
-void UpdateWorld(game_state* Game, world* World, game_io* IO)
+void UpdateWorld(game_state* Game, world* World, game_io* IO, render_frame* Frame)
 {
     TIMED_FUNCTION();
+
+    if (Game->IsDebugUIEnabled)
+    {
+        ImGui::Begin("World");
+        {
+            ImGui::Checkbox("Hitboxes", &World->Debug.IsHitboxEnabled);
+            ImGui::Text("PlayerP: { %.1f, %.1f, %.1f }", 
+                        World->Player.P.x, World->Player.P.y, World->Player.P.z);
+            if (ImGui::Button("Reset player"))
+            {
+                ResetPlayer(World);
+            }
+
+            ImGui::Checkbox("Debug camera", &World->Debug.IsDebugCameraEnabled);
+            ImGui::Text("DebugCameraP: { %.1f, %.1f, %.1f }",
+                        World->Debug.DebugCamera.P.x,
+                        World->Debug.DebugCamera.P.y,
+                        World->Debug.DebugCamera.P.z);
+            if (ImGui::Button("Teleport debug camera to player"))
+            {
+                World->Debug.DebugCamera = GetCamera(&World->Player);
+            }
+            if (ImGui::Button("Teleport player to debug camera"))
+            {
+                World->Player.P = Game->World->Debug.DebugCamera.P;
+            }
+        }
+        ImGui::End();
+    }
 
     if (World->MapView.IsEnabled)
     {
@@ -752,6 +759,12 @@ void UpdateWorld(game_state* Game, world* World, game_io* IO)
         World->MapView.CurrentYaw = Lerp(World->MapView.CurrentYaw, World->MapView.TargetYaw, 1.0f - Exp(-30.0f * IO->DeltaTime));
         World->MapView.CurrentPitch = Lerp(World->MapView.CurrentPitch, World->MapView.TargetPitch, 1.0f - Exp(-30.0f * IO->DeltaTime));
         World->MapView.ZoomCurrent = Lerp(World->MapView.ZoomCurrent, World->MapView.ZoomTarget, 1.0f - Exp(-20.0f * IO->DeltaTime));
+    }
+
+    while (World->ChunkDeletionReadIndex != World->ChunkDeletionWriteIndex)
+    {
+        u32 Index = (World->ChunkDeletionReadIndex++) % World->MaxChunkDeletionQueueCount;
+        VB_Free(&Game->Renderer->VB, World->ChunkDeletionQueue[Index]);
     }
 
     LoadChunksAroundPlayer(World, &Game->TransientArena);
@@ -787,8 +800,9 @@ void UpdateWorld(game_state* Game, world* World, game_io* IO)
             }
             else if (Work->Type == ChunkWork_BuildMesh)
             {
+                FreeChunkMesh(World, Work->Chunk);
+
                 u64 Count = Work->Mesh.OnePastLastIndex - Work->Mesh.FirstIndex;
-                Chunk->OldVertexBlock = Chunk->VertexBlock;
                 Chunk->VertexBlock = VB_Allocate(&World->Renderer->VB, (u32)Count);
                 if (Chunk->VertexBlock)
                 {
@@ -807,35 +821,16 @@ void UpdateWorld(game_state* Game, world* World, game_io* IO)
                     u64 HeadSize = HeadCount * sizeof(terrain_vertex);
                     u64 TailSize = TailCount * sizeof(terrain_vertex);
 
-
-                    auto CopyVertexData = [World](u64 Offset, u64 Size, void* Data) -> bool
-                    {
-                        return StagingHeap_Copy(
-                            &World->Renderer->StagingHeap,
-                            World->Renderer->RenderDevice.TransferQueue,
-                            World->Renderer->TransferCmdBuffer,
-                            Offset, World->Renderer->VB.Buffer,
-                            Size, Data);
-                    };
-
-                    bool CopyResult = CopyVertexData(BaseOffset, HeadSize, 
-                                                     Queue->VertexBuffer + FirstIndexModCount);
-                    if (TailCount != 0)
-                    {
-                        CopyResult &= CopyVertexData(BaseOffset + HeadSize, TailSize,
-                                                     Queue->VertexBuffer);
-                    }
-
-                    if (CopyResult)
+                    if (Renderer_UploadVertexData(Frame, Chunk->VertexBlock, 
+                                                  HeadSize, Queue->VertexBuffer + FirstIndexModCount,
+                                                  TailSize, Queue->VertexBuffer))
                     {
                         Chunk->Flags |= CHUNK_STATE_UPLOADED_BIT | CHUNK_STATE_MESHED_BIT;
                         Chunk->Flags &= ~CHUNK_STATE_MESH_DIRTY_BIT;
                     }
                     else
                     {
-                        Assert(!"Upload failed");
-                        VB_Free(&World->Renderer->VB, Chunk->VertexBlock);
-                        Chunk->VertexBlock = nullptr;
+                        UnhandledError("Failed to upload chunk vertex data");
                     }
 
                     if (Queue->VertexReadIndex == Work->Mesh.FirstIndex)
@@ -850,7 +845,7 @@ void UpdateWorld(game_state* Game, world* World, game_io* IO)
                             }
                             else
                             {
-                                Assert(!"Too many out of order mesh chunk works");
+                                FatalError("Too many out of order mesh chunk works");
                             }
                         }
                     }
@@ -874,8 +869,7 @@ void UpdateWorld(game_state* Game, world* World, game_io* IO)
         }
     } while (WaitForPlayerChunk);
 
-    constexpr f32 MinPhysicsResolution = 16.6667e-3f;
-
+    constexpr f32 MinPhysicsResolution = 1.0f / 60.0f;
     f32 RemainingTime = IO->DeltaTime;
     while (RemainingTime > 0.0f)
     {
@@ -899,67 +893,25 @@ void UpdateWorld(game_state* Game, world* World, game_io* IO)
                 continue;
             }
 
-            if (Chunk->OldVertexBlock)
-            {
-                if (Chunk->OldAllocationLastRenderedInFrameIndex < World->FrameIndex - 1)
-                {
-                    VB_Free(&World->Renderer->VB, Chunk->OldVertexBlock);
-                    Chunk->OldVertexBlock = nullptr;
-                }
-            }
-
             if (Chunk->Flags & CHUNK_STATE_UPLOADED_BIT)
             {
-                assert(World->ChunkRenderDataCount < World->MaxChunkCount);
+                Assert(World->ChunkRenderDataCount < World->MaxChunkCount);
 
                 World->ChunkRenderData[World->ChunkRenderDataCount++] = 
                 {
                     .P = Chunk->P,
                     .VertexBlock = Chunk->VertexBlock,
-                    .LastRenderedInFrameIndex = &Chunk->LastRenderedInFrameIndex,
+                    //.LastRenderedInFrameIndex = &Chunk->LastRenderedInFrameIndex,
                 };
             }
         }
     }
-
-#if 0
-    if (World->FrameIndex % 500 == 0)
-    {
-        u64 ChunkCount = 0;
-        chunk** Chunks = PushArray<chunk*>(&Game->TransientArena, World->MaxChunkCount);
-        for (u64 i = 0; i < World->MaxChunkCount; i++)
-        {
-            chunk* Chunk = World->Chunks + i;
-            if (Chunk->VertexBlock || Chunk->OldVertexBlock)
-            {
-                Chunks[ChunkCount++] = Chunk;
-            }
-        }
-
-        vertex_buffer_block* Sentinel = &World->Renderer->VB.UsedBlockSentinel;
-        for (vertex_buffer_block* It = Sentinel->Next; It != Sentinel; It = It->Next)
-        {
-            bool BlockFound = false;
-            for (u64 i = 0; i < ChunkCount; i++)
-            {
-                chunk* Chunk = Chunks[i];
-                if (Chunk->VertexBlock == It ||
-                    Chunk->OldVertexBlock == It)
-                {
-                    BlockFound = true;
-                    break;
-                }
-            }
-            Assert(BlockFound);
-        }
-    }
-#endif
 }
 
-void World_Render(world* World, renderer_frame_params* FrameParams)
+void World_Render(world* World, render_frame* FrameParams)
 {
     TIMED_FUNCTION();
-
+    
     FrameParams->Camera = 
         World->Debug.IsDebugCameraEnabled ? 
         World->Debug.DebugCamera : 
@@ -1000,8 +952,6 @@ void World_Render(world* World, renderer_frame_params* FrameParams)
             0.0f, 0.0f, 1.0f / 512.0f, +256.0f / 512.0f,
             0.0f, 0.0f, 0.0f, 1.0f);
     }
-
-    Renderer_BeginRendering(FrameParams);
 
     Renderer_RenderChunks(FrameParams, World->ChunkRenderDataCount, World->ChunkRenderData);
 
@@ -1055,7 +1005,4 @@ void World_Render(world* World, renderer_frame_params* FrameParams)
             Renderer_ImmediateRect2D(FrameParams, P0, vec2{ EndX, P1.y }, PackColor(0xFF, 0x00, 0x00));
         }
     }
-    Renderer_RenderImGui(FrameParams);
-
-    Renderer_EndRendering(FrameParams);
 }

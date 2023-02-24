@@ -20,6 +20,8 @@ struct game_state
 
     u64 FrameIndex;
 
+    b32 IsDebugUIEnabled;
+
     renderer* Renderer;
     world* World;
 

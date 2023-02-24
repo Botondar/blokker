@@ -1,8 +1,11 @@
 #pragma once
 
+#define BLOKKER_RENDERER_REWRITE 1
+
 #include <Common.hpp>
 #include <Intrinsics.hpp>
 #include <Math.hpp>
+#include <Platform.hpp>
 #include <Shapes.hpp>
 
 #include <Chunk.hpp>
@@ -15,22 +18,32 @@
 #include <Renderer/StagingHeap.hpp>
 #include <Renderer/VertexBuffer.hpp>
 
-struct renderer;
+extern platform_api Platform;
 
-struct renderer_frame_params
+struct render_frame
 {
     u64 FrameIndex;
     u32 BufferIndex;
 
+    VkExtent2D RenderExtent;
+
     camera Camera;
     mat4 ProjectionTransform;
     mat4 ViewTransform;
+    mat4 PixelTransform;
 
     VkCommandPool CmdPool;
-    VkCommandBuffer CmdBuffer;
+    VkCommandBuffer PrimaryCmdBuffer;
+    VkCommandBuffer TransferCmdBuffer;
+
+    VkCommandBuffer SceneCmdBuffer;
+    VkCommandBuffer ImmediateCmdBuffer;
+    VkCommandBuffer ImGuiCmdBuffer;
 
     VkSemaphore ImageAcquiredSemaphore;
     VkSemaphore RenderFinishedSemaphore;
+
+    VkSemaphore TransferFinishedSemaphore;
 
     VkFence RenderFinishedFence;
 
@@ -53,7 +66,7 @@ struct renderer_frame_params
 
     struct 
     {
-        static constexpr u64 VertexStackSize = 64*1024*1024;
+        static constexpr u64 VertexStackSize = MiB(64);
 
         VkDeviceMemory Memory;
         VkBuffer Buffer;
@@ -78,7 +91,7 @@ struct renderer_frame_params
 
     struct 
     {
-        static constexpr u64 MemorySize = 4 * 1024 * 1024;
+        static constexpr u64 MemorySize = MiB(4);
         static constexpr u64 MaxChunkCount = MemorySize / sizeof(vec2);
 
         VkDeviceMemory Memory;
@@ -88,10 +101,10 @@ struct renderer_frame_params
         vec2* Mapping;
     } ChunkPositions;
 
-    renderer* Renderer;
+    struct renderer* Renderer;
 };
 
-u64 Frame_PushToStack(renderer_frame_params* Frame, u64 Alignment, const void* Data, u64 Size);
+u64 Frame_PushToStack(render_frame* Frame, u64 Alignment, const void* Data, u64 Size);
 
 struct renderer 
 {
@@ -103,27 +116,22 @@ struct renderer
     VkSampleCountFlagBits Multisampling;
     u32 SwapchainImageCount;
     VkExtent2D SwapchainSize;
-    VkImage SwapchainImages[16];
-    VkImageView SwapchainImageViews[16];
+    static constexpr u32 MaxSwapchainImageCount = 16;
+    VkImage SwapchainImages[MaxSwapchainImageCount];
+    VkImageView SwapchainImageViews[MaxSwapchainImageCount];
 
     VkCommandPool TransferCmdPool;
     VkCommandBuffer TransferCmdBuffer;
 
     // Offscreen render buffers
-    struct 
-    {
-#if 0
-        VkImage DepthBuffer;
-        VkImageView DepthBufferView;
-#else
-        VkImage DepthBuffers[2];
-        VkImageView DepthBufferViews[2];
-#endif
-    };
+    VkImage DepthBuffer;
+    VkImageView DepthBufferView;
     render_target_heap RTHeap;
 
-    u32 NextBufferIndex;
-    renderer_frame_params FrameParams[16];
+    VkFormat DepthFormat;
+    VkFormat StencilFormat;
+
+    render_frame FrameParams[MaxSwapchainImageCount];
 
     staging_heap StagingHeap;
 
@@ -157,6 +165,8 @@ struct renderer
     VkDeviceMemory ImGuiTexMemory;
 
     static constexpr u32 ImGuiTextureID = 1;
+
+    u64 CurrentFrameIndex;
 };
 
 bool Renderer_ResizeRenderTargets(renderer* Renderer);
@@ -169,13 +179,19 @@ bool Renderer_CreateVoxelTextureArray(renderer* Renderer,
                                       const u8* Data);
 bool Renderer_CreateImGuiTexture(renderer* Renderer, u32 Width, u32 Height, const u8* Data);
 
-renderer_frame_params* Renderer_NewFrame(renderer* Renderer);
-void Renderer_SubmitFrame(renderer* Renderer, renderer_frame_params* Frame);
+render_frame* Renderer_NewFrame(renderer* Renderer, bool DoResize);
+void Renderer_SubmitFrame(renderer* Renderer, render_frame* Frame);
 
-void Renderer_BeginRendering(renderer_frame_params* Frame);
-void Renderer_EndRendering(renderer_frame_params* Frame);
+bool Renderer_UploadVertexData(render_frame* Frame, 
+                               vertex_buffer_block* Block,
+                               u64 DataSize0, const void* Data0,
+                               u64 DataSize1, const void* Data1);
 
-void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render_data* Chunks);
+bool Renderer_PushTriangleList(render_frame* Frame, 
+                               u32 VertexCount, const vertex* VertexData, 
+                               mat4 Transform, f32 DepthBias);
+
+void Renderer_RenderChunks(render_frame* Frame, u32 Count, chunk_render_data* Chunks);
 
 enum class outline_type : u32
 {
@@ -183,10 +199,10 @@ enum class outline_type : u32
     Inner,
 };
 
-void Renderer_BeginImmediate(renderer_frame_params* Frame);
-void Renderer_ImmediateBox(renderer_frame_params* Frame, aabb Box, u32 Color);
-void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, f32 OutlineSize, aabb Box, u32 Color);
-void Renderer_ImmediateRect2D(renderer_frame_params* Frame, vec2 p0, vec2 p1, u32 Color);
-void Renderer_ImmediateRectOutline2D(renderer_frame_params* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color);
+void Renderer_BeginImmediate(render_frame* Frame);
+void Renderer_ImmediateBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBias = 0.0f);
+void Renderer_ImmediateBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box, u32 Color);
+void Renderer_ImmediateRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color);
+void Renderer_ImmediateRectOutline2D(render_frame* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color);
 
-void Renderer_RenderImGui(renderer_frame_params* Frame);
+void Renderer_RenderImGui(render_frame* Frame, const ImDrawData* DrawData);

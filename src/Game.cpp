@@ -4,8 +4,6 @@
 #include <bmp.hpp>
 #include <Float.hpp>
 
-#include "Renderer/Renderer.cpp"
-
 #include "Common.cpp"
 #include "Random.cpp"
 #include "Audio.cpp"
@@ -17,27 +15,20 @@
 #include "World.cpp"
 #include "Player.cpp"
 
+//
+// Internal interface
+//
 static bool Game_InitImGui(game_state* Game);
+static void DoDebugUI(game_state* Game, game_io* IO);
+static bool InitializeSounds(game_state* Game);
+static bool InitializeTextures(renderer* Renderer, memory_arena* Arena);
 
-static void Game_Render(game_state* Game, game_io* IO);
-
-static void Game_Update(game_state* Game, game_io* IO)
+//
+// Implementation
+//
+static void DoDebugUI(game_state* Game, game_io* IO)
 {
-    TIMED_FUNCTION();
-
-    if (IO->EscapePressed)
     {
-        IO->IsCursorEnabled = Platform.ToggleCursor();
-    }
-    if (IO->BacktickPressed)
-    {
-        Game->World->Debug.IsDebuggingEnabled = !Game->World->Debug.IsDebuggingEnabled;
-    }
-
-#if 1
-    // ImGui
-    {
-        // TODO: pass input
         ImGuiIO& ImIO = ImGui::GetIO();
         ImIO.DisplaySize = { (f32)Game->Renderer->SwapchainSize.width, (f32)Game->Renderer->SwapchainSize.height };
         ImIO.DeltaTime = (IO->DeltaTime == 0.0f) ? 1000.0f : IO->DeltaTime; // NOTE(boti): ImGui doesn't want 0 dt
@@ -62,105 +53,45 @@ static void Game_Update(game_state* Game, game_io* IO)
         ImGui::NewFrame();
     }
 
-    if (Game->World->Debug.IsDebuggingEnabled)
+    if (IO->BacktickPressed)
     {
+        Game->IsDebugUIEnabled = !Game->IsDebugUIEnabled;
+    }
+    if (Game->IsDebugUIEnabled)
+    {
+        ImGui::Begin("Memory");
+        {
+            ImGui::Text("Game: %lluMB / %lluMB (%.1f%%)\n",
+                        Game->PrimaryArena.Used >> 20,
+                        Game->PrimaryArena.Size >> 20,
+                        100.0 * ((f64)Game->PrimaryArena.Used / (f64)Game->PrimaryArena.Size));
+
+            ImGui::Text("Temporary: %lluMB / %lluMB (%.1f%%)\n",
+                        Game->TransientArenaLastUsed >> 20,
+                        Game->TransientArena.Size >> 20,
+                        100.0 * ((f64)Game->TransientArenaLastUsed / (f64)Game->TransientArena.Size));
+            ImGui::Text("Temporary (max): %lluMB / %lluMB (%.1f%%)\n",
+                        Game->TransientArenaMaxUsed >> 20,
+                        Game->TransientArena.Size >> 20,
+                        100.0 * ((f64)Game->TransientArenaMaxUsed / (f64)Game->TransientArena.Size));
+            ImGui::Text("RenderTarget: %lluMB / %lluMB (%.1f%%)\n",
+                        Game->Renderer->RTHeap.HeapOffset >> 20,
+                        Game->Renderer->RTHeap.HeapSize >> 20,
+                        100.0 * ((f64)Game->Renderer->RTHeap.HeapOffset / (f64)Game->Renderer->RTHeap.HeapSize));
+            ImGui::Text("VertexBuffer: %lluMB / %lluMB (%.1f%%)\n",
+                        Game->Renderer->VB.MemoryUsage >> 20,
+                        Game->Renderer->VB.MemorySize >> 20,
+                        100.0 * Game->Renderer->VB.MemoryUsage / Game->Renderer->VB.MemorySize);
+        }
+        ImGui::End();
+
         ImGui::Begin("Debug");
         {
             ImGui::Text("FrameTime: %.2fms", 1000.0f*IO->DeltaTime);
             ImGui::Text("FPS: %.1f", 1.0f / IO->DeltaTime);
-            ImGui::Checkbox("Hitboxes", &Game->World->Debug.IsHitboxEnabled);
-            ImGui::Text("PlayerP: { %.1f, %.1f, %.1f }", 
-                        Game->World->Player.P.x, Game->World->Player.P.y, Game->World->Player.P.z);
-            if (ImGui::Button("Reset player"))
-            {
-                ResetPlayer(Game->World);
-            }
-
-            ImGui::Checkbox("Debug camera", &Game->World->Debug.IsDebugCameraEnabled);
-            ImGui::Text("DebugCameraP: { %.1f, %.1f, %.1f }",
-                Game->World->Debug.DebugCamera.P.x,
-                Game->World->Debug.DebugCamera.P.y,
-                Game->World->Debug.DebugCamera.P.z);
-            if (ImGui::Button("Teleport debug camera to player"))
-            {
-                Game->World->Debug.DebugCamera = GetCamera(&Game->World->Player);
-            }
-            if (ImGui::Button("Teleport player to debug camera"))
-            {
-                Game->World->Player.P = Game->World->Debug.DebugCamera.P;
-            }
-
         }
         ImGui::End();
-
-        ImGui::Begin("Memory");
-        {
-            ImGui::Text("Game: %lluMB / %lluMB (%.1f%%)\n",
-                Game->PrimaryArena.Used >> 20,
-                Game->PrimaryArena.Size >> 20,
-                100.0 * ((f64)Game->PrimaryArena.Used / (f64)Game->PrimaryArena.Size));
-
-            ImGui::Text("Temporary: %lluMB / %lluMB (%.1f%%)\n",
-                Game->TransientArenaLastUsed >> 20,
-                Game->TransientArena.Size >> 20,
-                100.0 * ((f64)Game->TransientArenaLastUsed / (f64)Game->TransientArena.Size));
-            ImGui::Text("Temporary (max): %lluMB / %lluMB (%.1f%%)\n",
-                Game->TransientArenaMaxUsed >> 20,
-                Game->TransientArena.Size >> 20,
-                100.0 * ((f64)Game->TransientArenaMaxUsed / (f64)Game->TransientArena.Size));
-            ImGui::Text("RenderTarget: %lluMB / %lluMB (%.1f%%)\n",
-                Game->Renderer->RTHeap.HeapOffset >> 20,
-                Game->Renderer->RTHeap.HeapSize >> 20,
-                100.0 * ((f64)Game->Renderer->RTHeap.HeapOffset / (f64)Game->Renderer->RTHeap.HeapSize));
-            ImGui::Text("VertexBuffer: %lluMB / %lluMB (%.1f%%)\n",
-                Game->Renderer->VB.MemoryUsage >> 20,
-                Game->Renderer->VB.MemorySize >> 20,
-                100.0 * Game->Renderer->VB.MemoryUsage / Game->Renderer->VB.MemorySize);
-        }
-        ImGui::End();
-
-        ImGui::Begin("Map");
-
-        ImGui::Checkbox("Enable map view", &Game->World->MapView.IsEnabled);
-
-        ImGui::End();
-
-        //GlobalProfiler.DoGUI();
     }
-#endif
-    
-    Game->World->FrameIndex = Game->FrameIndex;
-    HandleInput(Game->World, IO);
-    UpdateWorld(Game, Game->World, IO);
-}
-
-static void Game_Render(game_state* Game, game_io* IO)
-{
-    TIMED_FUNCTION();
-
-    renderer* Renderer = Game->Renderer;
-    if (IO->IsMinimized)
-    {
-#if 1
-        // HACK: Call ImGui rendering here so that we don't crash on the next ImGui::NewFrame();
-        ImGui::Render();
-#endif
-        return;
-    }
-    if (IO->NeedRendererResize)
-    {
-        if (!Renderer_ResizeRenderTargets(Renderer))
-        {
-            assert(!"Fatal error");
-        }
-        IO->NeedRendererResize = false;
-    }
-
-    renderer_frame_params* FrameParams = Renderer_NewFrame(Renderer, Game->FrameIndex);
-
-    World_Render(Game->World, FrameParams);
-
-    Renderer_SubmitFrame(Renderer, FrameParams);
 }
 
 static bool Game_InitImGui(game_state* Game)
@@ -204,7 +135,7 @@ static bool InitializeSounds(game_state* Game)
         Assert(Game->SoundCount != Game->MaxSoundCount);
         sound* Sound = Game->Sounds + Game->SoundCount++;
 
-        u64 ArenaSave = Game->TransientArena.Used;
+        memory_arena_checkpoint Checkpoint = ArenaCheckpoint(&Game->TransientArena);
 
         buffer File = Platform.LoadEntireFile(SoundPaths[i], &Game->TransientArena);
 
@@ -301,7 +232,7 @@ static bool InitializeSounds(game_state* Game)
             Result = false;
         }
 
-        Game->TransientArena.Used = ArenaSave;
+        RestoreArena(&Game->TransientArena, Checkpoint);
     }
 
     return(Result);
@@ -479,7 +410,7 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
 
     Game->TransientArenaMaxUsed = Max(Game->TransientArenaMaxUsed, Game->TransientArena.Used);
     Game->TransientArenaLastUsed = Game->TransientArena.Used;
-    Game->TransientArena.Used = 0; // Reset temporary memory
+    ResetArena(&Game->TransientArena);
 
     if (!Game->World)
     {
@@ -493,6 +424,11 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
         }
     }
 
+    if (IO->IsMinimized)
+    {
+        return;
+    }
+
     // Disable stepping if there was giant lag-spike
     // TODO: The physics step should subdivide the frame when dt gets too large
     if (IO->DeltaTime > 0.4f)
@@ -501,7 +437,27 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
     }
 
     Game->FrameIndex = IO->FrameIndex;
+    if (IO->EscapePressed)
+    {
+        IO->IsCursorEnabled = Platform.ToggleCursor();
+    }
 
-    Game_Update(Game, IO);
-    Game_Render(Game, IO);
+    render_frame* FrameParams = Renderer_NewFrame(Game->Renderer, IO->NeedRendererResize);
+
+    DoDebugUI(Game, IO);
+    
+    Game->World->FrameIndex = Game->FrameIndex;
+    HandleInput(Game->World, IO);
+    UpdateWorld(Game, Game->World, IO, FrameParams);
+
+    IO->NeedRendererResize = false;
+    //Renderer_BeginRendering(FrameParams);
+
+    World_Render(Game->World, FrameParams);
+
+    ImGui::Render();
+    ImDrawData* DrawData = ImGui::GetDrawData();
+    Renderer_RenderImGui(FrameParams, DrawData);
+    //Renderer_EndRendering(FrameParams);
+    Renderer_SubmitFrame(Game->Renderer, FrameParams);
 }

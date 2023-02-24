@@ -14,25 +14,13 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer);
 
 bool Renderer_ResizeRenderTargets(renderer* Renderer)
 {
-    assert(Renderer);
-    assert(Renderer->RenderDevice.Device);
-
-    bool Result = false;
+    bool Result = true;
 
     vkDeviceWaitIdle(Renderer->RenderDevice.Device);
-
     VkSurfaceCapabilitiesKHR SurfaceCaps = {};
     if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(Renderer->RenderDevice.PhysicalDevice, Renderer->Surface, &SurfaceCaps) == VK_SUCCESS)
     {
-        VkExtent2D CurrentExtent = SurfaceCaps.currentExtent;
-
-        if ((CurrentExtent.width == 0) || (CurrentExtent.height == 0) ||
-            ((CurrentExtent.width == Renderer->SwapchainSize.width) && (CurrentExtent.height == Renderer->SwapchainSize.height)))
-        {
-            return true;
-        }
-
-        VkSwapchainKHR OldSwapchain = Renderer->Swapchain;
+        VkExtent2D Extent = SurfaceCaps.currentExtent;
         VkSwapchainCreateInfoKHR SwapchainInfo = 
         {
             .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -42,7 +30,7 @@ bool Renderer_ResizeRenderTargets(renderer* Renderer)
             .minImageCount = 2,
             .imageFormat = Renderer->SurfaceFormat.format,
             .imageColorSpace = Renderer->SurfaceFormat.colorSpace,
-            .imageExtent = CurrentExtent,
+            .imageExtent = Extent,
             .imageArrayLayers = 1,
             .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
             .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
@@ -57,37 +45,20 @@ bool Renderer_ResizeRenderTargets(renderer* Renderer)
                 VK_PRESENT_MODE_MAILBOX_KHR,
 #endif
             .clipped = VK_FALSE,
-            .oldSwapchain = OldSwapchain,
+            .oldSwapchain = Renderer->Swapchain,
         };
+
         if (vkCreateSwapchainKHR(Renderer->RenderDevice.Device, &SwapchainInfo, nullptr, &Renderer->Swapchain) == VK_SUCCESS)
         {
-            // NOTE: this is safe because we waited for device idle
-            vkDestroySwapchainKHR(Renderer->RenderDevice.Device, OldSwapchain, nullptr);
-            Renderer->SwapchainSize = CurrentExtent;
+            vkDestroySwapchainKHR(Renderer->RenderDevice.Device, SwapchainInfo.oldSwapchain, nullptr);
+            Renderer->SwapchainSize = Extent;
 
-            vkGetSwapchainImagesKHR(
-                Renderer->RenderDevice.Device, 
-                Renderer->Swapchain, 
-                &Renderer->SwapchainImageCount, 
-                nullptr);
-            assert(Renderer->SwapchainImageCount <= 16);
-
-            vkGetSwapchainImagesKHR(
-                Renderer->RenderDevice.Device, 
-                Renderer->Swapchain, 
-                &Renderer->SwapchainImageCount,
-                Renderer->SwapchainImages);
-
-            bool ImageViewCreationFailed = false;
+            Renderer->SwapchainImageCount = Renderer->MaxSwapchainImageCount;
+            vkGetSwapchainImagesKHR(Renderer->RenderDevice.Device, Renderer->Swapchain, &Renderer->SwapchainImageCount, Renderer->SwapchainImages);
             for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
             {
-                if (Renderer->SwapchainImageViews[i]) 
-                {
-                    vkDestroyImageView(Renderer->RenderDevice.Device, Renderer->SwapchainImageViews[i], nullptr);
-                    Renderer->SwapchainImageViews[i] = VK_NULL_HANDLE;
-                }
-
-                VkImageViewCreateInfo ImageViewInfo = 
+                vkDestroyImageView(Renderer->RenderDevice.Device, Renderer->SwapchainImageViews[i], nullptr);
+                VkImageViewCreateInfo ViewInfo = 
                 {
                     .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                     .pNext = nullptr,
@@ -106,131 +77,111 @@ bool Renderer_ResizeRenderTargets(renderer* Renderer)
                     },
                 };
 
-                if (vkCreateImageView(Renderer->RenderDevice.Device, &ImageViewInfo, nullptr, &Renderer->SwapchainImageViews[i]) == VK_SUCCESS)
+                if (vkCreateImageView(Renderer->RenderDevice.Device, &ViewInfo, nullptr, &Renderer->SwapchainImageViews[i]) == VK_SUCCESS)
                 {
                 }
                 else
                 {
-                    ImageViewCreationFailed = true;
-                    // TODO: cleanup
-                    break;
+                    FatalError("Failed to create swapchain image view");
                 }
             }
 
-            if (!ImageViewCreationFailed)
+            if (Renderer->RTHeap.Heap)
             {
-                // Create rendertarget images
-                bool ImageCreationFailed = false;
-                
-                constexpr u32 RTMemoryRequirementsMaxCount = 32;
-                u32 RTMemoryRequirementCount = 0;
-                VkMemoryRequirements RTMemoryRequirements[RTMemoryRequirementsMaxCount];
-                
-                u32 RenderTargetSuitableMemoryTypes = Renderer->RenderDevice.MemoryTypes.DeviceLocal;
-                // Depth buffers
-                for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
+                Renderer->RTHeap.HeapOffset = 0;
+            }
+            else
+            {
+                if (RTHeap_Create(&Renderer->RTHeap, 64*1024*1024,
+                                  Renderer->RenderDevice.MemoryTypes.DeviceLocal,
+                                  Renderer->RenderDevice.Device))
                 {
-                    VkImageCreateInfo Info = 
+                }
+                else
+                {
+                    FatalError("Failed to create render target heap");
+                }
+            }
+
+            vkDestroyImageView(Renderer->RenderDevice.Device, Renderer->DepthBufferView, nullptr);
+            vkDestroyImage(Renderer->RenderDevice.Device, Renderer->DepthBuffer, nullptr);
+
+            VkImageCreateInfo DepthInfo = 
+            {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .imageType = VK_IMAGE_TYPE_2D,
+                .format = Renderer->DepthFormat,
+                .extent = { Extent.width, Extent.height, 1 },
+                .mipLevels = 1,
+                .arrayLayers = 1,
+                .samples = VK_SAMPLE_COUNT_1_BIT,
+                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                .queueFamilyIndexCount = 0,
+                .pQueueFamilyIndices = nullptr,
+                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            };
+
+            if (vkCreateImage(Renderer->RenderDevice.Device, &DepthInfo, nullptr, &Renderer->DepthBuffer) == VK_SUCCESS)
+            {
+                if (RTHeap_PushImage(&Renderer->RTHeap, Renderer->DepthBuffer))
+                {
+                    VkImageViewCreateInfo DepthViewInfo = 
                     {
-                        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                         .pNext = nullptr,
                         .flags = 0,
-                        .imageType = VK_IMAGE_TYPE_2D,
-                        .format = VK_FORMAT_D32_SFLOAT,
-                        .extent = { Renderer->SwapchainSize.width, Renderer->SwapchainSize.height, 1 },
-                        .mipLevels = 1,
-                        .arrayLayers = 1,
-                        .samples = VK_SAMPLE_COUNT_1_BIT,
-                        .tiling = VK_IMAGE_TILING_OPTIMAL,
-                        .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
-                        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-                        .queueFamilyIndexCount = 0,
-                        .pQueueFamilyIndices = nullptr,
-                        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                        .image = Renderer->DepthBuffer,
+                        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                        .format = Renderer->DepthFormat,
+                        .components = {},
+                        .subresourceRange = 
+                        {
+                            .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                            .baseMipLevel = 0,
+                            .levelCount = 1,
+                            .baseArrayLayer = 0,
+                            .layerCount = 1,
+                        },
                     };
-                    if (vkCreateImage(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->DepthBuffers[i]) == VK_SUCCESS)
+                    if (vkCreateImageView(Renderer->RenderDevice.Device, &DepthViewInfo, nullptr, &Renderer->DepthBufferView) == VK_SUCCESS)
                     {
-                        Renderer->FrameParams[i].DepthBuffer = Renderer->DepthBuffers[i];
+                        // HACK(boti):
+                        for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
+                        {
+                            Renderer->FrameParams[i].DepthBuffer = Renderer->DepthBuffer;
+                            Renderer->FrameParams[i].DepthBufferView = Renderer->DepthBufferView;
+                        }
                     }
                     else
                     {
-                        ImageCreationFailed = true;
-                        // TODO: cleanup
-                        break;
+                        FatalError("Failed to create depth buffer view");
                     }
-                    
-                    assert(RTMemoryRequirementCount < 32);
-                    vkGetImageMemoryRequirements(Renderer->RenderDevice.Device, Renderer->DepthBuffers[i], &RTMemoryRequirements[RTMemoryRequirementCount++]);
                 }
-
-                if (!ImageCreationFailed)
+                else
                 {
-                    if ((Renderer->RTHeap.Heap != VK_NULL_HANDLE) ||
-                        (RTHeap_Create(&Renderer->RTHeap, 64*1024*1024,
-                                       Renderer->RenderDevice.MemoryTypes.DeviceLocal,
-                                       RTMemoryRequirementCount, RTMemoryRequirements,
-                                       Renderer->RenderDevice.Device)))
-                    {
-                        // Reset the RT heap
-                        Renderer->RTHeap.HeapOffset = 0;
-
-                        bool MemoryAllocationFailed = false;
-                        for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
-                        {
-                            if (!RTHeap_PushImage(&Renderer->RTHeap, Renderer->DepthBuffers[i]))
-                            {
-                                MemoryAllocationFailed = true;
-                                // TODO: cleanup
-                                break;
-                            }
-                            
-                            if (Renderer->DepthBufferViews[i] != VK_NULL_HANDLE)
-                            {
-                                vkDestroyImageView(Renderer->RenderDevice.Device, Renderer->DepthBufferViews[i], nullptr);
-                                Renderer->DepthBufferViews[i] = VK_NULL_HANDLE;
-                            }
-
-                            VkImageViewCreateInfo ViewInfo = 
-                            {
-                                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                                .pNext = nullptr,
-                                .flags = 0,
-                                .image = Renderer->DepthBuffers[i],
-                                .viewType = VK_IMAGE_VIEW_TYPE_2D,
-                                .format = VK_FORMAT_D32_SFLOAT,
-                                .components = {},
-                                .subresourceRange = 
-                                {
-                                    .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                                    .baseMipLevel = 0,
-                                    .levelCount = 1,
-                                    .baseArrayLayer = 0,
-                                    .layerCount = 1,
-                                },
-                            };
-                            if (vkCreateImageView(Renderer->RenderDevice.Device, &ViewInfo, nullptr, &Renderer->DepthBufferViews[i]) == VK_SUCCESS)
-                            {
-                                Renderer->FrameParams[i].DepthBufferView = Renderer->DepthBufferViews[i];
-                            }
-                            else
-                            {
-                                MemoryAllocationFailed = true;
-                                // TODO: cleanup
-                                break;
-                            }
-                        }
-                        
-                        if (!MemoryAllocationFailed)
-                        {
-                            Result = true;
-                        }
-                    }
+                    FatalError("Failed to allocate depth buffer memory");
                 }
             }
+            else
+            {
+                FatalError("Failed to create depth buffer");
+            }
+        }
+        else
+        {
+            FatalError("Failed to create swapchain");
         }
     }
+    else
+    {
+        FatalError("vulkan GetSurfaceCaps failed");
+    }
 
-    return Result;
+    return(Result);
 }
 
 bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
@@ -245,6 +196,9 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
     {
         return false;
     }
+
+    Renderer->DepthFormat = VK_FORMAT_D32_SFLOAT;
+    Renderer->StencilFormat = VK_FORMAT_UNDEFINED;
 
     VkResult Result = VK_SUCCESS;
     {
@@ -330,87 +284,70 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         }
     }
 
-    for (u32 i = 0; i < Renderer->SwapchainImageCount;i ++)
+    for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
     {
-        {
-            VkCommandPoolCreateInfo Info = 
-            {
-                .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-                .queueFamilyIndex = Renderer->RenderDevice.GraphicsFamilyIndex,
-            };
         
-            Result = vkCreateCommandPool(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->FrameParams[i].CmdPool);
-            if (Result != VK_SUCCESS)
-            {
-                return false;
-            }
-        }
-        
-        {
-            VkCommandBufferAllocateInfo Info = 
-            {
-                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-                .pNext = nullptr,
-                .commandPool = Renderer->FrameParams[i].CmdPool,
-                .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-                .commandBufferCount = 1,
-            };
-            Result = vkAllocateCommandBuffers(Renderer->RenderDevice.Device, &Info, &Renderer->FrameParams[i].CmdBuffer);
-            if (Result != VK_SUCCESS)
-            {
-                return false;
-            }
-        }
-
-        {
-            VkFenceCreateInfo Info = 
-            {
-                .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = VK_FENCE_CREATE_SIGNALED_BIT,
-            };
-
-            Result = vkCreateFence(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->FrameParams[i].RenderFinishedFence);
-            if (Result != VK_SUCCESS)
-            {
-                return false;
-            }
-        }
-        {
-            VkSemaphoreCreateInfo Info = 
-            {
-                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-            };
-
-            Result = vkCreateSemaphore(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->FrameParams[i].ImageAcquiredSemaphore);
-            if (Result != VK_SUCCESS)
-            {
-                return false;
-            }
-            Result = vkCreateSemaphore(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->FrameParams[i].RenderFinishedSemaphore);
-        }
-    }
-
-    
-    if (!StagingHeap_Create(&Renderer->StagingHeap, 256*1024*1024, Renderer))
-    {
-        return false;
-    }
-
-    // Vertex buffer
-    if (!VB_Create(&Renderer->VB, Renderer->RenderDevice.MemoryTypes.DeviceLocal, 1024*1024*1024, Renderer->RenderDevice.Device, Arena))
-    {
-        return false;
     }
 
     if (!Renderer_InitializeFrameParams(Renderer))
     {
         return false;
     }
+    
+    if (!StagingHeap_Create(&Renderer->StagingHeap, 256*1024*1024, Renderer))
+    {
+        return false;
+    }
+
+    if (!VB_Create(&Renderer->VB, Renderer->RenderDevice.MemoryTypes.DeviceLocal, 1024*1024*1024, Renderer->RenderDevice.Device, Arena))
+    {
+        return false;
+    }
+
+    auto LoadAndCompileShaders = [Renderer, Arena](const char* Path, VkShaderModule* VS, VkShaderModule* FS) -> bool
+    {
+        bool Result = false;
+        memory_arena_checkpoint Checkpoint = ArenaCheckpoint(Arena);
+        constexpr u64 MaxPathLength = 256;
+        char Filename[MaxPathLength] = {};
+
+        u64 PathLength = CopyZString(MaxPathLength, Filename, Path);
+        
+        if (CopyZString(MaxPathLength - PathLength, Filename + PathLength, ".vs") == 3)
+        {
+            buffer VSBuff = Platform.LoadEntireFile(Filename, Arena);
+            CopyZString(MaxPathLength - PathLength, Filename + PathLength, ".fs");
+            buffer FSBuff = Platform.LoadEntireFile(Filename, Arena);
+
+            if (VSBuff.Size > 0 && FSBuff.Size > 0)
+            {
+                VkShaderModuleCreateInfo VSInfo = 
+                {
+                    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                    .pNext = nullptr,
+                    .flags = 0,
+                    .codeSize = VSBuff.Size,
+                    .pCode = (u32*)VSBuff.Data,
+                };
+                VkShaderModuleCreateInfo FSInfo = 
+                {
+                    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                    .pNext = nullptr,
+                    .flags = 0,
+                    .codeSize = FSBuff.Size,
+                    .pCode = (u32*)FSBuff.Data,
+                };
+                if ((vkCreateShaderModule(Renderer->RenderDevice.Device, &VSInfo, nullptr, VS) == VK_SUCCESS) &&
+                    (vkCreateShaderModule(Renderer->RenderDevice.Device, &FSInfo, nullptr, FS) == VK_SUCCESS))
+                {
+                    Result = true;
+                }
+            }
+        }
+
+        RestoreArena(Arena, Checkpoint);
+        return(Result);
+    };
 
     // Descriptors
     {
@@ -576,41 +513,9 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         
         //  Create shaders
         VkShaderModule VSModule, FSModule;
+        if (LoadAndCompileShaders("shader/shader", &VSModule, &FSModule) == false)
         {
-            u64 ArenaSave = Arena->Used;
-            buffer VSBin = Platform.LoadEntireFile("shader/shader.vs", Arena);
-            buffer FSBin = Platform.LoadEntireFile("shader/shader.fs", Arena);
-            
-            assert((VSBin.Size > 0) && (FSBin.Size > 0));
-            
-            VkShaderModuleCreateInfo VSInfo = 
-            {
-                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-                .codeSize = VSBin.Size,
-                .pCode = (u32*)VSBin.Data,
-            };
-            VkShaderModuleCreateInfo FSInfo =
-            {
-                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-                .codeSize = FSBin.Size,
-                .pCode = (u32*)FSBin.Data,
-            };
-            
-            Result = vkCreateShaderModule(Renderer->RenderDevice.Device, &VSInfo, nullptr, &VSModule);
-            if (Result != VK_SUCCESS)
-            {
-                return false;
-            }
-            Result = vkCreateShaderModule(Renderer->RenderDevice.Device, &FSInfo, nullptr, &FSModule);
-            if (Result != VK_SUCCESS)
-            {
-                return false;
-            }
-            Arena->Used = ArenaSave;
+            FatalError("Failed to load shader");
         }
         
         VkPipelineShaderStageCreateInfo ShaderStages[] = 
@@ -836,8 +741,8 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             .viewMask = 0,
             .colorAttachmentCount = FormatCount,
             .pColorAttachmentFormats = Formats,
-            .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
-            .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
+            .depthAttachmentFormat = Renderer->DepthFormat,
+            .stencilAttachmentFormat = Renderer->StencilFormat,
         };
         
         VkGraphicsPipelineCreateInfo Info = 
@@ -873,7 +778,6 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         vkDestroyShaderModule(Renderer->RenderDevice.Device, FSModule, nullptr);
     }
 
-#if 1
     // ImGui pipeline
     {
         // Sampler
@@ -913,8 +817,6 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
 
         // Create descriptor set
         {
-
-
             VkDescriptorSetLayoutBinding Binding = 
             {
                 .binding = 0,
@@ -1013,41 +915,9 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         
         //  Create shaders
         VkShaderModule VSModule, FSModule;
+        if (LoadAndCompileShaders("shader/imguishader", &VSModule, &FSModule) == false)
         {
-            u64 ArenaSave = Arena->Used;
-            buffer VSBin = Platform.LoadEntireFile("shader/imguishader.vs", Arena);
-            buffer FSBin = Platform.LoadEntireFile("shader/imguishader.fs", Arena);
-            
-            assert((VSBin.Size > 0) && (FSBin.Size > 0));
-            
-            VkShaderModuleCreateInfo VSInfo = 
-            {
-                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-                .codeSize = VSBin.Size,
-                .pCode = (u32*)VSBin.Data,
-            };
-            VkShaderModuleCreateInfo FSInfo =
-            {
-                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-                .codeSize = FSBin.Size,
-                .pCode = (u32*)FSBin.Data,
-            };
-            
-            Result = vkCreateShaderModule(Renderer->RenderDevice.Device, &VSInfo, nullptr, &VSModule);
-            if (Result != VK_SUCCESS)
-            {
-                return false;
-            }
-            Result = vkCreateShaderModule(Renderer->RenderDevice.Device, &FSInfo, nullptr, &FSModule);
-            if (Result != VK_SUCCESS)
-            {
-                return false;
-            }
-            Arena->Used = ArenaSave;
+            FatalError("Failed to load ImGui shader");
         }
         
         VkPipelineShaderStageCreateInfo ShaderStages[] = 
@@ -1213,7 +1083,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
             .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
             .alphaBlendOp = VK_BLEND_OP_ADD,
-            .colorWriteMask = 
+            .colorWriteMask =
                 VK_COLOR_COMPONENT_R_BIT|
                 VK_COLOR_COMPONENT_G_BIT|
                 VK_COLOR_COMPONENT_B_BIT|
@@ -1261,8 +1131,8 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             .viewMask = 0,
             .colorAttachmentCount = FormatCount,
             .pColorAttachmentFormats = Formats,
-            .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
-            .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
+            .depthAttachmentFormat = Renderer->DepthFormat,
+            .stencilAttachmentFormat = Renderer->StencilFormat,
         };
         
         VkGraphicsPipelineCreateInfo Info = 
@@ -1297,7 +1167,6 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         vkDestroyShaderModule(Renderer->RenderDevice.Device, VSModule, nullptr);
         vkDestroyShaderModule(Renderer->RenderDevice.Device, FSModule, nullptr);
     }
-#endif
 
     // ImPipeline
     {
@@ -1329,41 +1198,9 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         
         //  Create shaders
         VkShaderModule VSModule, FSModule;
+        if (LoadAndCompileShaders("shader/imshader", &VSModule, &FSModule) == false)
         {
-            u64 ArenaSave = Arena->Used;
-            buffer VSBin = Platform.LoadEntireFile("shader/imshader.vs", Arena);
-            buffer FSBin = Platform.LoadEntireFile("shader/imshader.fs", Arena);
-            
-            assert((VSBin.Size > 0) && (FSBin.Size > 0));
-            
-            VkShaderModuleCreateInfo VSInfo = 
-            {
-                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-                .codeSize = VSBin.Size,
-                .pCode = (u32*)VSBin.Data,
-            };
-            VkShaderModuleCreateInfo FSInfo =
-            {
-                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-                .codeSize = FSBin.Size,
-                .pCode = (u32*)FSBin.Data,
-            };
-            
-            Result = vkCreateShaderModule(Renderer->RenderDevice.Device, &VSInfo, nullptr, &VSModule);
-            if (Result != VK_SUCCESS)
-            {
-                return false;
-            }
-            Result = vkCreateShaderModule(Renderer->RenderDevice.Device, &FSInfo, nullptr, &FSModule);
-            if (Result != VK_SUCCESS)
-            {
-                return false;
-            }
-            Arena->Used = ArenaSave;
+            FatalError("Failed to load immediate mode shader");
         }
         
         VkPipelineShaderStageCreateInfo ShaderStages[] = 
@@ -1581,8 +1418,8 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             .viewMask = 0,
             .colorAttachmentCount = FormatCount,
             .pColorAttachmentFormats = Formats,
-            .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
-            .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
+            .depthAttachmentFormat = Renderer->DepthFormat,
+            .stencilAttachmentFormat = Renderer->StencilFormat,
         };
         
         VkGraphicsPipelineCreateInfo Info = 
@@ -1953,7 +1790,7 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
                         {
                             Renderer->FrameParams[i].FrameUniformBuffer.Memory = Memory;
 
-                            Renderer->FrameParams[i].FrameUniformBuffer.Mapping = PointerByteOffset(MappingBase, Offset);
+                            Renderer->FrameParams[i].FrameUniformBuffer.Mapping = OffsetPtr(MappingBase, Offset);
 
                         }
                         else
@@ -1980,8 +1817,93 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
 
     for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
     {
-        renderer_frame_params* Frame = Renderer->FrameParams + i;
+        render_frame* Frame = Renderer->FrameParams + i;
+        {
+            VkCommandPoolCreateInfo Info = 
+            {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+                .queueFamilyIndex = Renderer->RenderDevice.GraphicsFamilyIndex,
+            };
+            if (vkCreateCommandPool(Renderer->RenderDevice.Device, &Info, nullptr, &Frame->CmdPool) != VK_SUCCESS)
+            {
+                return false;
+            }
+        }
+        
+        {
+            VkCommandBufferAllocateInfo Info = 
+            {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                .pNext = nullptr,
+                .commandPool = Frame->CmdPool,
+                .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                .commandBufferCount = 1,
+            };
+            if (vkAllocateCommandBuffers(Renderer->RenderDevice.Device, &Info, &Frame->PrimaryCmdBuffer) != VK_SUCCESS)
+            {
+                return false;
+            }
+            if (vkAllocateCommandBuffers(Renderer->RenderDevice.Device, &Info, &Frame->TransferCmdBuffer) != VK_SUCCESS)
+            {
+                return false;
+            }
+            
+            VkCommandBufferAllocateInfo SecondaryInfo = 
+            {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                .pNext = nullptr,
+                .commandPool = Frame->CmdPool,
+                .level = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+                .commandBufferCount = 1,
+            };
+            if (vkAllocateCommandBuffers(Renderer->RenderDevice.Device, &SecondaryInfo, &Frame->SceneCmdBuffer) != VK_SUCCESS)
+            {
+                return false;
+            }
+            if (vkAllocateCommandBuffers(Renderer->RenderDevice.Device, &SecondaryInfo, &Frame->ImmediateCmdBuffer) != VK_SUCCESS)
+            {
+                return false;
+            }
+            if (vkAllocateCommandBuffers(Renderer->RenderDevice.Device, &SecondaryInfo, &Frame->ImGuiCmdBuffer) != VK_SUCCESS)
+            {
+                return false;
+            }
+        }
 
+        {
+            VkFenceCreateInfo Info = 
+            {
+                .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+            };
+            if (vkCreateFence(Renderer->RenderDevice.Device, &Info, nullptr, &Frame->RenderFinishedFence) != VK_SUCCESS)
+            {
+                return false;
+            }
+        }
+        {
+            VkSemaphoreCreateInfo Info = 
+            {
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+            };
+            if (vkCreateSemaphore(Renderer->RenderDevice.Device, &Info, nullptr, &Frame->ImageAcquiredSemaphore) != VK_SUCCESS)
+            {
+                return false;
+            }
+            if (vkCreateSemaphore(Renderer->RenderDevice.Device, &Info, nullptr, &Frame->RenderFinishedSemaphore) != VK_SUCCESS)
+            {
+                return false;
+            }
+            if (vkCreateSemaphore(Renderer->RenderDevice.Device, &Info, nullptr, &Frame->TransferFinishedSemaphore) != VK_SUCCESS)
+            {
+                return false;
+            }
+        }
         // Create per frame vertex stack
         {
             VkBufferCreateInfo BufferInfo = 
@@ -2225,34 +2147,46 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
     return true;
 }
 
-renderer_frame_params* Renderer_NewFrame(renderer* Renderer, u64 FrameIndex)
+render_frame* Renderer_NewFrame(renderer* Renderer, bool DoResize)
 {
     TIMED_FUNCTION();
 
-    u32 BufferIndex = Renderer->NextBufferIndex;
-    Renderer->NextBufferIndex = (Renderer->NextBufferIndex + 1) % 2;
+    if (DoResize)
+    {
+        if (!Renderer_ResizeRenderTargets(Renderer))
+        {
+            FatalError("Failed to resize render targets");
+        }
+    }
 
-    renderer_frame_params* Frame = Renderer->FrameParams + BufferIndex;
+    u64 FrameIndex = Renderer->CurrentFrameIndex++;
+    u32 BufferIndex = (u32)(FrameIndex % 2);
+
+    render_frame* Frame = Renderer->FrameParams + BufferIndex;
     Frame->FrameIndex = FrameIndex;
     Frame->BufferIndex = BufferIndex;
+    Frame->RenderExtent = Renderer->SwapchainSize;
     Frame->Renderer = Renderer;
     Frame->SwapchainImageIndex = INVALID_INDEX_U32;
     Frame->VertexStack.At = 0;
     Frame->DrawCommands.DrawIndex = 0;
     Frame->ChunkPositions.ChunkAt = 0;
+    Frame->PixelTransform = Mat4(2.0f / Frame->RenderExtent.width, 0.0f, 0.0f, -1.0f,
+                                 0.0f, 2.0f / Frame->RenderExtent.height, 0.0f, -1.0f,
+                                 0.0f, 0.0f, 1.0f, 0.0f,
+                                 0.0f, 0.0f, 0.0f, 1.0f);
 
     {
         TIMED_BLOCK("WaitForPreviousFrames");
-        
         vkWaitForFences(Renderer->RenderDevice.Device, 1, &Frame->RenderFinishedFence, VK_TRUE, UINT64_MAX);
         vkResetFences(Renderer->RenderDevice.Device, 1, &Frame->RenderFinishedFence);
     }
 
     VkResult Result = vkAcquireNextImageKHR(
-        Renderer->RenderDevice.Device, Renderer->Swapchain, 
-        0, 
+        Renderer->RenderDevice.Device, Renderer->Swapchain,
+        0,
         Frame->ImageAcquiredSemaphore,
-        nullptr, 
+        nullptr,
         &Frame->SwapchainImageIndex);
     if (Result != VK_SUCCESS)
     {
@@ -2263,65 +2197,17 @@ renderer_frame_params* Renderer_NewFrame(renderer* Renderer, u64 FrameIndex)
     Frame->SwapchainImage = Renderer->SwapchainImages[Frame->SwapchainImageIndex];
     Frame->SwapchainImageView = Renderer->SwapchainImageViews[Frame->SwapchainImageIndex];
 
-    vkResetCommandPool(Renderer->RenderDevice.Device, Frame->CmdPool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
-    return Frame;
-}
+    vkResetCommandPool(Renderer->RenderDevice.Device, Frame->CmdPool, 0/*VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT*/);
 
-void Renderer_SubmitFrame(renderer* Renderer, renderer_frame_params* Frame)
-{
-    TIMED_FUNCTION();
-
-    {
-        TIMED_BLOCK("Submit");
-
-        VkPipelineStageFlags WaitStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-        VkSubmitInfo SubmitInfo = 
-        {
-            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext = nullptr,
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &Frame->ImageAcquiredSemaphore,
-            .pWaitDstStageMask = &WaitStageMask,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &Frame->CmdBuffer,
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores = &Frame->RenderFinishedSemaphore,
-        };
-
-        vkQueueSubmit(Renderer->RenderDevice.GraphicsQueue, 1, &SubmitInfo, Frame->RenderFinishedFence);
-    }
-
-    {
-        TIMED_BLOCK("Present");
-
-        VkPresentInfoKHR PresentInfo = 
-        {
-            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-            .pNext = nullptr,
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &Frame->RenderFinishedSemaphore,
-            .swapchainCount = 1,
-            .pSwapchains = &Frame->Renderer->Swapchain,
-            .pImageIndices = &Frame->SwapchainImageIndex,
-            .pResults = nullptr,
-        };
-
-        vkQueuePresentKHR(Renderer->RenderDevice.GraphicsQueue, &PresentInfo);
-    }
-}
-
-void Renderer_BeginRendering(renderer_frame_params* Frame)
-{
-    TIMED_FUNCTION();
-
-    VkCommandBufferBeginInfo BeginInfo = 
+    VkCommandBufferBeginInfo CommonBeginInfo = 
     {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .pNext = nullptr,
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
         .pInheritanceInfo = nullptr,
     };
-    vkBeginCommandBuffer(Frame->CmdBuffer, &BeginInfo);
+    vkBeginCommandBuffer(Frame->TransferCmdBuffer, &CommonBeginInfo);
+    vkBeginCommandBuffer(Frame->PrimaryCmdBuffer, &CommonBeginInfo);
 
     VkImageMemoryBarrier BeginBarriers[] = 
     {
@@ -2366,7 +2252,389 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
     };
     constexpr u32 BeginBarrierCount = CountOf(BeginBarriers);
     
-    vkCmdPipelineBarrier(Frame->CmdBuffer,
+    vkCmdPipelineBarrier(Frame->PrimaryCmdBuffer,
+                         VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+                         0,
+                         0, nullptr,
+                         0, nullptr,
+                         BeginBarrierCount, BeginBarriers);
+    
+    VkRenderingAttachmentInfo ColorAttachment = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = Frame->SwapchainImageView,
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue =  { .color = { 0.0f, 0.6f, 1.0f, 0.0f, }, },
+    };
+    VkRenderingAttachmentInfo DepthAttachment = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = Frame->DepthBufferView,
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue =  { .depthStencil = { 1.0f, 0 }, },
+    };
+    VkRenderingAttachmentInfo StencilAttachment = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = VK_NULL_HANDLE,
+        .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .clearValue = { .depthStencil = { 1.0f, 0 }, },
+    };
+    
+    VkRenderingInfo RenderingInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .pNext = nullptr,
+        .flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT,
+        .renderArea = { { 0, 0 }, Frame->RenderExtent },
+        .layerCount = 1,
+        .viewMask = 0,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &ColorAttachment,
+        .pDepthAttachment = &DepthAttachment,
+        .pStencilAttachment = &StencilAttachment,
+    };
+
+    vkCmdBeginRendering(Frame->PrimaryCmdBuffer, &RenderingInfo);
+
+    VkFormat ColorAttachmentFormats[] = 
+    {
+        Frame->Renderer->SurfaceFormat.format,
+    };
+
+    VkCommandBufferInheritanceRenderingInfo RenderingInheritanceInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .viewMask = 0,
+        .colorAttachmentCount = RenderingInfo.colorAttachmentCount,
+        .pColorAttachmentFormats = ColorAttachmentFormats,
+        .depthAttachmentFormat = Frame->Renderer->DepthFormat,
+        .stencilAttachmentFormat = Frame->Renderer->StencilFormat,
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+    };
+    VkCommandBufferInheritanceInfo InheritanceInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .pNext = &RenderingInheritanceInfo,
+        .renderPass = VK_NULL_HANDLE,
+        .subpass = 0,
+        .framebuffer = VK_NULL_HANDLE,
+        .occlusionQueryEnable = VK_FALSE,
+        .queryFlags = 0,
+        .pipelineStatistics = 0,
+    };
+    VkCommandBufferBeginInfo SecondaryBeginInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .pNext = nullptr,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT|VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &InheritanceInfo,
+    };
+    vkBeginCommandBuffer(Frame->SceneCmdBuffer, &SecondaryBeginInfo);
+    vkBeginCommandBuffer(Frame->ImmediateCmdBuffer, &SecondaryBeginInfo);
+    vkBeginCommandBuffer(Frame->ImGuiCmdBuffer, &SecondaryBeginInfo);
+
+    VkViewport Viewport = 
+    {
+        .x = 0.0f,
+        .y = 0.0f,
+        .width = (f32)Frame->RenderExtent.width,
+        .height = (f32)Frame->RenderExtent.height,
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f,
+    };
+    
+    VkRect2D Scissor = 
+    {
+        .offset = { 0, 0 },
+        .extent = Frame->RenderExtent,
+    };
+    
+    vkCmdSetViewport(Frame->SceneCmdBuffer, 0, 1, &Viewport);
+    vkCmdSetScissor(Frame->SceneCmdBuffer, 0, 1, &Scissor);
+    vkCmdSetViewport(Frame->ImmediateCmdBuffer, 0, 1, &Viewport);
+    vkCmdSetScissor(Frame->ImmediateCmdBuffer, 0, 1, &Scissor);
+    vkCmdSetViewport(Frame->ImGuiCmdBuffer, 0, 1, &Viewport);
+    vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
+    return Frame;
+}
+
+void Renderer_SubmitFrame(renderer* Renderer, render_frame* Frame)
+{
+    TIMED_FUNCTION();
+
+#if 1
+    {
+        vkCmdBindPipeline(Frame->SceneCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->Pipeline);
+        vkCmdBindDescriptorSets(Frame->SceneCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->PipelineLayout,
+                                0, 1, &Frame->Renderer->DescriptorSet, 0, nullptr);
+
+        VkDeviceSize VertexBufferOffset = 0;
+        vkCmdBindVertexBuffers(Frame->SceneCmdBuffer, 0, 1, &Frame->Renderer->VB.Buffer, &VertexBufferOffset);
+        vkCmdBindVertexBuffers(Frame->SceneCmdBuffer, 1, 1, &Frame->ChunkPositions.Buffer, &VertexBufferOffset);
+    
+        mat4 VP = Frame->ProjectionTransform * Frame->ViewTransform;
+
+        vkCmdPushConstants(
+            Frame->SceneCmdBuffer,
+            Frame->Renderer->PipelineLayout,
+            VK_SHADER_STAGE_VERTEX_BIT, 0,
+            sizeof(mat4), &VP);
+        vkCmdDrawIndirect(Frame->SceneCmdBuffer, Frame->DrawCommands.Buffer, 0, (u32)Frame->DrawCommands.DrawIndex, sizeof(VkDrawIndirectCommand));
+
+        vkEndCommandBuffer(Frame->SceneCmdBuffer);
+        vkCmdExecuteCommands(Frame->PrimaryCmdBuffer, 1, &Frame->SceneCmdBuffer);
+
+        vkEndCommandBuffer(Frame->ImmediateCmdBuffer);
+        vkCmdExecuteCommands(Frame->PrimaryCmdBuffer, 1, &Frame->ImmediateCmdBuffer);
+
+        vkEndCommandBuffer(Frame->ImGuiCmdBuffer);
+        vkCmdExecuteCommands(Frame->PrimaryCmdBuffer, 1, &Frame->ImGuiCmdBuffer);
+
+        vkCmdEndRendering(Frame->PrimaryCmdBuffer);
+
+        VkImageMemoryBarrier EndBarriers[] = 
+        {
+            {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .pNext = nullptr,
+                .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                .dstAccessMask = 0,
+                .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = Frame->SwapchainImage,
+                .subresourceRange = 
+                {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .pNext = nullptr,
+                .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+                .oldLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                .newLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = Frame->DepthBuffer,
+                .subresourceRange = 
+                {
+                    .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+            },
+        };
+        constexpr u32 EndBarrierCount = CountOf(EndBarriers);
+
+        vkCmdPipelineBarrier(Frame->PrimaryCmdBuffer,
+                             VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+                             0,
+                             0, nullptr,
+                             0, nullptr,
+                             EndBarrierCount, EndBarriers);
+    }
+#endif
+
+    vkEndCommandBuffer(Frame->TransferCmdBuffer);
+    vkEndCommandBuffer(Frame->PrimaryCmdBuffer);
+
+    VkPipelineStageFlags TransferWaitStage = VK_PIPELINE_STAGE_NONE;
+    VkSemaphore WaitSemaphores[] = 
+    {
+        Frame->TransferFinishedSemaphore,
+        Frame->ImageAcquiredSemaphore,
+    };
+    VkPipelineStageFlags WaitStageMask[] = 
+    {
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+    };
+    VkSubmitInfo Submits[] = 
+    {
+        {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext = nullptr,
+            .waitSemaphoreCount = 0,
+            .pWaitSemaphores = nullptr,
+            .pWaitDstStageMask = &TransferWaitStage,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &Frame->TransferCmdBuffer,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &Frame->TransferFinishedSemaphore,
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext = nullptr,
+            .waitSemaphoreCount = CountOf(WaitSemaphores),
+            .pWaitSemaphores = WaitSemaphores,
+            .pWaitDstStageMask = WaitStageMask,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &Frame->PrimaryCmdBuffer,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &Frame->RenderFinishedSemaphore,
+        },
+    };
+    vkQueueSubmit(Renderer->RenderDevice.GraphicsQueue, CountOf(Submits), Submits, Frame->RenderFinishedFence);
+
+    {
+        TIMED_BLOCK("Present");
+
+        VkPresentInfoKHR PresentInfo = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .pNext = nullptr,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &Frame->RenderFinishedSemaphore,
+            .swapchainCount = 1,
+            .pSwapchains = &Frame->Renderer->Swapchain,
+            .pImageIndices = &Frame->SwapchainImageIndex,
+            .pResults = nullptr,
+        };
+
+        vkQueuePresentKHR(Renderer->RenderDevice.GraphicsQueue, &PresentInfo);
+    }
+}
+
+bool Renderer_UploadVertexData(render_frame* Frame, 
+                               vertex_buffer_block* Block,
+                               u64 DataSize0, const void* Data0, 
+                               u64 DataSize1, const void* Data1)
+{
+    bool Result = false;
+
+    staging_heap* Heap = &Frame->Renderer->StagingHeap;
+    vertex_buffer* VertexBuffer = &Frame->Renderer->VB;
+
+    u64 TotalSize = DataSize0 + DataSize1;
+    Assert(TotalSize <= Heap->HeapSize);
+    Assert(TotalSize == Block->VertexCount * sizeof(terrain_vertex));
+
+    u64 AtomSize = Frame->Renderer->RenderDevice.NonCoherentAtomSize;
+    u64 Offset = AlignTo(Heap->HeapOffset, AtomSize);
+
+    // TODO(boti): We need to ensure that we're not overwriting the previous frame's data!
+    if (Heap->HeapSize - Heap->HeapOffset < TotalSize)
+    {
+        Offset = 0;
+    }
+
+    VkMappedMemoryRange Range = 
+    {
+        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+        .pNext = nullptr,
+        .memory = Heap->Heap,
+        .offset = Offset,
+        .size = AlignTo(TotalSize, AtomSize),
+    };
+
+    void* Mapping = nullptr;
+    if (vkMapMemory(Frame->Renderer->RenderDevice.Device, Range.memory, Range.offset, Range.size, 0, &Mapping) == VK_SUCCESS)
+    {
+        memcpy(Mapping, Data0, DataSize0);
+        if (DataSize1)
+        {
+            memcpy(OffsetPtr(Mapping, DataSize0), Data1, DataSize1);
+        }
+        vkFlushMappedMemoryRanges(Frame->Renderer->RenderDevice.Device, 1, &Range);
+        vkUnmapMemory(Frame->Renderer->RenderDevice.Device, Heap->Heap);
+
+        VkBufferCopy Region = 
+        {
+            .srcOffset = Offset,
+            .dstOffset = Block->VertexOffset * sizeof(terrain_vertex),
+            .size = TotalSize,
+        };
+        vkCmdCopyBuffer(Frame->TransferCmdBuffer, Heap->Buffer, VertexBuffer->Buffer, 1, &Region);
+        Result = true;
+    }
+    else
+    {
+        UnhandledError("Failed to map staging heap memory");
+    }
+
+    Heap->HeapOffset = Range.offset + Range.size;
+
+    return(Result);
+}
+
+void Renderer_BeginRendering(render_frame* Frame)
+{
+    TIMED_FUNCTION();
+#if 0
+    VkImageMemoryBarrier BeginBarriers[] = 
+    {
+        {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .pNext = nullptr,
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = Frame->SwapchainImage,
+            .subresourceRange = 
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .pNext = nullptr,
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = Frame->DepthBuffer,
+            .subresourceRange = 
+            {
+                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        },
+    };
+    constexpr u32 BeginBarrierCount = CountOf(BeginBarriers);
+    
+    vkCmdPipelineBarrier(Frame->PrimaryCmdBuffer,
         VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
         0,
         0, nullptr,
@@ -2418,7 +2686,7 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
         .pNext = nullptr,
         .flags = 0,
-        .renderArea = { { 0, 0 }, Frame->Renderer->SwapchainSize },
+        .renderArea = { { 0, 0 }, Frame->RenderExtent },
         .layerCount = 1,
         .viewMask = 0,
         .colorAttachmentCount = 1,
@@ -2427,14 +2695,14 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
         .pStencilAttachment = &StencilAttachment,
     };
 
-    vkCmdBeginRendering(Frame->CmdBuffer, &RenderingInfo);
+    vkCmdBeginRendering(Frame->PrimaryCmdBuffer, &RenderingInfo);
 
     VkViewport Viewport = 
     {
         .x = 0.0f,
         .y = 0.0f,
-        .width = (f32)Frame->Renderer->SwapchainSize.width,
-        .height = (f32)Frame->Renderer->SwapchainSize.height,
+        .width = (f32)Frame->RenderExtent.width,
+        .height = (f32)Frame->RenderExtent.height,
         .minDepth = 0.0f,
         .maxDepth = 1.0f,
     };
@@ -2442,18 +2710,19 @@ void Renderer_BeginRendering(renderer_frame_params* Frame)
     VkRect2D Scissor = 
     {
         .offset = { 0, 0 },
-        .extent = Frame->Renderer->SwapchainSize,
+        .extent = Frame->RenderExtent,
     };
     
-    vkCmdSetViewport(Frame->CmdBuffer, 0, 1, &Viewport);
-    vkCmdSetScissor(Frame->CmdBuffer, 0, 1, &Scissor);
-
+    vkCmdSetViewport(Frame->PrimaryCmdBuffer, 0, 1, &Viewport);
+    vkCmdSetScissor(Frame->PrimaryCmdBuffer, 0, 1, &Scissor);
+#endif
 }
-void Renderer_EndRendering(renderer_frame_params* Frame)
+void Renderer_EndRendering(render_frame* Frame)
 {
     TIMED_FUNCTION();
 
-    vkCmdEndRendering(Frame->CmdBuffer);
+#if 0
+    vkCmdEndRendering(Frame->PrimaryCmdBuffer);
 
     VkImageMemoryBarrier EndBarriers[] = 
     {
@@ -2498,21 +2767,20 @@ void Renderer_EndRendering(renderer_frame_params* Frame)
     };
     constexpr u32 EndBarrierCount = CountOf(EndBarriers);
 
-    vkCmdPipelineBarrier(Frame->CmdBuffer, 
+    vkCmdPipelineBarrier(Frame->PrimaryCmdBuffer,
         VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
         0,
         0, nullptr,
         0, nullptr,
         EndBarrierCount, EndBarriers);
-
-    vkEndCommandBuffer(Frame->CmdBuffer);
+#endif
 }
 
-void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render_data* Chunks)
+void Renderer_RenderChunks(render_frame* Frame, u32 Count, chunk_render_data* Chunks)
 {
     TIMED_FUNCTION();
 
-    frustum ViewFrustum = Frame->Camera.GetFrustum((f32)Frame->Renderer->SwapchainSize.width / Frame->Renderer->SwapchainSize.height);
+    frustum ViewFrustum = Frame->Camera.GetFrustum((f32)Frame->RenderExtent.width / Frame->RenderExtent.height);
 
     VkDeviceSize DrawBufferOffset = Frame->DrawCommands.DrawIndex * sizeof(VkDrawIndirectCommand);
     u32 DrawCount = 0;
@@ -2529,41 +2797,40 @@ void Renderer_RenderChunks(renderer_frame_params* Frame, u32 Count, chunk_render
 
         if (IntersectFrustumAABB(ViewFrustum, ChunkBox))
         {
-            *Chunk->LastRenderedInFrameIndex = Frame->BufferIndex;
-
             u32 InstanceOffset = (u32)Frame->ChunkPositions.ChunkAt++;
             memcpy(Frame->ChunkPositions.Mapping + InstanceOffset, &ChunkP, sizeof(ChunkP));
 
             FirstCommand[Frame->DrawCommands.DrawIndex++] = 
             { 
                 .vertexCount = Chunk->VertexBlock->VertexCount,
-                .instanceCount = 1, 
-                .firstVertex = Chunk->VertexBlock->VertexOffset, 
-                .firstInstance = InstanceOffset, 
+                .instanceCount = 1,
+                .firstVertex = Chunk->VertexBlock->VertexOffset,
+                .firstInstance = InstanceOffset,
             };
             DrawCount++;
         }
     }
-
-    vkCmdBindPipeline(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->Pipeline);
-    vkCmdBindDescriptorSets(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->PipelineLayout, 
+#if 0
+    vkCmdBindPipeline(Frame->PrimaryCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->Pipeline);
+    vkCmdBindDescriptorSets(Frame->PrimaryCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->PipelineLayout,
         0, 1, &Frame->Renderer->DescriptorSet, 0, nullptr);
 
     VkDeviceSize VertexBufferOffset = 0;
-    vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->Renderer->VB.Buffer, &VertexBufferOffset);
-    vkCmdBindVertexBuffers(Frame->CmdBuffer, 1, 1, &Frame->ChunkPositions.Buffer, &VertexBufferOffset);
+    vkCmdBindVertexBuffers(Frame->PrimaryCmdBuffer, 0, 1, &Frame->Renderer->VB.Buffer, &VertexBufferOffset);
+    vkCmdBindVertexBuffers(Frame->PrimaryCmdBuffer, 1, 1, &Frame->ChunkPositions.Buffer, &VertexBufferOffset);
     
     mat4 VP = Frame->ProjectionTransform * Frame->ViewTransform;
 
     vkCmdPushConstants(
-        Frame->CmdBuffer,
+        Frame->PrimaryCmdBuffer,
         Frame->Renderer->PipelineLayout,
         VK_SHADER_STAGE_VERTEX_BIT, 0,
         sizeof(mat4), &VP);
-    vkCmdDrawIndirect(Frame->CmdBuffer, Frame->DrawCommands.Buffer, DrawBufferOffset, DrawCount, sizeof(VkDrawIndirectCommand));
+    vkCmdDrawIndirect(Frame->PrimaryCmdBuffer, Frame->DrawCommands.Buffer, DrawBufferOffset, DrawCount, sizeof(VkDrawIndirectCommand));
+#endif
 }
 
-u64 Frame_PushToStack(renderer_frame_params* Frame, u64 Alignment, const void* Data, u64 Size)
+u64 Frame_PushToStack(render_frame* Frame, u64 Alignment, const void* Data, u64 Size)
 {
     assert(Frame);
     u64 Result = INVALID_INDEX_U64;
@@ -2587,18 +2854,50 @@ u64 Frame_PushToStack(renderer_frame_params* Frame, u64 Alignment, const void* D
     return Result;
 }
 
-void Renderer_BeginImmediate(renderer_frame_params* Frame)
+bool Renderer_PushTriangleList(render_frame* Frame, 
+                               u32 VertexCount, const vertex* VertexData, 
+                               mat4 Transform, f32 DepthBias)
+{
+    bool Result = false;
+
+    u64 Offset = AlignTo(Frame->VertexStack.At, alignof(vertex));
+    u32 DataSize = VertexCount * sizeof(vertex);
+    if (Offset + DataSize <= Frame->VertexStack.Size)
+    {
+        memcpy(OffsetPtr(Frame->VertexStack.Mapping, Offset), VertexData, DataSize);
+        Frame->VertexStack.At = Offset + DataSize;
+
+        vkCmdBindPipeline(Frame->ImmediateCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImPipeline);
+        vkCmdSetPrimitiveTopology(Frame->ImmediateCmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+
+        vkCmdBindVertexBuffers(Frame->ImmediateCmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &Offset);
+        vkCmdPushConstants(Frame->ImmediateCmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 
+                           0, sizeof(Transform), &Transform);
+        // TODO(boti): depth bias should probably be separately parameterized
+        vkCmdSetDepthBias(Frame->ImmediateCmdBuffer, DepthBias, 0.0f, DepthBias);
+        vkCmdDraw(Frame->ImmediateCmdBuffer, VertexCount, 1, 0, 0);
+
+        Result = true;
+    }
+    else
+    {
+        UnhandledError("Immediate renderer out of memory");
+    }
+    return(Result);
+}
+
+void Renderer_BeginImmediate(render_frame* Frame)
 {
     TIMED_FUNCTION();
 
     // NOTE(boti): Supposedly we don't need to set the viewport/scissor here when all our pipelines have that as dynamic
     // TODO(boti): ^Verify
-    vkCmdBindPipeline(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImPipeline);
+    //vkCmdBindPipeline(Frame->PrimaryCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImPipeline);
 
-    vkCmdSetPrimitiveTopology(Frame->CmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    //vkCmdSetPrimitiveTopology(Frame->PrimaryCmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 }
 
-void Renderer_ImmediateBox(renderer_frame_params* Frame, aabb Box, u32 Color)
+void Renderer_ImmediateBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBias /*= 0.0f*/)
 {
     TIMED_FUNCTION();
 
@@ -2653,27 +2952,29 @@ void Renderer_ImmediateBox(renderer_frame_params* Frame, aabb Box, u32 Color)
         { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
     };
     constexpr u32 VertexCount = CountOf(VertexData);
-
+#if 1
+    mat4 Transform = Frame->ProjectionTransform * Frame->ViewTransform;
+    Renderer_PushTriangleList(Frame, VertexCount, VertexData, Transform, DepthBias);
+#else
     u64 Offset = Frame_PushToStack(Frame, 16, VertexData, sizeof(VertexData));
     if (Offset != INVALID_INDEX_U64)
     {
-        vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &Offset);
+        vkCmdBindVertexBuffers(Frame->PrimaryCmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &Offset);
 
         mat4 Transform = Frame->ProjectionTransform * Frame->ViewTransform;
-        vkCmdPushConstants(Frame->CmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &Transform);
-        vkCmdDraw(Frame->CmdBuffer, VertexCount, 1, 0, 0);
+        vkCmdPushConstants(Frame->PrimaryCmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &Transform);
+        vkCmdDraw(Frame->PrimaryCmdBuffer, VertexCount, 1, 0, 0);
     }
     else
     {
         assert(!"Renderer_ImmediateBox failed");
     }
+#endif
 }
 
-void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, f32 OutlineSize, aabb Box, u32 Color)
+void Renderer_ImmediateBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box, u32 Color)
 {
     TIMED_FUNCTION();
-
-    vkCmdSetDepthBias(Frame->CmdBuffer, 0.0f, 0.0f, 0.0f);
 
     const aabb Boxes[] = 
     {
@@ -2696,15 +2997,23 @@ void Renderer_ImmediateBoxOutline(renderer_frame_params* Frame, f32 OutlineSize,
         MakeAABB({ Box.Max.x, Box.Max.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Max.y - OutlineSize, Box.Max.z }),
     };
     constexpr u32 BoxCount = CountOf(Boxes);
-
-    vkCmdSetDepthBias(Frame->CmdBuffer, -1.0f, 0.0f, -1.0f);
+#if 1
+    for (u32 i = 0; i < BoxCount; i++)
+    {
+        Renderer_ImmediateBox(Frame, Boxes[i], Color, -1.0f);
+    }
+#else
+    vkCmdSetDepthBias(Frame->PrimaryCmdBuffer, -1.0f, 0.0f, -1.0f);
     for (u32 i = 0; i < BoxCount; i++)
     {
         Renderer_ImmediateBox(Frame, Boxes[i], Color);
     }
+
+    vkCmdSetDepthBias(Frame->PrimaryCmdBuffer, 0.0f, 0.0f, 0.0f);
+#endif
 }
 
-void Renderer_ImmediateRect2D(renderer_frame_params* Frame, vec2 p0, vec2 p1, u32 Color)
+void Renderer_ImmediateRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color)
 {
     TIMED_FUNCTION();
 
@@ -2715,29 +3024,34 @@ void Renderer_ImmediateRect2D(renderer_frame_params* Frame, vec2 p0, vec2 p1, u3
         { { p0.x, p0.y, 0.0f }, {}, Color },
         { { p0.x, p1.y, 0.0f }, {}, Color },
     };
+#if 1
+    vertex VertexDataExploded[] = 
+    {
+        VertexData[0], VertexData[1], VertexData[2],
+        VertexData[2], VertexData[1], VertexData[3],
+    };
+    u32 VertexCount = CountOf(VertexDataExploded);
+    Renderer_PushTriangleList(Frame, VertexCount, VertexDataExploded, Frame->PixelTransform, 0.0f);
+#else
     u32 VertexCount = CountOf(VertexData);
-
     u64 Offset = Frame_PushToStack(Frame, 16, VertexData, sizeof(VertexData));
     if (Offset != INVALID_INDEX_U64)
     {
-        vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &Offset);
-        mat4 Transform = Mat4(
-            2.0f / Frame->Renderer->SwapchainSize.width, 0.0f, 0.0f, -1.0f,
-            0.0f, 2.0f / Frame->Renderer->SwapchainSize.height, 0.0f, -1.0f,
-            0.0f, 0.0f, 1.0f, 0.0f,
-            0.0f, 0.0f, 0.0f, 1.0f);
-        vkCmdPushConstants(Frame->CmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &Transform);
-        vkCmdSetPrimitiveTopology(Frame->CmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
-        vkCmdSetDepthBias(Frame->CmdBuffer, 0.0f, 0.0f, 0.0f);
-        vkCmdDraw(Frame->CmdBuffer, VertexCount, 1, 0, 0);
+        vkCmdBindVertexBuffers(Frame->PrimaryCmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &Offset);
+        vkCmdPushConstants(Frame->PrimaryCmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 
+                           0, sizeof(Frame->PixelTransform), &Frame->PixelTransform);
+        vkCmdSetPrimitiveTopology(Frame->PrimaryCmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+        vkCmdSetDepthBias(Frame->PrimaryCmdBuffer, 0.0f, 0.0f, 0.0f);
+        vkCmdDraw(Frame->PrimaryCmdBuffer, VertexCount, 1, 0, 0);
     }
     else
     {
         assert(!"Renderer_ImmediateRect2D failed");
     }
+#endif
 }
 
-void Renderer_ImmediateRectOutline2D(renderer_frame_params* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color)
+void Renderer_ImmediateRectOutline2D(render_frame* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color)
 {
     TIMED_FUNCTION();
 
@@ -2781,13 +3095,10 @@ void Renderer_ImmediateRectOutline2D(renderer_frame_params* Frame, outline_type 
         Color);
 }
 
-void Renderer_RenderImGui(renderer_frame_params* Frame)
+void Renderer_RenderImGui(render_frame* Frame, const ImDrawData* DrawData)
 {
     TIMED_FUNCTION();
 #if 1
-    ImGui::Render();
-
-    ImDrawData* DrawData = ImGui::GetDrawData();
     if (DrawData && (DrawData->TotalVtxCount > 0) && (DrawData->TotalIdxCount > 0))
     {
         u64 VertexDataOffset = AlignTo(Frame->VertexStack.At, sizeof(ImDrawVert));
@@ -2805,27 +3116,22 @@ void Renderer_RenderImGui(renderer_frame_params* Frame)
         {
             Frame->VertexStack.At = ImGuiDataEnd;
 
-            vkCmdBindPipeline(Frame->CmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImGuiPipeline);
+            vkCmdBindPipeline(Frame->ImGuiCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImGuiPipeline);
             vkCmdBindDescriptorSets(
-                Frame->CmdBuffer, 
+                Frame->ImGuiCmdBuffer, 
                 VK_PIPELINE_BIND_POINT_GRAPHICS, 
                 Frame->Renderer->ImGuiPipelineLayout,
                 0, 1, &Frame->Renderer->ImGuiDescriptorSet, 0, nullptr);
 
-            mat4 Transform = Mat4(
-                2.0f / Frame->Renderer->SwapchainSize.width, 0.0f, 0.0f, -1.0f,
-                0.0f, 2.0f / Frame->Renderer->SwapchainSize.height, 0.0f, -1.0f,
-                0.0f, 0.0f, 1.0f, 0.0f,
-                0.0f, 0.0f, 0.0f, 1.0f);
             vkCmdPushConstants(
-                Frame->CmdBuffer, 
+                Frame->ImGuiCmdBuffer, 
                 Frame->Renderer->ImGuiPipelineLayout, 
                 VK_SHADER_STAGE_VERTEX_BIT,
-                0, sizeof(mat4), &Transform);
+                0, sizeof(Frame->PixelTransform), &Frame->PixelTransform);
 
-            vkCmdBindVertexBuffers(Frame->CmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &VertexDataOffset);
+            vkCmdBindVertexBuffers(Frame->ImGuiCmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &VertexDataOffset);
             VkIndexType IndexType = (sizeof(ImDrawIdx) == 2) ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
-            vkCmdBindIndexBuffer(Frame->CmdBuffer, Frame->VertexStack.Buffer, IndexDataOffset, IndexType);
+            vkCmdBindIndexBuffer(Frame->ImGuiCmdBuffer, Frame->VertexStack.Buffer, IndexDataOffset, IndexType);
 
             ImDrawVert* VertexDataAt = (ImDrawVert*)((u8*)Frame->VertexStack.Mapping + VertexDataOffset);
             ImDrawIdx* IndexDataAt = (ImDrawIdx*)((u8*)Frame->VertexStack.Mapping + IndexDataOffset);
@@ -2856,9 +3162,9 @@ void Renderer_RenderImGui(renderer_frame_params* Frame)
                             .height = (u32)Command->ClipRect.w,
                         },
                     };
-                    vkCmdSetScissor(Frame->CmdBuffer, 0, 1, &Scissor);
+                    vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
                     vkCmdDrawIndexed(
-                        Frame->CmdBuffer, Command->ElemCount, 1, 
+                        Frame->ImGuiCmdBuffer, Command->ElemCount, 1, 
                         Command->IdxOffset + IndexOffset, 
                         Command->VtxOffset + VertexOffset, 
                         0);
@@ -2872,9 +3178,9 @@ void Renderer_RenderImGui(renderer_frame_params* Frame)
             VkRect2D Scissor = 
             {
                 .offset = { 0, 0 },
-                .extent = Frame->Renderer->SwapchainSize,
+                .extent = Frame->RenderExtent,
             };
-            vkCmdSetScissor(Frame->CmdBuffer, 0, 1, &Scissor);
+            vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
         }
         else
         {

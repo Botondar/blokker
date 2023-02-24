@@ -125,17 +125,12 @@ struct chunk
     chunk_data* Data;
 
     struct vertex_buffer_block* VertexBlock;
-    u64 LastRenderedInFrameIndex;
-
-    struct vertex_buffer_block* OldVertexBlock;
-    u64 OldAllocationLastRenderedInFrameIndex;
 };
 
 struct chunk_render_data
 {
     vec2i P;
     struct vertex_buffer_block* VertexBlock;
-    u64* LastRenderedInFrameIndex;
 };
 
 struct voxel_neighborhood

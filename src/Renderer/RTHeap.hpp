@@ -14,9 +14,7 @@ struct render_target_heap
 
 bool RTHeap_Create(
     render_target_heap* Heap, 
-    u64 Size, u32 MemoryTypeBase, 
-    u32 MemoryRequirementCount,
-    const VkMemoryRequirements* MemoryRequirements,
+    u64 Size, u32 MemoryTypeBase,
     VkDevice Device);
 
 bool RTHeap_PushImage(

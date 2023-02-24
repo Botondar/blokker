@@ -184,7 +184,7 @@ static DWORD __stdcall WinWorkerThread(void* Param)
             {
                 Work.Invoke(&Arena);
                 AtomicIncrement(&HighPriorityQueue->Completion);
-                Arena.Used = 0;
+                ResetArena(&Arena);
             }
             continue;
         }
@@ -196,7 +196,7 @@ static DWORD __stdcall WinWorkerThread(void* Param)
             {
                 Work.Invoke(&Arena);
                 AtomicIncrement(&LowPriorityQueue->Completion);
-                Arena.Used = 0;
+                ResetArena(&Arena);
             }
 
             continue;
@@ -408,6 +408,7 @@ static buffer WinLoadEntireFile(const char* Path, memory_arena* Arena)
         {
             assert(FileSize.QuadPart <= 0xFFFFFFFFll);
             
+            memory_arena_checkpoint Checkpoint = ArenaCheckpoint(Arena);
             u64 Save = Arena->Used;
             u64 Size = (u64)FileSize.QuadPart;
             void* Data = PushSize(Arena, Size, 64);
@@ -421,7 +422,7 @@ static buffer WinLoadEntireFile(const char* Path, memory_arena* Arena)
                 }
                 else
                 {
-                    Arena->Used = Save;
+                    RestoreArena(Arena, Checkpoint);
                 }
             }
         }
@@ -436,6 +437,10 @@ static LRESULT CALLBACK WinMainWindowProc(HWND Window, UINT Message, WPARAM WPar
     LRESULT Result = 0;
     switch (Message)
     {
+        case WM_CLOSE:
+        {
+            PostQuitMessage(0);
+        } break;
         case WM_DESTROY:
         {
             PostQuitMessage(0);
@@ -675,7 +680,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     }
 #endif
 
-    static constexpr u32 WorkerCount = 5;
+    static constexpr u32 WorkerCount = 3;
     Win32State.WorkerSemaphore = CreateSemaphoreA(nullptr, 0, WorkerCount, nullptr);
     if (!Win32State.WorkerSemaphore || Win32State.WorkerSemaphore == INVALID_HANDLE_VALUE)
     {

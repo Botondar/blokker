@@ -1,21 +1,56 @@
 #include "RTHeap.hpp"
 
 bool RTHeap_Create(
-    render_target_heap* Heap, 
+    render_target_heap* Heap,
     u64 Size, u32 MemoryTypeBase,
-    u32 MemoryRequirementCount,
-    const VkMemoryRequirements* MemoryRequirements,
     VkDevice Device)
 {
-    assert(Heap);
-
     bool Result = false;
-    *Heap = {};
     
-    u32 SuitableMemoryTypes = MemoryTypeBase;
-    for (u32 i = 0; i < MemoryRequirementCount; i++)
+    VkFormat RequiredFormats[] = 
     {
-        SuitableMemoryTypes &= MemoryRequirements[i].memoryTypeBits;
+        VK_FORMAT_D32_SFLOAT,
+    };
+    VkImageUsageFlags RequiredUsages[] = 
+    {
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+    };
+    static_assert(CountOf(RequiredFormats) == CountOf(RequiredUsages));
+
+    u32 SuitableMemoryTypes = MemoryTypeBase;
+    for (u32 i = 0; i < CountOf(RequiredFormats); i++)
+    {
+        VkImageCreateInfo Info = 
+        {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .imageType = VK_IMAGE_TYPE_2D,
+            .format = RequiredFormats[i],
+            .extent = { 1280, 720, 1 },
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = VK_SAMPLE_COUNT_1_BIT,
+            .tiling = VK_IMAGE_TILING_OPTIMAL,
+            .usage = RequiredUsages[i],
+            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            .queueFamilyIndexCount = 0,
+            .pQueueFamilyIndices = nullptr,
+            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        };
+
+        VkImage Image = VK_NULL_HANDLE;
+        if (vkCreateImage(Device, &Info, nullptr, &Image) == VK_SUCCESS)
+        {
+            VkMemoryRequirements MemoryRequirements = {};
+            vkGetImageMemoryRequirements(Device, Image, &MemoryRequirements);
+            SuitableMemoryTypes &= MemoryRequirements.memoryTypeBits;
+            vkDestroyImage(Device, Image, nullptr);
+        }
+        else
+        {
+            FatalError("Failed to create RT heap dummy image");
+        }
     }
 
     u32 MemoryTypeIndex;
@@ -45,7 +80,6 @@ bool RTHeap_PushImage(
     render_target_heap* Heap,
     VkImage Image)
 {
-    assert(Heap);
     bool Result = false;
 
     VkMemoryRequirements MemoryRequirements = {};

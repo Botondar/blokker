@@ -14,7 +14,7 @@
 
 // Forward declare
 struct renderer;
-struct renderer_frame_params;
+struct render_frame;
 
 inline vec2i GetChunkP(vec2i WorldP)
 {
@@ -125,12 +125,15 @@ struct world
 
     chunk_work_queue ChunkWorkQueue;
 
+    static constexpr u32 MaxChunkDeletionQueueCount = 8192;
+    u32 ChunkDeletionWriteIndex;
+    u32 ChunkDeletionReadIndex;
+    vertex_buffer_block* ChunkDeletionQueue[MaxChunkDeletionQueueCount];
+
     player Player;
 
-    // Debug
     struct 
     {
-        bool IsDebuggingEnabled;
         bool IsHitboxEnabled;
         bool IsDebugCameraEnabled;
         camera DebugCamera;
@@ -154,8 +157,8 @@ void ResetPlayer(world* World);
 bool Initialize(world* World);
 
 void HandleInput(world* World, game_io* IO);
-void UpdateWorld(game_state* Game, world* World, game_io* IO);
-void World_Render(world* World, renderer_frame_params* Frame);
+void UpdateWorld(game_state* Game, world* World, game_io* IO, render_frame* Frame);
+void World_Render(world* World, render_frame* Frame);
 
 bool RayCast(world* World, vec3 P, vec3 V, f32 tMax, vec3i* OutP, direction* OutDir);
 

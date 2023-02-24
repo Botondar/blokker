@@ -39,15 +39,21 @@ constexpr u64 INVALID_INDEX_U64 = 0xFFFFFFFFFFFFFFFFu;
 #define UnhandledError(...) static_assert(false, "Unhandled error in release build!");
 #endif
 
-
 struct buffer
 {
     u64 Size;
     u8* Data;
 };
 
+template<typename T> inline T* OffsetPtr(T* Base, u64 Offset);
+
+inline u64 AlignTo(u64 Value, u64 Alignment);
+inline u64 AlignToPow2(u64 Value, u64 Alignment);
+inline u32 SafeU64ToU32(u64 Value);
+inline u64 CopyZString(u64 MaxLength, char* Dst, const char* Src);
+
 template<typename T>
-inline T* PointerByteOffset(T* Base, u64 Offset)
+inline T* OffsetPtr(T* Base, u64 Offset)
 {
     T* Result = (T*)((u8*)Base + Offset);
     return Result;
@@ -70,6 +76,21 @@ inline u64 AlignToPow2(u64 Value, u64 Alignment)
 {
     u64 Result = (Value + (Alignment - 1)) & (~(Alignment - 1));
     return Result;
+}
+
+inline u64 CopyZString(u64 MaxLength, char* Dst, const char* Src)
+{
+    u64 Result = 0;
+    if (Src && MaxLength > 0)
+    {
+        while (--MaxLength)
+        {
+            if (*Src == 0) break;
+            Dst[Result++] = *Src++;
+        }
+        Dst[Result] = 0;
+    }
+    return(Result);
 }
 
 // NOTE(boti): 
