@@ -2383,7 +2383,6 @@ void Renderer_SubmitFrame(renderer* Renderer, render_frame* Frame)
 {
     TIMED_FUNCTION();
 
-#if 1
     {
         vkCmdBindPipeline(Frame->SceneCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->Pipeline);
         vkCmdBindDescriptorSets(Frame->SceneCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->PipelineLayout,
@@ -2463,7 +2462,6 @@ void Renderer_SubmitFrame(renderer* Renderer, render_frame* Frame)
                              0, nullptr,
                              EndBarrierCount, EndBarriers);
     }
-#endif
 
     vkEndCommandBuffer(Frame->TransferCmdBuffer);
     vkEndCommandBuffer(Frame->PrimaryCmdBuffer);
@@ -2621,48 +2619,6 @@ void Renderer_RenderChunks(render_frame* Frame, u32 Count, chunk_render_data* Ch
             DrawCount++;
         }
     }
-#if 0
-    vkCmdBindPipeline(Frame->PrimaryCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->Pipeline);
-    vkCmdBindDescriptorSets(Frame->PrimaryCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->PipelineLayout,
-        0, 1, &Frame->Renderer->DescriptorSet, 0, nullptr);
-
-    VkDeviceSize VertexBufferOffset = 0;
-    vkCmdBindVertexBuffers(Frame->PrimaryCmdBuffer, 0, 1, &Frame->Renderer->VB.Buffer, &VertexBufferOffset);
-    vkCmdBindVertexBuffers(Frame->PrimaryCmdBuffer, 1, 1, &Frame->ChunkPositions.Buffer, &VertexBufferOffset);
-    
-    mat4 VP = Frame->ProjectionTransform * Frame->ViewTransform;
-
-    vkCmdPushConstants(
-        Frame->PrimaryCmdBuffer,
-        Frame->Renderer->PipelineLayout,
-        VK_SHADER_STAGE_VERTEX_BIT, 0,
-        sizeof(mat4), &VP);
-    vkCmdDrawIndirect(Frame->PrimaryCmdBuffer, Frame->DrawCommands.Buffer, DrawBufferOffset, DrawCount, sizeof(VkDrawIndirectCommand));
-#endif
-}
-
-u64 Frame_PushToStack(render_frame* Frame, u64 Alignment, const void* Data, u64 Size)
-{
-    assert(Frame);
-    u64 Result = INVALID_INDEX_U64;
-
-    u64 Offset = Frame->VertexStack.At;
-    if (Alignment != 0)
-    {
-        Offset = AlignTo(Offset, Alignment);
-    }
-
-    u64 End = Offset + Size;
-    if (End <= Frame->VertexStack.Size)
-    {
-        u8* Dest = (u8*)Frame->VertexStack.Mapping + Offset;
-        memcpy(Dest, Data, Size);
-        Frame->VertexStack.At = End;
-
-        Result = Offset;
-    }
-
-    return Result;
 }
 
 bool Renderer_PushTriangleList(render_frame* Frame, 
@@ -2695,17 +2651,6 @@ bool Renderer_PushTriangleList(render_frame* Frame,
         UnhandledError("Immediate renderer out of memory");
     }
     return(Result);
-}
-
-void Renderer_BeginImmediate(render_frame* Frame)
-{
-    TIMED_FUNCTION();
-
-    // NOTE(boti): Supposedly we don't need to set the viewport/scissor here when all our pipelines have that as dynamic
-    // TODO(boti): ^Verify
-    //vkCmdBindPipeline(Frame->PrimaryCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImPipeline);
-
-    //vkCmdSetPrimitiveTopology(Frame->PrimaryCmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 }
 
 void Renderer_ImmediateBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBias /*= 0.0f*/)
@@ -2763,24 +2708,8 @@ void Renderer_ImmediateBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBi
         { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
     };
     constexpr u32 VertexCount = CountOf(VertexData);
-#if 1
     mat4 Transform = Frame->ProjectionTransform * Frame->ViewTransform;
     Renderer_PushTriangleList(Frame, VertexCount, VertexData, Transform, DepthBias);
-#else
-    u64 Offset = Frame_PushToStack(Frame, 16, VertexData, sizeof(VertexData));
-    if (Offset != INVALID_INDEX_U64)
-    {
-        vkCmdBindVertexBuffers(Frame->PrimaryCmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &Offset);
-
-        mat4 Transform = Frame->ProjectionTransform * Frame->ViewTransform;
-        vkCmdPushConstants(Frame->PrimaryCmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &Transform);
-        vkCmdDraw(Frame->PrimaryCmdBuffer, VertexCount, 1, 0, 0);
-    }
-    else
-    {
-        assert(!"Renderer_ImmediateBox failed");
-    }
-#endif
 }
 
 void Renderer_ImmediateBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box, u32 Color)
@@ -2808,20 +2737,10 @@ void Renderer_ImmediateBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box
         MakeAABB({ Box.Max.x, Box.Max.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Max.y - OutlineSize, Box.Max.z }),
     };
     constexpr u32 BoxCount = CountOf(Boxes);
-#if 1
     for (u32 i = 0; i < BoxCount; i++)
     {
         Renderer_ImmediateBox(Frame, Boxes[i], Color, -1.0f);
     }
-#else
-    vkCmdSetDepthBias(Frame->PrimaryCmdBuffer, -1.0f, 0.0f, -1.0f);
-    for (u32 i = 0; i < BoxCount; i++)
-    {
-        Renderer_ImmediateBox(Frame, Boxes[i], Color);
-    }
-
-    vkCmdSetDepthBias(Frame->PrimaryCmdBuffer, 0.0f, 0.0f, 0.0f);
-#endif
 }
 
 void Renderer_ImmediateRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color)
@@ -2835,7 +2754,6 @@ void Renderer_ImmediateRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color)
         { { p0.x, p0.y, 0.0f }, {}, Color },
         { { p0.x, p1.y, 0.0f }, {}, Color },
     };
-#if 1
     vertex VertexDataExploded[] = 
     {
         VertexData[0], VertexData[1], VertexData[2],
@@ -2843,23 +2761,6 @@ void Renderer_ImmediateRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color)
     };
     u32 VertexCount = CountOf(VertexDataExploded);
     Renderer_PushTriangleList(Frame, VertexCount, VertexDataExploded, Frame->PixelTransform, 0.0f);
-#else
-    u32 VertexCount = CountOf(VertexData);
-    u64 Offset = Frame_PushToStack(Frame, 16, VertexData, sizeof(VertexData));
-    if (Offset != INVALID_INDEX_U64)
-    {
-        vkCmdBindVertexBuffers(Frame->PrimaryCmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &Offset);
-        vkCmdPushConstants(Frame->PrimaryCmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 
-                           0, sizeof(Frame->PixelTransform), &Frame->PixelTransform);
-        vkCmdSetPrimitiveTopology(Frame->PrimaryCmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
-        vkCmdSetDepthBias(Frame->PrimaryCmdBuffer, 0.0f, 0.0f, 0.0f);
-        vkCmdDraw(Frame->PrimaryCmdBuffer, VertexCount, 1, 0, 0);
-    }
-    else
-    {
-        assert(!"Renderer_ImmediateRect2D failed");
-    }
-#endif
 }
 
 void Renderer_ImmediateRectOutline2D(render_frame* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color)
@@ -2909,7 +2810,6 @@ void Renderer_ImmediateRectOutline2D(render_frame* Frame, outline_type Type, f32
 void Renderer_RenderImGui(render_frame* Frame, const ImDrawData* DrawData)
 {
     TIMED_FUNCTION();
-#if 1
     if (DrawData && (DrawData->TotalVtxCount > 0) && (DrawData->TotalIdxCount > 0))
     {
         u64 VertexDataOffset = AlignTo(Frame->VertexStack.At, sizeof(ImDrawVert));
@@ -2998,5 +2898,4 @@ void Renderer_RenderImGui(render_frame* Frame, const ImDrawData* DrawData)
             Platform.DebugPrint("WARNING: not enough memory for ImGui\n");
         }
     }
-#endif
 }

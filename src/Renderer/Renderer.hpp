@@ -199,7 +199,6 @@ enum class outline_type : u32
     Inner,
 };
 
-void Renderer_BeginImmediate(render_frame* Frame);
 void Renderer_ImmediateBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBias = 0.0f);
 void Renderer_ImmediateBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box, u32 Color);
 void Renderer_ImmediateRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color);
