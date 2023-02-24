@@ -15,6 +15,9 @@ static chunk* ReserveChunk(world* World, vec2i P);
 static chunk* FindPlayerChunk(world* World);
 static void FreeChunkMesh(world* World, chunk* Chunk);
 
+static void FlushChunkWorks(world* World, render_frame* Frame, bool WaitForPlayerChunk, chunk* PlayerChunk);
+static chunk_work* GetNextChunkWorkToWrite(chunk_work_queue* Queue);
+
 //
 // Implementations
 //
@@ -595,7 +598,94 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
     }
 }
 
-bool Initialize(world* World)
+static void FlushChunkWorks(world* World, render_frame* Frame, bool WaitForPlayerChunk, chunk* PlayerChunk)
+{
+    do
+    {
+        chunk_work_queue* Queue = &World->ChunkWorkQueue;
+        for (; Queue->ReadIndex < Queue->WriteIndex; AtomicIncrement(&Queue->ReadIndex))
+        {
+            chunk_work* Work = Queue->WorkResults + (Queue->ReadIndex % Queue->MaxWorkCount);
+            while (AtomicLoad(&Work->IsReady) == false)
+            {
+                SpinWait;
+            }
+
+            chunk* Chunk = Work->Chunk;
+            if (Work->Type == ChunkWork_Generate)
+            {
+                Chunk->Flags |= CHUNK_STATE_GENERATED_BIT;
+                Chunk->InGenerationQueue = false;
+                if (Chunk == PlayerChunk)
+                {
+                    WaitForPlayerChunk = false;
+                }
+            }
+            else if (Work->Type == ChunkWork_BuildMesh)
+            {
+                FreeChunkMesh(World, Work->Chunk);
+
+                u64 Count = Work->Mesh.OnePastLastIndex - Work->Mesh.FirstIndex;
+                u64 Size = Count * sizeof(terrain_vertex);
+
+                u64 HeadCount = Count;
+                u64 TailCount = 0;
+                u64 FirstIndexModCount = Work->Mesh.FirstIndex % Queue->VertexBufferCount;
+                u64 OnePastLastIndexModCount = Work->Mesh.OnePastLastIndex % Queue->VertexBufferCount;
+                if (OnePastLastIndexModCount < FirstIndexModCount)
+                {
+                    HeadCount = Queue->VertexBufferCount - FirstIndexModCount;
+                    TailCount = OnePastLastIndexModCount;
+                }
+                u64 HeadSize = HeadCount * sizeof(terrain_vertex);
+                u64 TailSize = TailCount * sizeof(terrain_vertex);
+
+                Chunk->VertexBlock = AllocateAndUploadVertexData(Frame, 
+                                                                 HeadSize, Queue->VertexBuffer + FirstIndexModCount,
+                                                                 TailSize, Queue->VertexBuffer);
+                if (Chunk->VertexBlock)
+                {
+                    Chunk->Flags |= CHUNK_STATE_UPLOADED_BIT | CHUNK_STATE_MESHED_BIT;
+                    Chunk->Flags &= ~CHUNK_STATE_MESH_DIRTY_BIT;
+                }
+                else
+                {
+                    Chunk->Flags &= ~(CHUNK_STATE_UPLOADED_BIT|CHUNK_STATE_MESHED_BIT|CHUNK_STATE_MESH_DIRTY_BIT);
+                }
+                
+                if (Queue->VertexReadIndex == Work->Mesh.FirstIndex)
+                {
+                    AtomicExchange(&Queue->VertexReadIndex, Work->Mesh.OnePastLastIndex);
+                    if (Queue->IsLastMeshValid)
+                    {
+                        if (Queue->LastMeshFirstIndex == Queue->VertexReadIndex)
+                        {
+                            AtomicExchange(&Queue->VertexReadIndex, Queue->LastMeshOnePastLastIndex);
+                            Queue->IsLastMeshValid = false;
+                        }
+                        else
+                        {
+                            FatalError("Too many out of order mesh chunk works");
+                        }
+                    }
+                }
+                else
+                {
+                    Assert(!Queue->IsLastMeshValid);
+                    Queue->IsLastMeshValid = true;
+                    Queue->LastMeshFirstIndex = Work->Mesh.FirstIndex;
+                    Queue->LastMeshOnePastLastIndex = Work->Mesh.OnePastLastIndex;
+                }
+
+                Chunk->InMeshQueue = false;
+            }
+
+            AtomicExchange(&Work->IsReady, false);
+        }
+    } while (WaitForPlayerChunk);
+}
+
+bool InitializeWorld(world* World)
 {
     // Allocate chunk memory
     World->Chunks = PushArray<chunk>(World->Arena, world::MaxChunkCount);
@@ -720,9 +810,11 @@ void HandleInput(world* World, game_io* IO)
     }
 }
 
-void UpdateWorld(game_state* Game, world* World, game_io* IO, render_frame* Frame)
+void UpdateAndRenderWorld(game_state* Game, world* World, game_io* IO, render_frame* Frame)
 {
     TIMED_FUNCTION();
+
+    HandleInput(World, IO);
 
     if (Game->IsDebugUIEnabled)
     {
@@ -761,165 +853,14 @@ void UpdateWorld(game_state* Game, world* World, game_io* IO, render_frame* Fram
         World->MapView.ZoomCurrent = Lerp(World->MapView.ZoomCurrent, World->MapView.ZoomTarget, 1.0f - Exp(-20.0f * IO->DeltaTime));
     }
 
-    while (World->ChunkDeletionReadIndex != World->ChunkDeletionWriteIndex)
-    {
-        u32 Index = (World->ChunkDeletionReadIndex++) % World->MaxChunkDeletionQueueCount;
-        VB_Free(&Game->Renderer->VB, World->ChunkDeletionQueue[Index]);
-    }
-
-    LoadChunksAroundPlayer(World, &Game->TransientArena);
-
-    bool WaitForPlayerChunk = false;
-    chunk* PlayerChunk = FindPlayerChunk(World);
-    if ((PlayerChunk->Flags & CHUNK_STATE_GENERATED_BIT) == 0)
-    {
-        WaitForPlayerChunk = true;
-        assert(PlayerChunk->InGenerationQueue);
-    }
-
-    do
-    {
-        chunk_work_queue* Queue = &World->ChunkWorkQueue;
-        for (; Queue->ReadIndex < Queue->WriteIndex; AtomicIncrement(&Queue->ReadIndex))
-        {
-            chunk_work* Work = Queue->WorkResults + (Queue->ReadIndex % Queue->MaxWorkCount);
-            while (AtomicLoad(&Work->IsReady) == false)
-            {
-                SpinWait;
-            }
-
-            chunk* Chunk = Work->Chunk;
-            if (Work->Type == ChunkWork_Generate)
-            {
-                Chunk->Flags |= CHUNK_STATE_GENERATED_BIT;
-                Chunk->InGenerationQueue = false;
-                if (Chunk == PlayerChunk)
-                {
-                    WaitForPlayerChunk = false;
-                }
-            }
-            else if (Work->Type == ChunkWork_BuildMesh)
-            {
-                FreeChunkMesh(World, Work->Chunk);
-
-                u64 Count = Work->Mesh.OnePastLastIndex - Work->Mesh.FirstIndex;
-                Chunk->VertexBlock = VB_Allocate(&World->Renderer->VB, (u32)Count);
-                if (Chunk->VertexBlock)
-                {
-                    u64 Size = Count * sizeof(terrain_vertex);
-                    u64 BaseOffset = VB_GetAllocationMemoryOffset(Chunk->VertexBlock);
-
-                    u64 HeadCount = Count;
-                    u64 TailCount = 0;
-                    u64 FirstIndexModCount = Work->Mesh.FirstIndex % Queue->VertexBufferCount;
-                    u64 OnePastLastIndexModCount = Work->Mesh.OnePastLastIndex % Queue->VertexBufferCount;
-                    if (OnePastLastIndexModCount < FirstIndexModCount)
-                    {
-                        HeadCount = Queue->VertexBufferCount - FirstIndexModCount;
-                        TailCount = OnePastLastIndexModCount;
-                    }
-                    u64 HeadSize = HeadCount * sizeof(terrain_vertex);
-                    u64 TailSize = TailCount * sizeof(terrain_vertex);
-
-                    if (Renderer_UploadVertexData(Frame, Chunk->VertexBlock, 
-                                                  HeadSize, Queue->VertexBuffer + FirstIndexModCount,
-                                                  TailSize, Queue->VertexBuffer))
-                    {
-                        Chunk->Flags |= CHUNK_STATE_UPLOADED_BIT | CHUNK_STATE_MESHED_BIT;
-                        Chunk->Flags &= ~CHUNK_STATE_MESH_DIRTY_BIT;
-                    }
-                    else
-                    {
-                        UnhandledError("Failed to upload chunk vertex data");
-                    }
-
-                    if (Queue->VertexReadIndex == Work->Mesh.FirstIndex)
-                    {
-                        AtomicExchange(&Queue->VertexReadIndex, Work->Mesh.OnePastLastIndex);
-                        if (Queue->IsLastMeshValid)
-                        {
-                            if (Queue->LastMeshFirstIndex == Queue->VertexReadIndex)
-                            {
-                                AtomicExchange(&Queue->VertexReadIndex, Queue->LastMeshOnePastLastIndex);
-                                Queue->IsLastMeshValid = false;
-                            }
-                            else
-                            {
-                                FatalError("Too many out of order mesh chunk works");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        Assert(!Queue->IsLastMeshValid);
-                        Queue->IsLastMeshValid = true;
-                        Queue->LastMeshFirstIndex = Work->Mesh.FirstIndex;
-                        Queue->LastMeshOnePastLastIndex = Work->Mesh.OnePastLastIndex;
-                    }
-                }
-                else
-                {
-                    assert(!"Allocation failed");
-                }
-
-                Chunk->InMeshQueue = false;
-            }
-
-            AtomicExchange(&Work->IsReady, false);
-        }
-    } while (WaitForPlayerChunk);
-
-    constexpr f32 MinPhysicsResolution = 1.0f / 60.0f;
-    f32 RemainingTime = IO->DeltaTime;
-    while (RemainingTime > 0.0f)
-    {
-        f32 dt = Min(RemainingTime, MinPhysicsResolution);
-        UpdatePlayer(Game, World, &World->Player, dt);
-        RemainingTime -= dt;
-    }
-
-    // Chunk update
-    // TODO: move this
-    {
-        TIMED_BLOCK("ChunkUpdate");
-
-        World->ChunkRenderDataCount = 0;
-        for (u32 i = 0; i < World->MaxChunkCount; i++)
-        {
-            chunk* Chunk = World->Chunks + i;
-            if (((Chunk->Flags & CHUNK_STATE_GENERATED_BIT)) == 0 ||
-                ((Chunk->Flags & CHUNK_STATE_MESHED_BIT) == 0))
-            {
-                continue;
-            }
-
-            if (Chunk->Flags & CHUNK_STATE_UPLOADED_BIT)
-            {
-                Assert(World->ChunkRenderDataCount < World->MaxChunkCount);
-
-                World->ChunkRenderData[World->ChunkRenderDataCount++] = 
-                {
-                    .P = Chunk->P,
-                    .VertexBlock = Chunk->VertexBlock,
-                    //.LastRenderedInFrameIndex = &Chunk->LastRenderedInFrameIndex,
-                };
-            }
-        }
-    }
-}
-
-void World_Render(world* World, render_frame* FrameParams)
-{
-    TIMED_FUNCTION();
-    
-    FrameParams->Camera = 
+    Frame->Camera = 
         World->Debug.IsDebugCameraEnabled ? 
         World->Debug.DebugCamera : 
         GetCamera(&World->Player);
-    FrameParams->ViewTransform = FrameParams->Camera.GetInverseTransform();
+    Frame->ViewTransform = Frame->Camera.GetInverseTransform();
 
-    const f32 AspectRatio = (f32)FrameParams->Renderer->SwapchainSize.width / (f32)FrameParams->Renderer->SwapchainSize.height;
-    FrameParams->ProjectionTransform = PerspectiveMat4(FrameParams->Camera.FieldOfView, AspectRatio, FrameParams->Camera.Near, FrameParams->Camera.Far);
+    const f32 AspectRatio = (f32)Frame->RenderExtent.width / (f32)Frame->RenderExtent.height;
+    Frame->ProjectionTransform = PerspectiveMat4(Frame->Camera.FieldOfView, AspectRatio, Frame->Camera.Near, Frame->Camera.Far);
 
     if (World->MapView.IsEnabled)
     {
@@ -945,62 +886,57 @@ void World_Render(world* World, render_frame* FrameParams)
             Forward.x, Forward.y, Forward.z, -Dot(Forward, P),
             0.0f, 0.0f, 0.0f, 1.0f);
 
-        FrameParams->ViewTransform = ViewTransform;
-        FrameParams->ProjectionTransform = Mat4(
+        Frame->ViewTransform = ViewTransform;
+        Frame->ProjectionTransform = Mat4(
             World->MapView.ZoomCurrent * 2.0f / (AspectRatio*256.0f), 0.0f, 0.0f, 0.0f,
             0.0f, World->MapView.ZoomCurrent * 2.0f / (256.0f), 0.0f, 0.0f,
             0.0f, 0.0f, 1.0f / 512.0f, +256.0f / 512.0f,
             0.0f, 0.0f, 0.0f, 1.0f);
     }
 
-    Renderer_RenderChunks(FrameParams, World->ChunkRenderDataCount, World->ChunkRenderData);
-    
-    // Render selected block
-    if (World->Player.HasTargetBlock)
+    while (World->ChunkDeletionReadIndex != World->ChunkDeletionWriteIndex)
     {
-        vec3 P = (vec3)World->Player.TargetBlock;
-        aabb Box = MakeAABB(P, P + vec3{ 1, 1, 1 });
-        
-        Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, Box, PackColor(0x00, 0x00, 0x00));
+        u32 Index = (World->ChunkDeletionReadIndex++) % World->MaxChunkDeletionQueueCount;
+        VB_Free(&Frame->Renderer->VB, World->ChunkDeletionQueue[Index]);
     }
 
-    if (World->Debug.IsHitboxEnabled)
+    LoadChunksAroundPlayer(World, &Game->TransientArena);
+
+    bool WaitForPlayerChunk = false;
+    chunk* PlayerChunk = FindPlayerChunk(World);
+    if ((PlayerChunk->Flags & CHUNK_STATE_GENERATED_BIT) == 0)
     {
-        Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, GetAABB(&World->Player), PackColor(0xFF, 0x00, 0x00));
-        Renderer_ImmediateBoxOutline(FrameParams, 0.0025f, GetVerticalAABB(&World->Player), PackColor(0xFF, 0xFF, 0x00));
+        WaitForPlayerChunk = true;
+        assert(PlayerChunk->InGenerationQueue);
     }
 
-    // HUD
+    FlushChunkWorks(World, Frame, WaitForPlayerChunk, PlayerChunk);
+
+#if 1
+    UpdatePlayer(Game, World, IO, &World->Player, Frame);
+#else
+    constexpr f32 MinPhysicsResolution = 1.0f / 60.0f;
+    f32 RemainingTime = IO->DeltaTime;
+    while (RemainingTime > 0.0f)
     {
-        vec2 ScreenExtent = { (f32)FrameParams->Renderer->SwapchainSize.width, (f32)FrameParams->Renderer->SwapchainSize.height };
-        vec2 CenterP = 0.5f * ScreenExtent;
+        f32 dt = Min(RemainingTime, MinPhysicsResolution);
+        UpdatePlayer(Game, World, &World->Player, dt);
+        RemainingTime -= dt;
+    }
+#endif
 
-        // Crosshair
+    // Chunk update
+    // TODO: move this
+    {
+        TIMED_BLOCK("ChunkUpdate");
+
+        for (u32 i = 0; i < World->MaxChunkCount; i++)
         {
-            constexpr f32 Radius = 20.0f;
-            constexpr f32 Width = 1.0f;
-            Renderer_ImmediateRect2D(FrameParams, CenterP - vec2{Radius, Width}, CenterP + vec2{Radius, Width}, PackColor(0xFF, 0xFF, 0xFF));
-            Renderer_ImmediateRect2D(FrameParams, CenterP - vec2{Width, Radius}, CenterP + vec2{Width, Radius}, PackColor(0xFF, 0xFF, 0xFF));
-        }
-
-        // Block break indicator
-        if (World->Player.HasTargetBlock && (World->Player.BreakTime > 0.0f))
-        {
-            constexpr f32 OutlineSize = 1.0f;
-            constexpr f32 Height = 20.0f;
-            constexpr f32 Width = 100.0f;
-            constexpr f32 OffsetY = 200.0f;
-
-            vec2 P0 = { CenterP.x - 0.5f * Width, ScreenExtent.y - OffsetY - 0.5f * Height }; // Upper-left
-            vec2 P1 = P0 + vec2{Width, Height}; // Lower-right
-
-            Renderer_ImmediateRectOutline2D(FrameParams, outline_type::Outer, OutlineSize, P0, P1, PackColor(0xFF, 0xFF, 0xFF));
-
-            // Center
-            f32 FillRatio = World->Player.BreakTime / World->Player.BlockBreakTime;
-            f32 EndX = P0.x + FillRatio * Width;
-
-            Renderer_ImmediateRect2D(FrameParams, P0, vec2{ EndX, P1.y }, PackColor(0xFF, 0x00, 0x00));
+            chunk* Chunk = World->Chunks + i;
+            if (Chunk->VertexBlock)
+            {
+                RenderChunk(Frame, Chunk->VertexBlock, (vec2)Chunk->P);
+            }
         }
     }
 }

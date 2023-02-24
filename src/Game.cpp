@@ -384,6 +384,7 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
                     Game->Renderer = PushStruct<renderer>(&Game->PrimaryArena);
                     if (Game->Renderer)
                     {
+                        // TODO(boti): WE DON'T WANT THE RENDERER TO USE THE PRIMARY ARENA FOR LOADING TEMPORARY DATA !!!!!!!!!!
                         if (Renderer_Initialize(Game->Renderer, &Game->PrimaryArena))
                         {
                             if (InitializeTextures(Game->Renderer, &Game->TransientArena))
@@ -415,9 +416,9 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
     if (!Game->World)
     {
         Game->World = PushStruct<world>(&Game->PrimaryArena);
+        *Game->World = {}; // TODO(boti): see renderer initialization. The reason we have to clear this manually is because the renderer trashes the primary arena
         Game->World->Arena = &Game->PrimaryArena;
-        Game->World->Renderer = Game->Renderer;
-        if (!Initialize(Game->World))
+        if (!InitializeWorld(Game->World))
         {
             IO->ShouldQuit = true;
             return;
@@ -442,19 +443,15 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
         IO->IsCursorEnabled = Platform.ToggleCursor();
     }
 
-    render_frame* FrameParams = Renderer_NewFrame(Game->Renderer, IO->NeedRendererResize);
+    render_frame* Frame = BeginRenderFrame(Game->Renderer, IO->NeedRendererResize);
     IO->NeedRendererResize = false;
 
     DoDebugUI(Game, IO);
     
-    Game->World->FrameIndex = Game->FrameIndex;
-    HandleInput(Game->World, IO);
-    UpdateWorld(Game, Game->World, IO, FrameParams);
-
-    World_Render(Game->World, FrameParams);
+    UpdateAndRenderWorld(Game, Game->World, IO, Frame);
 
     ImGui::Render();
     ImDrawData* DrawData = ImGui::GetDrawData();
-    Renderer_RenderImGui(FrameParams, DrawData);
-    Renderer_SubmitFrame(Game->Renderer, FrameParams);
+    RenderImGui(Frame, DrawData);
+    EndRenderFrame(Frame);
 }

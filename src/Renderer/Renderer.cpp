@@ -2147,7 +2147,7 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
     return true;
 }
 
-render_frame* Renderer_NewFrame(renderer* Renderer, bool DoResize)
+render_frame* BeginRenderFrame(renderer* Renderer, bool DoResize)
 {
     TIMED_FUNCTION();
 
@@ -2379,7 +2379,7 @@ render_frame* Renderer_NewFrame(renderer* Renderer, bool DoResize)
     return Frame;
 }
 
-void Renderer_SubmitFrame(renderer* Renderer, render_frame* Frame)
+void EndRenderFrame(render_frame* Frame)
 {
     TIMED_FUNCTION();
 
@@ -2502,7 +2502,7 @@ void Renderer_SubmitFrame(renderer* Renderer, render_frame* Frame)
             .pSignalSemaphores = &Frame->RenderFinishedSemaphore,
         },
     };
-    vkQueueSubmit(Renderer->RenderDevice.GraphicsQueue, CountOf(Submits), Submits, Frame->RenderFinishedFence);
+    vkQueueSubmit(Frame->Renderer->RenderDevice.GraphicsQueue, CountOf(Submits), Submits, Frame->RenderFinishedFence);
 
     {
         TIMED_BLOCK("Present");
@@ -2519,14 +2519,14 @@ void Renderer_SubmitFrame(renderer* Renderer, render_frame* Frame)
             .pResults = nullptr,
         };
 
-        vkQueuePresentKHR(Renderer->RenderDevice.GraphicsQueue, &PresentInfo);
+        vkQueuePresentKHR(Frame->Renderer->RenderDevice.GraphicsQueue, &PresentInfo);
     }
 }
 
-bool Renderer_UploadVertexData(render_frame* Frame, 
-                               vertex_buffer_block* Block,
-                               u64 DataSize0, const void* Data0, 
-                               u64 DataSize1, const void* Data1)
+bool UploadVertexData(render_frame* Frame, 
+                      vertex_buffer_block* Block,
+                      u64 DataSize0, const void* Data0, 
+                      u64 DataSize1, const void* Data1)
 {
     bool Result = false;
 
@@ -2585,14 +2585,30 @@ bool Renderer_UploadVertexData(render_frame* Frame,
     return(Result);
 }
 
-void Renderer_RenderChunks(render_frame* Frame, u32 Count, chunk_render_data* Chunks)
+vertex_buffer_block* AllocateAndUploadVertexData(render_frame* Frame,
+                                                 u64 DataSize0, const void* Data0,
+                                                 u64 DataSize1, const void* Data1)
+{
+    u32 VertexCount = (u32)((DataSize0 + DataSize1) / sizeof(terrain_vertex));
+    vertex_buffer_block* Block = VB_Allocate(&Frame->Renderer->VB, VertexCount);
+    if (Block)
+    {
+        if (UploadVertexData(Frame, Block, DataSize0, Data0, DataSize1, Data1) == false)
+        {
+            VB_Free(&Frame->Renderer->VB, Block);
+            Block = nullptr;
+        }
+    }
+    return(Block);
+}
+
+void RenderChunks(render_frame* Frame, u32 Count, chunk_render_data* Chunks)
 {
     TIMED_FUNCTION();
 
     frustum ViewFrustum = Frame->Camera.GetFrustum((f32)Frame->RenderExtent.width / Frame->RenderExtent.height);
 
     VkDeviceSize DrawBufferOffset = Frame->DrawCommands.DrawIndex * sizeof(VkDrawIndirectCommand);
-    u32 DrawCount = 0;
 
     VkDrawIndirectCommand* FirstCommand = Frame->DrawCommands.Commands + Frame->DrawCommands.DrawIndex;
     for (u32 i = 0; i < Count; i++)
@@ -2616,12 +2632,24 @@ void Renderer_RenderChunks(render_frame* Frame, u32 Count, chunk_render_data* Ch
                 .firstVertex = Chunk->VertexBlock->VertexOffset,
                 .firstInstance = InstanceOffset,
             };
-            DrawCount++;
         }
     }
 }
 
-bool Renderer_PushTriangleList(render_frame* Frame, 
+void RenderChunk(render_frame* Frame, vertex_buffer_block* VertexBlock, vec2 P)
+{
+    u32 Index = Frame->DrawCommands.DrawIndex++;
+    Frame->ChunkPositions.Mapping[Index] = P;
+    Frame->DrawCommands.Commands[Index] = 
+    {
+        .vertexCount = VertexBlock->VertexCount,
+        .instanceCount = 1,
+        .firstVertex = VertexBlock->VertexOffset,
+        .firstInstance = Index,
+    };
+}
+
+bool ImTriangleList(render_frame* Frame, 
                                u32 VertexCount, const vertex* VertexData, 
                                mat4 Transform, f32 DepthBias)
 {
@@ -2653,7 +2681,7 @@ bool Renderer_PushTriangleList(render_frame* Frame,
     return(Result);
 }
 
-void Renderer_ImmediateBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBias /*= 0.0f*/)
+void ImBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBias /*= 0.0f*/)
 {
     TIMED_FUNCTION();
 
@@ -2709,10 +2737,10 @@ void Renderer_ImmediateBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBi
     };
     constexpr u32 VertexCount = CountOf(VertexData);
     mat4 Transform = Frame->ProjectionTransform * Frame->ViewTransform;
-    Renderer_PushTriangleList(Frame, VertexCount, VertexData, Transform, DepthBias);
+    ImTriangleList(Frame, VertexCount, VertexData, Transform, DepthBias);
 }
 
-void Renderer_ImmediateBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box, u32 Color)
+void ImBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box, u32 Color)
 {
     TIMED_FUNCTION();
 
@@ -2739,11 +2767,11 @@ void Renderer_ImmediateBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box
     constexpr u32 BoxCount = CountOf(Boxes);
     for (u32 i = 0; i < BoxCount; i++)
     {
-        Renderer_ImmediateBox(Frame, Boxes[i], Color, -1.0f);
+        ImBox(Frame, Boxes[i], Color, -1.0f);
     }
 }
 
-void Renderer_ImmediateRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color)
+void ImRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color)
 {
     TIMED_FUNCTION();
 
@@ -2760,10 +2788,10 @@ void Renderer_ImmediateRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color)
         VertexData[2], VertexData[1], VertexData[3],
     };
     u32 VertexCount = CountOf(VertexDataExploded);
-    Renderer_PushTriangleList(Frame, VertexCount, VertexDataExploded, Frame->PixelTransform, 0.0f);
+    ImTriangleList(Frame, VertexCount, VertexDataExploded, Frame->PixelTransform, 0.0f);
 }
 
-void Renderer_ImmediateRectOutline2D(render_frame* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color)
+void ImRectOutline2D(render_frame* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color)
 {
     TIMED_FUNCTION();
 
@@ -2786,28 +2814,28 @@ void Renderer_ImmediateRectOutline2D(render_frame* Frame, outline_type Type, f32
     }
 
     // Top
-    Renderer_ImmediateRect2D(Frame,
+    ImRect2D(Frame,
         vec2{ P0.x - OutlineSize, P0.y - OutlineSize },
         vec2{ P1.x + OutlineSize, P0.y               },
         Color);
     // Left
-    Renderer_ImmediateRect2D(Frame, 
+    ImRect2D(Frame, 
         vec2{ P0.x - OutlineSize, P0.y - OutlineSize },
         vec2{ P0.x              , P1.y + OutlineSize },
         Color);
     // Right
-    Renderer_ImmediateRect2D(Frame, 
+    ImRect2D(Frame, 
         vec2{ P1.x              , P0.y - OutlineSize },
         vec2{ P1.x + OutlineSize, P1.y + OutlineSize },
         Color);
     // Bottom
-    Renderer_ImmediateRect2D(Frame, 
+    ImRect2D(Frame, 
         vec2{ P0.x - OutlineSize, P1.y               },
         vec2{ P1.x + OutlineSize, P1.y + OutlineSize },
         Color);
 }
 
-void Renderer_RenderImGui(render_frame* Frame, const ImDrawData* DrawData)
+void RenderImGui(render_frame* Frame, const ImDrawData* DrawData)
 {
     TIMED_FUNCTION();
     if (DrawData && (DrawData->TotalVtxCount > 0) && (DrawData->TotalIdxCount > 0))

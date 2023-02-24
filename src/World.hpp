@@ -102,9 +102,6 @@ struct world
     // NOTE(boti): for now the world just piggy-backs off of the game state's memory arena
     memory_arena* Arena;
 
-    renderer* Renderer;
-    u64 FrameIndex;
-
     perlin2 Perlin2;
     perlin3 Perlin3;
 
@@ -119,9 +116,6 @@ struct world
 
     chunk* Chunks;
     chunk_data* ChunkData;
-
-    u32 ChunkRenderDataCount;
-    chunk_render_data ChunkRenderData[MaxChunkCount];
 
     chunk_work_queue ChunkWorkQueue;
 
@@ -154,11 +148,10 @@ voxel_neighborhood GetVoxelNeighborhood(world* World, vec3i P);
 
 void ResetPlayer(world* World);
 
-bool Initialize(world* World);
+bool InitializeWorld(world* World);
 
 void HandleInput(world* World, game_io* IO);
-void UpdateWorld(game_state* Game, world* World, game_io* IO, render_frame* Frame);
-void World_Render(world* World, render_frame* Frame);
+void UpdateAndRenderWorld(game_state* Game, world* World, game_io* IO, render_frame* Frame);
 
 bool RayCast(world* World, vec3 P, vec3 V, f32 tMax, vec3i* OutP, direction* OutDir);
 

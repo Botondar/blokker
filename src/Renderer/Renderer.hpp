@@ -85,7 +85,7 @@ struct render_frame
         VkDeviceMemory Memory;
         VkBuffer Buffer;
 
-        u64 DrawIndex;
+        u32 DrawIndex;
         VkDrawIndirectCommand* Commands;
     } DrawCommands;
 
@@ -179,19 +179,20 @@ bool Renderer_CreateVoxelTextureArray(renderer* Renderer,
                                       const u8* Data);
 bool Renderer_CreateImGuiTexture(renderer* Renderer, u32 Width, u32 Height, const u8* Data);
 
-render_frame* Renderer_NewFrame(renderer* Renderer, bool DoResize);
-void Renderer_SubmitFrame(renderer* Renderer, render_frame* Frame);
+render_frame* BeginRenderFrame(renderer* Renderer, bool DoResize);
+void EndRenderFrame(render_frame* Frame);
 
-bool Renderer_UploadVertexData(render_frame* Frame, 
-                               vertex_buffer_block* Block,
-                               u64 DataSize0, const void* Data0,
-                               u64 DataSize1, const void* Data1);
+vertex_buffer_block* AllocateAndUploadVertexData(render_frame* Frame,
+                                                 u64 DataSize0, const void* Data0,
+                                                 u64 DataSize1, const void* Data1);
 
-bool Renderer_PushTriangleList(render_frame* Frame, 
-                               u32 VertexCount, const vertex* VertexData, 
-                               mat4 Transform, f32 DepthBias);
+bool UploadVertexData(render_frame* Frame, 
+                      vertex_buffer_block* Block,
+                      u64 DataSize0, const void* Data0,
+                      u64 DataSize1, const void* Data1);
 
-void Renderer_RenderChunks(render_frame* Frame, u32 Count, chunk_render_data* Chunks);
+void RenderChunks(render_frame* Frame, u32 Count, chunk_render_data* Chunks);
+void RenderChunk(render_frame* Frame, vertex_buffer_block* VertexBlock, vec2 P);
 
 enum class outline_type : u32
 {
@@ -199,9 +200,13 @@ enum class outline_type : u32
     Inner,
 };
 
-void Renderer_ImmediateBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBias = 0.0f);
-void Renderer_ImmediateBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box, u32 Color);
-void Renderer_ImmediateRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color);
-void Renderer_ImmediateRectOutline2D(render_frame* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color);
+bool ImTriangleList(render_frame* Frame, 
+                               u32 VertexCount, const vertex* VertexData, 
+                               mat4 Transform, f32 DepthBias);
 
-void Renderer_RenderImGui(render_frame* Frame, const ImDrawData* DrawData);
+void ImBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBias = 0.0f);
+void ImBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box, u32 Color);
+void ImRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color);
+void ImRectOutline2D(render_frame* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color);
+
+void RenderImGui(render_frame* Frame, const ImDrawData* DrawData);
