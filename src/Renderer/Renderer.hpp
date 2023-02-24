@@ -201,8 +201,8 @@ enum class outline_type : u32
 };
 
 bool ImTriangleList(render_frame* Frame, 
-                               u32 VertexCount, const vertex* VertexData, 
-                               mat4 Transform, f32 DepthBias);
+                    u32 VertexCount, const vertex* VertexData, 
+                    mat4 Transform, f32 DepthBias);
 
 void ImBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBias = 0.0f);
 void ImBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box, u32 Color);

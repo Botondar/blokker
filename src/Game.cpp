@@ -18,14 +18,122 @@
 //
 // Internal interface
 //
-static bool Game_InitImGui(game_state* Game);
-static void DoDebugUI(game_state* Game, game_io* IO);
+static bool InitializeImGui(game_state* Game);
 static bool InitializeSounds(game_state* Game);
 static bool InitializeTextures(renderer* Renderer, memory_arena* Arena);
+
+static void DoDebugUI(game_state* Game, game_io* IO);
 
 //
 // Implementation
 //
+
+platform_api Platform;
+
+extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
+{
+    TIMED_FUNCTION();
+
+    Platform = Memory->Platform;
+    ImGui::SetAllocatorFunctions(Memory->ImGuiAlloc, Memory->ImGuiFree);
+    ImGui::SetCurrentContext(Memory->ImGuiCtx);
+
+    game_state* Game = Memory->Game;
+    if (!Game)
+    {
+        u64 TransientMemorySize = MiB(512);
+        u64 PermanentMemorySize = Memory->MemorySize - TransientMemorySize;
+        memory_arena PermanentArena = InitializeArena(PermanentMemorySize, Memory->Memory);
+        memory_arena TransientArena = InitializeArena(TransientMemorySize, (u8*)Memory->Memory + PermanentMemorySize);
+        Game = Memory->Game = PushStruct<game_state>(&PermanentArena);
+
+        bool InitializationSuccessful = false;
+        if (Game)
+        {
+            Game->PrimaryArena = PermanentArena;
+            Game->TransientArena = TransientArena;
+            void* TransientMemory = PushSize(&Game->PrimaryArena, TransientMemorySize, KiB(64));
+            if (TransientMemory)
+            {
+                Game->TransientArena = InitializeArena(TransientMemorySize, TransientMemory);
+
+                if (InitializeSounds(Game))
+                {
+                    Game->Renderer = PushStruct<renderer>(&Game->PrimaryArena);
+                    if (Game->Renderer)
+                    {
+                        // TODO(boti): WE DON'T WANT THE RENDERER TO USE THE PRIMARY ARENA FOR LOADING TEMPORARY DATA !!!!!!!!!!
+                        if (Renderer_Initialize(Game->Renderer, &Game->PrimaryArena))
+                        {
+                            if (InitializeTextures(Game->Renderer, &Game->TransientArena))
+                            {
+                                if (InitializeImGui(Game))
+                                {
+                                    InitializationSuccessful = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!InitializationSuccessful)
+        {
+            IO->ShouldQuit = true;
+            return;
+        }
+
+        Game->HitSound = Game->Sounds + 0;
+    }
+
+    Game->TransientArenaMaxUsed = Max(Game->TransientArenaMaxUsed, Game->TransientArena.Used);
+    Game->TransientArenaLastUsed = Game->TransientArena.Used;
+    ResetArena(&Game->TransientArena);
+
+    if (!Game->World)
+    {
+        Game->World = PushStruct<world>(&Game->PrimaryArena);
+        *Game->World = {}; // TODO(boti): see renderer initialization. The reason we have to clear this manually is because the renderer trashes the primary arena
+        Game->World->Arena = &Game->PrimaryArena;
+        if (!InitializeWorld(Game->World))
+        {
+            IO->ShouldQuit = true;
+            return;
+        }
+    }
+
+    if (IO->IsMinimized)
+    {
+        return;
+    }
+
+    // Disable stepping if there was giant lag-spike
+    // TODO: The physics step should subdivide the frame when dt gets too large
+    if (IO->DeltaTime > 0.4f)
+    {
+        IO->DeltaTime = 0.0f;
+    }
+
+    Game->FrameIndex = IO->FrameIndex;
+    if (IO->EscapePressed)
+    {
+        IO->IsCursorEnabled = Platform.ToggleCursor();
+    }
+
+    render_frame* Frame = BeginRenderFrame(Game->Renderer, IO->NeedRendererResize);
+    IO->NeedRendererResize = false;
+
+    DoDebugUI(Game, IO);
+    
+    UpdateAndRenderWorld(Game, Game->World, IO, Frame);
+
+    ImGui::Render();
+    ImDrawData* DrawData = ImGui::GetDrawData();
+    RenderImGui(Frame, DrawData);
+    EndRenderFrame(Frame);
+}
+
 static void DoDebugUI(game_state* Game, game_io* IO)
 {
     {
@@ -94,7 +202,7 @@ static void DoDebugUI(game_state* Game, game_io* IO)
     }
 }
 
-static bool Game_InitImGui(game_state* Game)
+static bool InitializeImGui(game_state* Game)
 {
     bool Result = false;
 
@@ -349,109 +457,4 @@ static bool InitializeTextures(renderer* Renderer, memory_arena* Arena)
                                               TextureWidth, TextureHeight, TextureMipCount,
                                               TextureCount, (u8*)PixelBuffer);
     return(Result);
-}
-platform_api Platform;
-
-extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
-{
-    TIMED_FUNCTION();
-
-    Platform = Memory->Platform;
-    ImGui::SetAllocatorFunctions(Memory->ImGuiAlloc, Memory->ImGuiFree);
-    ImGui::SetCurrentContext(Memory->ImGuiCtx);
-
-    game_state* Game = Memory->Game;
-    if (!Game)
-    {
-        u64 TransientMemorySize = MiB(512);
-        u64 PermanentMemorySize = Memory->MemorySize - TransientMemorySize;
-        memory_arena PermanentArena = InitializeArena(PermanentMemorySize, Memory->Memory);
-        memory_arena TransientArena = InitializeArena(TransientMemorySize, (u8*)Memory->Memory + PermanentMemorySize);
-        Game = Memory->Game = PushStruct<game_state>(&PermanentArena);
-
-        bool InitializationSuccessful = false;
-        if (Game)
-        {
-            Game->PrimaryArena = PermanentArena;
-            Game->TransientArena = TransientArena;
-            void* TransientMemory = PushSize(&Game->PrimaryArena, TransientMemorySize, KiB(64));
-            if (TransientMemory)
-            {
-                Game->TransientArena = InitializeArena(TransientMemorySize, TransientMemory);
-
-                if (InitializeSounds(Game))
-                {
-                    Game->Renderer = PushStruct<renderer>(&Game->PrimaryArena);
-                    if (Game->Renderer)
-                    {
-                        // TODO(boti): WE DON'T WANT THE RENDERER TO USE THE PRIMARY ARENA FOR LOADING TEMPORARY DATA !!!!!!!!!!
-                        if (Renderer_Initialize(Game->Renderer, &Game->PrimaryArena))
-                        {
-                            if (InitializeTextures(Game->Renderer, &Game->TransientArena))
-                            {
-                                if (Game_InitImGui(Game))
-                                {
-                                    InitializationSuccessful = true;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (!InitializationSuccessful)
-        {
-            IO->ShouldQuit = true;
-            return;
-        }
-
-        Game->HitSound = Game->Sounds + 0;
-    }
-
-    Game->TransientArenaMaxUsed = Max(Game->TransientArenaMaxUsed, Game->TransientArena.Used);
-    Game->TransientArenaLastUsed = Game->TransientArena.Used;
-    ResetArena(&Game->TransientArena);
-
-    if (!Game->World)
-    {
-        Game->World = PushStruct<world>(&Game->PrimaryArena);
-        *Game->World = {}; // TODO(boti): see renderer initialization. The reason we have to clear this manually is because the renderer trashes the primary arena
-        Game->World->Arena = &Game->PrimaryArena;
-        if (!InitializeWorld(Game->World))
-        {
-            IO->ShouldQuit = true;
-            return;
-        }
-    }
-
-    if (IO->IsMinimized)
-    {
-        return;
-    }
-
-    // Disable stepping if there was giant lag-spike
-    // TODO: The physics step should subdivide the frame when dt gets too large
-    if (IO->DeltaTime > 0.4f)
-    {
-        IO->DeltaTime = 0.0f;
-    }
-
-    Game->FrameIndex = IO->FrameIndex;
-    if (IO->EscapePressed)
-    {
-        IO->IsCursorEnabled = Platform.ToggleCursor();
-    }
-
-    render_frame* Frame = BeginRenderFrame(Game->Renderer, IO->NeedRendererResize);
-    IO->NeedRendererResize = false;
-
-    DoDebugUI(Game, IO);
-    
-    UpdateAndRenderWorld(Game, Game->World, IO, Frame);
-
-    ImGui::Render();
-    ImDrawData* DrawData = ImGui::GetDrawData();
-    RenderImGui(Frame, DrawData);
-    EndRenderFrame(Frame);
 }
