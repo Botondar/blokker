@@ -8,7 +8,6 @@
 #include <Platform.hpp>
 #include <Shapes.hpp>
 
-#include <Chunk.hpp>
 #include <Camera.hpp>
 
 #include <Renderer/RenderDevice.hpp>
@@ -190,7 +189,6 @@ bool UploadVertexData(render_frame* Frame,
                       u64 DataSize0, const void* Data0,
                       u64 DataSize1, const void* Data1);
 
-void RenderChunks(render_frame* Frame, u32 Count, chunk_render_data* Chunks);
 void RenderChunk(render_frame* Frame, vertex_buffer_block* VertexBlock, vec2 P);
 
 enum class outline_type : u32

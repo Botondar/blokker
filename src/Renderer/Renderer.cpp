@@ -13,6 +13,756 @@
 static bool Renderer_InitializeFrameParams(renderer* Renderer);
 static bool Renderer_ResizeRenderTargets(renderer* Renderer);
 
+//
+// Render API
+//
+render_frame* BeginRenderFrame(renderer* Renderer, bool DoResize)
+{
+    TIMED_FUNCTION();
+
+    if (DoResize)
+    {
+        if (!Renderer_ResizeRenderTargets(Renderer))
+        {
+            FatalError("Failed to resize render targets");
+        }
+    }
+
+    u64 FrameIndex = Renderer->CurrentFrameIndex++;
+    u32 BufferIndex = (u32)(FrameIndex % 2);
+
+    render_frame* Frame = Renderer->FrameParams + BufferIndex;
+    Frame->FrameIndex = FrameIndex;
+    Frame->BufferIndex = BufferIndex;
+    Frame->RenderExtent = Renderer->SwapchainSize;
+    Frame->Renderer = Renderer;
+    Frame->SwapchainImageIndex = INVALID_INDEX_U32;
+    Frame->VertexStack.At = 0;
+    Frame->DrawCommands.DrawIndex = 0;
+    Frame->ChunkPositions.ChunkAt = 0;
+    Frame->PixelTransform = Mat4(2.0f / Frame->RenderExtent.width, 0.0f, 0.0f, -1.0f,
+                                 0.0f, 2.0f / Frame->RenderExtent.height, 0.0f, -1.0f,
+                                 0.0f, 0.0f, 1.0f, 0.0f,
+                                 0.0f, 0.0f, 0.0f, 1.0f);
+
+    {
+        TIMED_BLOCK("WaitForPreviousFrames");
+        vkWaitForFences(Renderer->RenderDevice.Device, 1, &Frame->RenderFinishedFence, VK_TRUE, UINT64_MAX);
+        vkResetFences(Renderer->RenderDevice.Device, 1, &Frame->RenderFinishedFence);
+    }
+
+    VkResult Result = vkAcquireNextImageKHR(
+        Renderer->RenderDevice.Device, Renderer->Swapchain,
+        0,
+        Frame->ImageAcquiredSemaphore,
+        nullptr,
+        &Frame->SwapchainImageIndex);
+    if (Result != VK_SUCCESS)
+    {
+        assert(!"Can't acquire swapchain image");
+        return nullptr;
+    }
+
+    Frame->SwapchainImage = Renderer->SwapchainImages[Frame->SwapchainImageIndex];
+    Frame->SwapchainImageView = Renderer->SwapchainImageViews[Frame->SwapchainImageIndex];
+
+    vkResetCommandPool(Renderer->RenderDevice.Device, Frame->CmdPool, 0/*VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT*/);
+
+    VkCommandBufferBeginInfo CommonBeginInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .pNext = nullptr,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        .pInheritanceInfo = nullptr,
+    };
+    vkBeginCommandBuffer(Frame->TransferCmdBuffer, &CommonBeginInfo);
+    vkBeginCommandBuffer(Frame->PrimaryCmdBuffer, &CommonBeginInfo);
+
+    VkImageMemoryBarrier BeginBarriers[] = 
+    {
+        {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .pNext = nullptr,
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = Frame->SwapchainImage,
+            .subresourceRange = 
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .pNext = nullptr,
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = Frame->DepthBuffer,
+            .subresourceRange = 
+            {
+                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        },
+    };
+    constexpr u32 BeginBarrierCount = CountOf(BeginBarriers);
+    
+    vkCmdPipelineBarrier(Frame->PrimaryCmdBuffer,
+                         VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+                         0,
+                         0, nullptr,
+                         0, nullptr,
+                         BeginBarrierCount, BeginBarriers);
+    
+    VkRenderingAttachmentInfo ColorAttachment = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = Frame->SwapchainImageView,
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue =  { .color = { 0.0f, 0.6f, 1.0f, 0.0f, }, },
+    };
+    VkRenderingAttachmentInfo DepthAttachment = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = Frame->DepthBufferView,
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue =  { .depthStencil = { 1.0f, 0 }, },
+    };
+    VkRenderingAttachmentInfo StencilAttachment = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = VK_NULL_HANDLE,
+        .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .clearValue = { .depthStencil = { 1.0f, 0 }, },
+    };
+    
+    VkRenderingInfo RenderingInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .pNext = nullptr,
+        .flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT,
+        .renderArea = { { 0, 0 }, Frame->RenderExtent },
+        .layerCount = 1,
+        .viewMask = 0,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &ColorAttachment,
+        .pDepthAttachment = &DepthAttachment,
+        .pStencilAttachment = &StencilAttachment,
+    };
+
+    vkCmdBeginRendering(Frame->PrimaryCmdBuffer, &RenderingInfo);
+
+    VkFormat ColorAttachmentFormats[] = 
+    {
+        Frame->Renderer->SurfaceFormat.format,
+    };
+
+    VkCommandBufferInheritanceRenderingInfo RenderingInheritanceInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO,
+        .pNext = nullptr,
+        .flags = RenderingInfo.flags & (~VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT),
+        .viewMask = 0,
+        .colorAttachmentCount = RenderingInfo.colorAttachmentCount,
+        .pColorAttachmentFormats = ColorAttachmentFormats,
+        .depthAttachmentFormat = Frame->Renderer->DepthFormat,
+        .stencilAttachmentFormat = Frame->Renderer->StencilFormat,
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+    };
+    VkCommandBufferInheritanceInfo InheritanceInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .pNext = &RenderingInheritanceInfo,
+        .renderPass = VK_NULL_HANDLE,
+        .subpass = 0,
+        .framebuffer = VK_NULL_HANDLE,
+        .occlusionQueryEnable = VK_FALSE,
+        .queryFlags = 0,
+        .pipelineStatistics = 0,
+    };
+    VkCommandBufferBeginInfo SecondaryBeginInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .pNext = nullptr,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT|VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pInheritanceInfo = &InheritanceInfo,
+    };
+    vkBeginCommandBuffer(Frame->SceneCmdBuffer, &SecondaryBeginInfo);
+    vkBeginCommandBuffer(Frame->ImmediateCmdBuffer, &SecondaryBeginInfo);
+    vkBeginCommandBuffer(Frame->ImGuiCmdBuffer, &SecondaryBeginInfo);
+
+    VkViewport Viewport = 
+    {
+        .x = 0.0f,
+        .y = 0.0f,
+        .width = (f32)Frame->RenderExtent.width,
+        .height = (f32)Frame->RenderExtent.height,
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f,
+    };
+    
+    VkRect2D Scissor = 
+    {
+        .offset = { 0, 0 },
+        .extent = Frame->RenderExtent,
+    };
+    
+    vkCmdSetViewport(Frame->SceneCmdBuffer, 0, 1, &Viewport);
+    vkCmdSetScissor(Frame->SceneCmdBuffer, 0, 1, &Scissor);
+    vkCmdSetViewport(Frame->ImmediateCmdBuffer, 0, 1, &Viewport);
+    vkCmdSetScissor(Frame->ImmediateCmdBuffer, 0, 1, &Scissor);
+    vkCmdSetViewport(Frame->ImGuiCmdBuffer, 0, 1, &Viewport);
+    vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
+    return Frame;
+}
+
+void EndRenderFrame(render_frame* Frame)
+{
+    TIMED_FUNCTION();
+
+    {
+        vkCmdBindPipeline(Frame->SceneCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->Pipeline);
+        vkCmdBindDescriptorSets(Frame->SceneCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->PipelineLayout,
+                                0, 1, &Frame->Renderer->DescriptorSet, 0, nullptr);
+
+        VkDeviceSize VertexBufferOffset = 0;
+        vkCmdBindVertexBuffers(Frame->SceneCmdBuffer, 0, 1, &Frame->Renderer->VB.Buffer, &VertexBufferOffset);
+        vkCmdBindVertexBuffers(Frame->SceneCmdBuffer, 1, 1, &Frame->ChunkPositions.Buffer, &VertexBufferOffset);
+    
+        mat4 VP = Frame->ProjectionTransform * Frame->ViewTransform;
+
+        vkCmdPushConstants(
+            Frame->SceneCmdBuffer,
+            Frame->Renderer->PipelineLayout,
+            VK_SHADER_STAGE_VERTEX_BIT, 0,
+            sizeof(mat4), &VP);
+        vkCmdDrawIndirect(Frame->SceneCmdBuffer, Frame->DrawCommands.Buffer, 0, (u32)Frame->DrawCommands.DrawIndex, sizeof(VkDrawIndirectCommand));
+
+        vkEndCommandBuffer(Frame->SceneCmdBuffer);
+        vkCmdExecuteCommands(Frame->PrimaryCmdBuffer, 1, &Frame->SceneCmdBuffer);
+
+        vkEndCommandBuffer(Frame->ImmediateCmdBuffer);
+        vkCmdExecuteCommands(Frame->PrimaryCmdBuffer, 1, &Frame->ImmediateCmdBuffer);
+
+        vkEndCommandBuffer(Frame->ImGuiCmdBuffer);
+        vkCmdExecuteCommands(Frame->PrimaryCmdBuffer, 1, &Frame->ImGuiCmdBuffer);
+
+        vkCmdEndRendering(Frame->PrimaryCmdBuffer);
+
+        VkImageMemoryBarrier EndBarriers[] = 
+        {
+            {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .pNext = nullptr,
+                .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                .dstAccessMask = 0,
+                .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = Frame->SwapchainImage,
+                .subresourceRange = 
+                {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .pNext = nullptr,
+                .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+                .oldLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                .newLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = Frame->DepthBuffer,
+                .subresourceRange = 
+                {
+                    .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+            },
+        };
+        constexpr u32 EndBarrierCount = CountOf(EndBarriers);
+
+        vkCmdPipelineBarrier(Frame->PrimaryCmdBuffer,
+                             VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+                             0,
+                             0, nullptr,
+                             0, nullptr,
+                             EndBarrierCount, EndBarriers);
+    }
+
+    vkEndCommandBuffer(Frame->TransferCmdBuffer);
+    vkEndCommandBuffer(Frame->PrimaryCmdBuffer);
+
+    VkPipelineStageFlags TransferWaitStage = VK_PIPELINE_STAGE_NONE;
+    VkSemaphore WaitSemaphores[] = 
+    {
+        Frame->TransferFinishedSemaphore,
+        Frame->ImageAcquiredSemaphore,
+    };
+    VkPipelineStageFlags WaitStageMask[] = 
+    {
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+    };
+    VkSubmitInfo Submits[] = 
+    {
+        {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext = nullptr,
+            .waitSemaphoreCount = 0,
+            .pWaitSemaphores = nullptr,
+            .pWaitDstStageMask = &TransferWaitStage,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &Frame->TransferCmdBuffer,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &Frame->TransferFinishedSemaphore,
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext = nullptr,
+            .waitSemaphoreCount = CountOf(WaitSemaphores),
+            .pWaitSemaphores = WaitSemaphores,
+            .pWaitDstStageMask = WaitStageMask,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &Frame->PrimaryCmdBuffer,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &Frame->RenderFinishedSemaphore,
+        },
+    };
+    vkQueueSubmit(Frame->Renderer->RenderDevice.GraphicsQueue, CountOf(Submits), Submits, Frame->RenderFinishedFence);
+
+    {
+        TIMED_BLOCK("Present");
+
+        VkPresentInfoKHR PresentInfo = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .pNext = nullptr,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &Frame->RenderFinishedSemaphore,
+            .swapchainCount = 1,
+            .pSwapchains = &Frame->Renderer->Swapchain,
+            .pImageIndices = &Frame->SwapchainImageIndex,
+            .pResults = nullptr,
+        };
+
+        vkQueuePresentKHR(Frame->Renderer->RenderDevice.GraphicsQueue, &PresentInfo);
+    }
+}
+
+bool UploadVertexData(render_frame* Frame, 
+                      vertex_buffer_block* Block,
+                      u64 DataSize0, const void* Data0, 
+                      u64 DataSize1, const void* Data1)
+{
+    bool Result = false;
+
+    staging_heap* Heap = &Frame->Renderer->StagingHeap;
+    vertex_buffer* VertexBuffer = &Frame->Renderer->VB;
+
+    u64 TotalSize = DataSize0 + DataSize1;
+    Assert(TotalSize <= Heap->HeapSize);
+    Assert(TotalSize == Block->VertexCount * sizeof(terrain_vertex));
+
+    u64 AtomSize = Frame->Renderer->RenderDevice.NonCoherentAtomSize;
+    u64 Offset = AlignTo(Heap->HeapOffset, AtomSize);
+
+    // TODO(boti): We need to ensure that we're not overwriting the previous frame's data!
+    if (Heap->HeapSize - Heap->HeapOffset < TotalSize)
+    {
+        Offset = 0;
+    }
+
+    VkMappedMemoryRange Range = 
+    {
+        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+        .pNext = nullptr,
+        .memory = Heap->Heap,
+        .offset = Offset,
+        .size = AlignTo(TotalSize, AtomSize),
+    };
+
+    void* Mapping = nullptr;
+    if (vkMapMemory(Frame->Renderer->RenderDevice.Device, Range.memory, Range.offset, Range.size, 0, &Mapping) == VK_SUCCESS)
+    {
+        memcpy(Mapping, Data0, DataSize0);
+        if (DataSize1)
+        {
+            memcpy(OffsetPtr(Mapping, DataSize0), Data1, DataSize1);
+        }
+        vkFlushMappedMemoryRanges(Frame->Renderer->RenderDevice.Device, 1, &Range);
+        vkUnmapMemory(Frame->Renderer->RenderDevice.Device, Heap->Heap);
+
+        VkBufferCopy Region = 
+        {
+            .srcOffset = Offset,
+            .dstOffset = Block->VertexOffset * sizeof(terrain_vertex),
+            .size = TotalSize,
+        };
+        vkCmdCopyBuffer(Frame->TransferCmdBuffer, Heap->Buffer, VertexBuffer->Buffer, 1, &Region);
+        Result = true;
+    }
+    else
+    {
+        UnhandledError("Failed to map staging heap memory");
+    }
+
+    Heap->HeapOffset = Range.offset + Range.size;
+
+    return(Result);
+}
+
+vertex_buffer_block* AllocateAndUploadVertexData(render_frame* Frame,
+                                                 u64 DataSize0, const void* Data0,
+                                                 u64 DataSize1, const void* Data1)
+{
+    u32 VertexCount = (u32)((DataSize0 + DataSize1) / sizeof(terrain_vertex));
+    vertex_buffer_block* Block = VB_Allocate(&Frame->Renderer->VB, VertexCount);
+    if (Block)
+    {
+        if (UploadVertexData(Frame, Block, DataSize0, Data0, DataSize1, Data1) == false)
+        {
+            VB_Free(&Frame->Renderer->VB, Block);
+            Block = nullptr;
+        }
+    }
+    return(Block);
+}
+
+void RenderChunk(render_frame* Frame, vertex_buffer_block* VertexBlock, vec2 P)
+{
+    u32 Index = Frame->DrawCommands.DrawIndex++;
+    Frame->ChunkPositions.Mapping[Index] = P;
+    Frame->DrawCommands.Commands[Index] = 
+    {
+        .vertexCount = VertexBlock->VertexCount,
+        .instanceCount = 1,
+        .firstVertex = VertexBlock->VertexOffset,
+        .firstInstance = Index,
+    };
+}
+
+bool ImTriangleList(render_frame* Frame, 
+                    u32 VertexCount, const vertex* VertexData, 
+                    mat4 Transform, f32 DepthBias)
+{
+    bool Result = false;
+
+    u64 Offset = AlignTo(Frame->VertexStack.At, alignof(vertex));
+    u32 DataSize = VertexCount * sizeof(vertex);
+    if (Offset + DataSize <= Frame->VertexStack.Size)
+    {
+        memcpy(OffsetPtr(Frame->VertexStack.Mapping, Offset), VertexData, DataSize);
+        Frame->VertexStack.At = Offset + DataSize;
+
+        vkCmdBindPipeline(Frame->ImmediateCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImPipeline);
+        vkCmdSetPrimitiveTopology(Frame->ImmediateCmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+
+        vkCmdBindVertexBuffers(Frame->ImmediateCmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &Offset);
+        vkCmdPushConstants(Frame->ImmediateCmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 
+                           0, sizeof(Transform), &Transform);
+        // TODO(boti): depth bias should probably be separately parameterized
+        vkCmdSetDepthBias(Frame->ImmediateCmdBuffer, DepthBias, 0.0f, DepthBias);
+        vkCmdDraw(Frame->ImmediateCmdBuffer, VertexCount, 1, 0, 0);
+
+        Result = true;
+    }
+    else
+    {
+        UnhandledError("Immediate renderer out of memory");
+    }
+    return(Result);
+}
+
+void ImBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBias /*= 0.0f*/)
+{
+    TIMED_FUNCTION();
+
+    const vertex VertexData[] =
+    {
+        // EAST
+        { { Box.Max.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Max.z, }, { }, Color },
+                                        
+        // WEST                         
+        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Max.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Max.z, }, { }, Color },
+                                        
+        // NORTH                        
+        { { Box.Min.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
+                                        
+        // SOUTH                        
+        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Max.z, }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Max.z, }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Max.z, }, { }, Color },
+                                        
+        // TOP                          
+        { { Box.Min.x, Box.Min.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Max.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Max.z, }, { }, Color },
+                                        
+        // BOTTOM                       
+        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
+        { { Box.Min.x, Box.Max.y, Box.Min.z, }, { }, Color },
+        { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
+    };
+    constexpr u32 VertexCount = CountOf(VertexData);
+    mat4 Transform = Frame->ProjectionTransform * Frame->ViewTransform;
+    ImTriangleList(Frame, VertexCount, VertexData, Transform, DepthBias);
+}
+
+void ImBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box, u32 Color)
+{
+    TIMED_FUNCTION();
+
+    const aabb Boxes[] = 
+    {
+        // Bottom
+        MakeAABB({ Box.Min.x, Box.Min.y, Box.Min.z }, { Box.Max.x, Box.Min.y + OutlineSize, Box.Min.z + OutlineSize }),
+        MakeAABB({ Box.Min.x, Box.Min.y, Box.Min.z }, { Box.Min.x + OutlineSize, Box.Max.y, Box.Min.z + OutlineSize }),
+        MakeAABB({ Box.Max.x, Box.Min.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Max.y, Box.Min.z + OutlineSize }),
+        MakeAABB({ Box.Min.x, Box.Max.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Max.y - OutlineSize, Box.Min.z + OutlineSize }),
+
+        // Top
+        MakeAABB({ Box.Min.x, Box.Min.y, Box.Max.z }, { Box.Max.x, Box.Min.y + OutlineSize, Box.Max.z - OutlineSize }),
+        MakeAABB({ Box.Min.x, Box.Min.y, Box.Max.z }, { Box.Min.x + OutlineSize, Box.Max.y, Box.Max.z - OutlineSize }),
+        MakeAABB({ Box.Max.x, Box.Min.y, Box.Max.z }, { Box.Max.x - OutlineSize, Box.Max.y, Box.Max.z - OutlineSize }),
+        MakeAABB({ Box.Min.x, Box.Max.y, Box.Max.z }, { Box.Max.x - OutlineSize, Box.Max.y - OutlineSize, Box.Max.z - OutlineSize }),
+
+        // Side
+        MakeAABB({ Box.Min.x, Box.Min.y, Box.Min.z }, { Box.Min.x + OutlineSize, Box.Min.y + OutlineSize, Box.Max.z }),
+        MakeAABB({ Box.Max.x, Box.Min.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Min.y + OutlineSize, Box.Max.z }),
+        MakeAABB({ Box.Min.x, Box.Max.y, Box.Min.z }, { Box.Min.x + OutlineSize, Box.Max.y - OutlineSize, Box.Max.z }),
+        MakeAABB({ Box.Max.x, Box.Max.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Max.y - OutlineSize, Box.Max.z }),
+    };
+    constexpr u32 BoxCount = CountOf(Boxes);
+    for (u32 i = 0; i < BoxCount; i++)
+    {
+        ImBox(Frame, Boxes[i], Color, -1.0f);
+    }
+}
+
+void ImRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color)
+{
+    TIMED_FUNCTION();
+
+    vertex VertexData[] = 
+    {
+        { { p1.x, p0.y, 0.0f }, {}, Color }, 
+        { { p1.x, p1.y, 0.0f }, {}, Color },
+        { { p0.x, p0.y, 0.0f }, {}, Color },
+        { { p0.x, p1.y, 0.0f }, {}, Color },
+    };
+    vertex VertexDataExploded[] = 
+    {
+        VertexData[0], VertexData[1], VertexData[2],
+        VertexData[2], VertexData[1], VertexData[3],
+    };
+    u32 VertexCount = CountOf(VertexDataExploded);
+    ImTriangleList(Frame, VertexCount, VertexDataExploded, Frame->PixelTransform, 0.0f);
+}
+
+void ImRectOutline2D(render_frame* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color)
+{
+    TIMED_FUNCTION();
+
+    vec2 P0, P1;
+    if (Type == outline_type::Outer)
+    {
+        P0 = p0;
+        P1 = p1;
+    }
+    else if (Type == outline_type::Inner)
+    {
+        P0 = p0 + vec2{ OutlineSize, OutlineSize };
+        P1 = p1 + vec2{ -OutlineSize, -OutlineSize };
+    }
+    else
+    {
+        P0 = {};
+        P1 = {};
+        assert(!"Invalid code path");
+    }
+
+    // Top
+    ImRect2D(Frame,
+             vec2{ P0.x - OutlineSize, P0.y - OutlineSize },
+             vec2{ P1.x + OutlineSize, P0.y               },
+             Color);
+    // Left
+    ImRect2D(Frame, 
+             vec2{ P0.x - OutlineSize, P0.y - OutlineSize },
+             vec2{ P0.x              , P1.y + OutlineSize },
+             Color);
+    // Right
+    ImRect2D(Frame, 
+             vec2{ P1.x              , P0.y - OutlineSize },
+             vec2{ P1.x + OutlineSize, P1.y + OutlineSize },
+             Color);
+    // Bottom
+    ImRect2D(Frame, 
+             vec2{ P0.x - OutlineSize, P1.y               },
+             vec2{ P1.x + OutlineSize, P1.y + OutlineSize },
+             Color);
+}
+
+void RenderImGui(render_frame* Frame, const ImDrawData* DrawData)
+{
+    TIMED_FUNCTION();
+    if (DrawData && (DrawData->TotalVtxCount > 0) && (DrawData->TotalIdxCount > 0))
+    {
+        u64 VertexDataOffset = AlignTo(Frame->VertexStack.At, sizeof(ImDrawVert));
+        u64 VertexDataSize = ((u64)DrawData->TotalVtxCount * sizeof(ImDrawVert));
+        u64 VertexDataEnd = VertexDataOffset + VertexDataSize;
+
+        u64 IndexDataOffset = AlignTo(VertexDataEnd, sizeof(ImDrawIdx));
+        u64 IndexDataSize = (u64)DrawData->TotalIdxCount * sizeof(ImDrawIdx);
+        u64 IndexDataEnd = IndexDataOffset + IndexDataSize;
+
+        u64 ImGuiDataSize = VertexDataSize + IndexDataSize;
+        u64 ImGuiDataEnd = IndexDataEnd;
+
+        if (ImGuiDataEnd <= Frame->VertexStack.Size)
+        {
+            Frame->VertexStack.At = ImGuiDataEnd;
+
+            vkCmdBindPipeline(Frame->ImGuiCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImGuiPipeline);
+            vkCmdBindDescriptorSets(
+                Frame->ImGuiCmdBuffer, 
+                VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                Frame->Renderer->ImGuiPipelineLayout,
+                0, 1, &Frame->Renderer->ImGuiDescriptorSet, 0, nullptr);
+
+            vkCmdPushConstants(
+                Frame->ImGuiCmdBuffer, 
+                Frame->Renderer->ImGuiPipelineLayout, 
+                VK_SHADER_STAGE_VERTEX_BIT,
+                0, sizeof(Frame->PixelTransform), &Frame->PixelTransform);
+
+            vkCmdBindVertexBuffers(Frame->ImGuiCmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &VertexDataOffset);
+            VkIndexType IndexType = (sizeof(ImDrawIdx) == 2) ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
+            vkCmdBindIndexBuffer(Frame->ImGuiCmdBuffer, Frame->VertexStack.Buffer, IndexDataOffset, IndexType);
+
+            ImDrawVert* VertexDataAt = (ImDrawVert*)((u8*)Frame->VertexStack.Mapping + VertexDataOffset);
+            ImDrawIdx* IndexDataAt = (ImDrawIdx*)((u8*)Frame->VertexStack.Mapping + IndexDataOffset);
+
+            u32 VertexOffset = 0;
+            u32 IndexOffset = 0;
+            for (int CmdListIndex = 0; CmdListIndex < DrawData->CmdListsCount; CmdListIndex++)
+            {
+                ImDrawList* CmdList = DrawData->CmdLists[CmdListIndex];
+
+                memcpy(VertexDataAt, CmdList->VtxBuffer.Data, (u64)CmdList->VtxBuffer.Size * sizeof(ImDrawVert));
+                VertexDataAt += CmdList->VtxBuffer.Size;
+
+                memcpy(IndexDataAt, CmdList->IdxBuffer.Data, (u64)CmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
+                IndexDataAt += CmdList->IdxBuffer.Size;
+
+                for (int CmdBufferIndex = 0; CmdBufferIndex < CmdList->CmdBuffer.Size; CmdBufferIndex++)
+                {
+                    ImDrawCmd* Command = &CmdList->CmdBuffer[CmdBufferIndex];
+                    assert((u64)Command->TextureId == Frame->Renderer->ImGuiTextureID);
+
+                    VkRect2D Scissor = 
+                    {
+                        .offset = { (s32)Command->ClipRect.x, (s32)Command->ClipRect.y },
+                        .extent = 
+                        { 
+                            .width = (u32)Command->ClipRect.z,
+                            .height = (u32)Command->ClipRect.w,
+                        },
+                    };
+                    vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
+                    vkCmdDrawIndexed(
+                        Frame->ImGuiCmdBuffer, Command->ElemCount, 1, 
+                        Command->IdxOffset + IndexOffset, 
+                        Command->VtxOffset + VertexOffset, 
+                        0);
+                }
+
+                VertexOffset += CmdList->VtxBuffer.Size;
+                IndexOffset += CmdList->IdxBuffer.Size;
+            }
+
+            // Reset the scissor in case someone wants to render after us
+            VkRect2D Scissor = 
+            {
+                .offset = { 0, 0 },
+                .extent = Frame->RenderExtent,
+            };
+            vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
+        }
+        else
+        {
+            Platform.DebugPrint("WARNING: not enough memory for ImGui\n");
+        }
+    }
+}
+
 static bool Renderer_ResizeRenderTargets(renderer* Renderer)
 {
     bool Result = true;
@@ -185,6 +935,9 @@ static bool Renderer_ResizeRenderTargets(renderer* Renderer)
     return(Result);
 }
 
+//
+// Initialization
+//
 bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
 {
     if (!CreateRenderDevice(&Renderer->RenderDevice))
@@ -2144,785 +2897,4 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
         }
     }
     return true;
-}
-
-render_frame* BeginRenderFrame(renderer* Renderer, bool DoResize)
-{
-    TIMED_FUNCTION();
-
-    if (DoResize)
-    {
-        if (!Renderer_ResizeRenderTargets(Renderer))
-        {
-            FatalError("Failed to resize render targets");
-        }
-    }
-
-    u64 FrameIndex = Renderer->CurrentFrameIndex++;
-    u32 BufferIndex = (u32)(FrameIndex % 2);
-
-    render_frame* Frame = Renderer->FrameParams + BufferIndex;
-    Frame->FrameIndex = FrameIndex;
-    Frame->BufferIndex = BufferIndex;
-    Frame->RenderExtent = Renderer->SwapchainSize;
-    Frame->Renderer = Renderer;
-    Frame->SwapchainImageIndex = INVALID_INDEX_U32;
-    Frame->VertexStack.At = 0;
-    Frame->DrawCommands.DrawIndex = 0;
-    Frame->ChunkPositions.ChunkAt = 0;
-    Frame->PixelTransform = Mat4(2.0f / Frame->RenderExtent.width, 0.0f, 0.0f, -1.0f,
-                                 0.0f, 2.0f / Frame->RenderExtent.height, 0.0f, -1.0f,
-                                 0.0f, 0.0f, 1.0f, 0.0f,
-                                 0.0f, 0.0f, 0.0f, 1.0f);
-
-    {
-        TIMED_BLOCK("WaitForPreviousFrames");
-        vkWaitForFences(Renderer->RenderDevice.Device, 1, &Frame->RenderFinishedFence, VK_TRUE, UINT64_MAX);
-        vkResetFences(Renderer->RenderDevice.Device, 1, &Frame->RenderFinishedFence);
-    }
-
-    VkResult Result = vkAcquireNextImageKHR(
-        Renderer->RenderDevice.Device, Renderer->Swapchain,
-        0,
-        Frame->ImageAcquiredSemaphore,
-        nullptr,
-        &Frame->SwapchainImageIndex);
-    if (Result != VK_SUCCESS)
-    {
-        assert(!"Can't acquire swapchain image");
-        return nullptr;
-    }
-
-    Frame->SwapchainImage = Renderer->SwapchainImages[Frame->SwapchainImageIndex];
-    Frame->SwapchainImageView = Renderer->SwapchainImageViews[Frame->SwapchainImageIndex];
-
-    vkResetCommandPool(Renderer->RenderDevice.Device, Frame->CmdPool, 0/*VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT*/);
-
-    VkCommandBufferBeginInfo CommonBeginInfo = 
-    {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .pNext = nullptr,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-        .pInheritanceInfo = nullptr,
-    };
-    vkBeginCommandBuffer(Frame->TransferCmdBuffer, &CommonBeginInfo);
-    vkBeginCommandBuffer(Frame->PrimaryCmdBuffer, &CommonBeginInfo);
-
-    VkImageMemoryBarrier BeginBarriers[] = 
-    {
-        {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .pNext = nullptr,
-            .srcAccessMask = 0,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = Frame->SwapchainImage,
-            .subresourceRange = 
-            {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1,
-            },
-        },
-        {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .pNext = nullptr,
-            .srcAccessMask = 0,
-            .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = Frame->DepthBuffer,
-            .subresourceRange = 
-            {
-                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1,
-            },
-        },
-    };
-    constexpr u32 BeginBarrierCount = CountOf(BeginBarriers);
-    
-    vkCmdPipelineBarrier(Frame->PrimaryCmdBuffer,
-                         VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
-                         0,
-                         0, nullptr,
-                         0, nullptr,
-                         BeginBarrierCount, BeginBarriers);
-    
-    VkRenderingAttachmentInfo ColorAttachment = 
-    {
-        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .pNext = nullptr,
-        .imageView = Frame->SwapchainImageView,
-        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        .resolveMode = VK_RESOLVE_MODE_NONE,
-        .resolveImageView = VK_NULL_HANDLE,
-        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        .clearValue =  { .color = { 0.0f, 0.6f, 1.0f, 0.0f, }, },
-    };
-    VkRenderingAttachmentInfo DepthAttachment = 
-    {
-        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .pNext = nullptr,
-        .imageView = Frame->DepthBufferView,
-        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-        .resolveMode = VK_RESOLVE_MODE_NONE,
-        .resolveImageView = VK_NULL_HANDLE,
-        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        .clearValue =  { .depthStencil = { 1.0f, 0 }, },
-    };
-    VkRenderingAttachmentInfo StencilAttachment = 
-    {
-        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .pNext = nullptr,
-        .imageView = VK_NULL_HANDLE,
-        .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .resolveMode = VK_RESOLVE_MODE_NONE,
-        .resolveImageView = VK_NULL_HANDLE,
-        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-        .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .clearValue = { .depthStencil = { 1.0f, 0 }, },
-    };
-    
-    VkRenderingInfo RenderingInfo = 
-    {
-        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-        .pNext = nullptr,
-        .flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT,
-        .renderArea = { { 0, 0 }, Frame->RenderExtent },
-        .layerCount = 1,
-        .viewMask = 0,
-        .colorAttachmentCount = 1,
-        .pColorAttachments = &ColorAttachment,
-        .pDepthAttachment = &DepthAttachment,
-        .pStencilAttachment = &StencilAttachment,
-    };
-
-    vkCmdBeginRendering(Frame->PrimaryCmdBuffer, &RenderingInfo);
-
-    VkFormat ColorAttachmentFormats[] = 
-    {
-        Frame->Renderer->SurfaceFormat.format,
-    };
-
-    VkCommandBufferInheritanceRenderingInfo RenderingInheritanceInfo = 
-    {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO,
-        .pNext = nullptr,
-        .flags = RenderingInfo.flags & (~VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT),
-        .viewMask = 0,
-        .colorAttachmentCount = RenderingInfo.colorAttachmentCount,
-        .pColorAttachmentFormats = ColorAttachmentFormats,
-        .depthAttachmentFormat = Frame->Renderer->DepthFormat,
-        .stencilAttachmentFormat = Frame->Renderer->StencilFormat,
-        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-    };
-    VkCommandBufferInheritanceInfo InheritanceInfo = 
-    {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .pNext = &RenderingInheritanceInfo,
-        .renderPass = VK_NULL_HANDLE,
-        .subpass = 0,
-        .framebuffer = VK_NULL_HANDLE,
-        .occlusionQueryEnable = VK_FALSE,
-        .queryFlags = 0,
-        .pipelineStatistics = 0,
-    };
-    VkCommandBufferBeginInfo SecondaryBeginInfo = 
-    {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .pNext = nullptr,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT|VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pInheritanceInfo = &InheritanceInfo,
-    };
-    vkBeginCommandBuffer(Frame->SceneCmdBuffer, &SecondaryBeginInfo);
-    vkBeginCommandBuffer(Frame->ImmediateCmdBuffer, &SecondaryBeginInfo);
-    vkBeginCommandBuffer(Frame->ImGuiCmdBuffer, &SecondaryBeginInfo);
-
-    VkViewport Viewport = 
-    {
-        .x = 0.0f,
-        .y = 0.0f,
-        .width = (f32)Frame->RenderExtent.width,
-        .height = (f32)Frame->RenderExtent.height,
-        .minDepth = 0.0f,
-        .maxDepth = 1.0f,
-    };
-    
-    VkRect2D Scissor = 
-    {
-        .offset = { 0, 0 },
-        .extent = Frame->RenderExtent,
-    };
-    
-    vkCmdSetViewport(Frame->SceneCmdBuffer, 0, 1, &Viewport);
-    vkCmdSetScissor(Frame->SceneCmdBuffer, 0, 1, &Scissor);
-    vkCmdSetViewport(Frame->ImmediateCmdBuffer, 0, 1, &Viewport);
-    vkCmdSetScissor(Frame->ImmediateCmdBuffer, 0, 1, &Scissor);
-    vkCmdSetViewport(Frame->ImGuiCmdBuffer, 0, 1, &Viewport);
-    vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
-    return Frame;
-}
-
-void EndRenderFrame(render_frame* Frame)
-{
-    TIMED_FUNCTION();
-
-    {
-        vkCmdBindPipeline(Frame->SceneCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->Pipeline);
-        vkCmdBindDescriptorSets(Frame->SceneCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->PipelineLayout,
-                                0, 1, &Frame->Renderer->DescriptorSet, 0, nullptr);
-
-        VkDeviceSize VertexBufferOffset = 0;
-        vkCmdBindVertexBuffers(Frame->SceneCmdBuffer, 0, 1, &Frame->Renderer->VB.Buffer, &VertexBufferOffset);
-        vkCmdBindVertexBuffers(Frame->SceneCmdBuffer, 1, 1, &Frame->ChunkPositions.Buffer, &VertexBufferOffset);
-    
-        mat4 VP = Frame->ProjectionTransform * Frame->ViewTransform;
-
-        vkCmdPushConstants(
-            Frame->SceneCmdBuffer,
-            Frame->Renderer->PipelineLayout,
-            VK_SHADER_STAGE_VERTEX_BIT, 0,
-            sizeof(mat4), &VP);
-        vkCmdDrawIndirect(Frame->SceneCmdBuffer, Frame->DrawCommands.Buffer, 0, (u32)Frame->DrawCommands.DrawIndex, sizeof(VkDrawIndirectCommand));
-
-        vkEndCommandBuffer(Frame->SceneCmdBuffer);
-        vkCmdExecuteCommands(Frame->PrimaryCmdBuffer, 1, &Frame->SceneCmdBuffer);
-
-        vkEndCommandBuffer(Frame->ImmediateCmdBuffer);
-        vkCmdExecuteCommands(Frame->PrimaryCmdBuffer, 1, &Frame->ImmediateCmdBuffer);
-
-        vkEndCommandBuffer(Frame->ImGuiCmdBuffer);
-        vkCmdExecuteCommands(Frame->PrimaryCmdBuffer, 1, &Frame->ImGuiCmdBuffer);
-
-        vkCmdEndRendering(Frame->PrimaryCmdBuffer);
-
-        VkImageMemoryBarrier EndBarriers[] = 
-        {
-            {
-                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                .pNext = nullptr,
-                .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                .dstAccessMask = 0,
-                .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .image = Frame->SwapchainImage,
-                .subresourceRange = 
-                {
-                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                    .baseMipLevel = 0,
-                    .levelCount = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1,
-                },
-            },
-            {
-                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                .pNext = nullptr,
-                .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
-                .oldLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-                .newLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .image = Frame->DepthBuffer,
-                .subresourceRange = 
-                {
-                    .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                    .baseMipLevel = 0,
-                    .levelCount = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1,
-                },
-            },
-        };
-        constexpr u32 EndBarrierCount = CountOf(EndBarriers);
-
-        vkCmdPipelineBarrier(Frame->PrimaryCmdBuffer,
-                             VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
-                             0,
-                             0, nullptr,
-                             0, nullptr,
-                             EndBarrierCount, EndBarriers);
-    }
-
-    vkEndCommandBuffer(Frame->TransferCmdBuffer);
-    vkEndCommandBuffer(Frame->PrimaryCmdBuffer);
-
-    VkPipelineStageFlags TransferWaitStage = VK_PIPELINE_STAGE_NONE;
-    VkSemaphore WaitSemaphores[] = 
-    {
-        Frame->TransferFinishedSemaphore,
-        Frame->ImageAcquiredSemaphore,
-    };
-    VkPipelineStageFlags WaitStageMask[] = 
-    {
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-    };
-    VkSubmitInfo Submits[] = 
-    {
-        {
-            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext = nullptr,
-            .waitSemaphoreCount = 0,
-            .pWaitSemaphores = nullptr,
-            .pWaitDstStageMask = &TransferWaitStage,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &Frame->TransferCmdBuffer,
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores = &Frame->TransferFinishedSemaphore,
-        },
-        {
-            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext = nullptr,
-            .waitSemaphoreCount = CountOf(WaitSemaphores),
-            .pWaitSemaphores = WaitSemaphores,
-            .pWaitDstStageMask = WaitStageMask,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &Frame->PrimaryCmdBuffer,
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores = &Frame->RenderFinishedSemaphore,
-        },
-    };
-    vkQueueSubmit(Frame->Renderer->RenderDevice.GraphicsQueue, CountOf(Submits), Submits, Frame->RenderFinishedFence);
-
-    {
-        TIMED_BLOCK("Present");
-
-        VkPresentInfoKHR PresentInfo = 
-        {
-            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-            .pNext = nullptr,
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &Frame->RenderFinishedSemaphore,
-            .swapchainCount = 1,
-            .pSwapchains = &Frame->Renderer->Swapchain,
-            .pImageIndices = &Frame->SwapchainImageIndex,
-            .pResults = nullptr,
-        };
-
-        vkQueuePresentKHR(Frame->Renderer->RenderDevice.GraphicsQueue, &PresentInfo);
-    }
-}
-
-bool UploadVertexData(render_frame* Frame, 
-                      vertex_buffer_block* Block,
-                      u64 DataSize0, const void* Data0, 
-                      u64 DataSize1, const void* Data1)
-{
-    bool Result = false;
-
-    staging_heap* Heap = &Frame->Renderer->StagingHeap;
-    vertex_buffer* VertexBuffer = &Frame->Renderer->VB;
-
-    u64 TotalSize = DataSize0 + DataSize1;
-    Assert(TotalSize <= Heap->HeapSize);
-    Assert(TotalSize == Block->VertexCount * sizeof(terrain_vertex));
-
-    u64 AtomSize = Frame->Renderer->RenderDevice.NonCoherentAtomSize;
-    u64 Offset = AlignTo(Heap->HeapOffset, AtomSize);
-
-    // TODO(boti): We need to ensure that we're not overwriting the previous frame's data!
-    if (Heap->HeapSize - Heap->HeapOffset < TotalSize)
-    {
-        Offset = 0;
-    }
-
-    VkMappedMemoryRange Range = 
-    {
-        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-        .pNext = nullptr,
-        .memory = Heap->Heap,
-        .offset = Offset,
-        .size = AlignTo(TotalSize, AtomSize),
-    };
-
-    void* Mapping = nullptr;
-    if (vkMapMemory(Frame->Renderer->RenderDevice.Device, Range.memory, Range.offset, Range.size, 0, &Mapping) == VK_SUCCESS)
-    {
-        memcpy(Mapping, Data0, DataSize0);
-        if (DataSize1)
-        {
-            memcpy(OffsetPtr(Mapping, DataSize0), Data1, DataSize1);
-        }
-        vkFlushMappedMemoryRanges(Frame->Renderer->RenderDevice.Device, 1, &Range);
-        vkUnmapMemory(Frame->Renderer->RenderDevice.Device, Heap->Heap);
-
-        VkBufferCopy Region = 
-        {
-            .srcOffset = Offset,
-            .dstOffset = Block->VertexOffset * sizeof(terrain_vertex),
-            .size = TotalSize,
-        };
-        vkCmdCopyBuffer(Frame->TransferCmdBuffer, Heap->Buffer, VertexBuffer->Buffer, 1, &Region);
-        Result = true;
-    }
-    else
-    {
-        UnhandledError("Failed to map staging heap memory");
-    }
-
-    Heap->HeapOffset = Range.offset + Range.size;
-
-    return(Result);
-}
-
-vertex_buffer_block* AllocateAndUploadVertexData(render_frame* Frame,
-                                                 u64 DataSize0, const void* Data0,
-                                                 u64 DataSize1, const void* Data1)
-{
-    u32 VertexCount = (u32)((DataSize0 + DataSize1) / sizeof(terrain_vertex));
-    vertex_buffer_block* Block = VB_Allocate(&Frame->Renderer->VB, VertexCount);
-    if (Block)
-    {
-        if (UploadVertexData(Frame, Block, DataSize0, Data0, DataSize1, Data1) == false)
-        {
-            VB_Free(&Frame->Renderer->VB, Block);
-            Block = nullptr;
-        }
-    }
-    return(Block);
-}
-
-void RenderChunks(render_frame* Frame, u32 Count, chunk_render_data* Chunks)
-{
-    TIMED_FUNCTION();
-
-    frustum ViewFrustum = Frame->Camera.GetFrustum((f32)Frame->RenderExtent.width / Frame->RenderExtent.height);
-
-    VkDeviceSize DrawBufferOffset = Frame->DrawCommands.DrawIndex * sizeof(VkDrawIndirectCommand);
-
-    VkDrawIndirectCommand* FirstCommand = Frame->DrawCommands.Commands + Frame->DrawCommands.DrawIndex;
-    for (u32 i = 0; i < Count; i++)
-    {
-        chunk_render_data* Chunk = Chunks + i;
-        
-        vec2 ChunkP = { (f32)Chunk->P.x, (f32)Chunk->P.y };
-        vec3 ChunkP3 = { ChunkP.x, ChunkP.y, 0.0f };
-
-        aabb ChunkBox = MakeAABB(ChunkP3, ChunkP3 + vec3{ CHUNK_DIM_XY, CHUNK_DIM_XY, CHUNK_DIM_Z });
-
-        if (IntersectFrustumAABB(ViewFrustum, ChunkBox))
-        {
-            u32 InstanceOffset = (u32)Frame->ChunkPositions.ChunkAt++;
-            memcpy(Frame->ChunkPositions.Mapping + InstanceOffset, &ChunkP, sizeof(ChunkP));
-
-            FirstCommand[Frame->DrawCommands.DrawIndex++] = 
-            { 
-                .vertexCount = Chunk->VertexBlock->VertexCount,
-                .instanceCount = 1,
-                .firstVertex = Chunk->VertexBlock->VertexOffset,
-                .firstInstance = InstanceOffset,
-            };
-        }
-    }
-}
-
-void RenderChunk(render_frame* Frame, vertex_buffer_block* VertexBlock, vec2 P)
-{
-    u32 Index = Frame->DrawCommands.DrawIndex++;
-    Frame->ChunkPositions.Mapping[Index] = P;
-    Frame->DrawCommands.Commands[Index] = 
-    {
-        .vertexCount = VertexBlock->VertexCount,
-        .instanceCount = 1,
-        .firstVertex = VertexBlock->VertexOffset,
-        .firstInstance = Index,
-    };
-}
-
-bool ImTriangleList(render_frame* Frame, 
-                               u32 VertexCount, const vertex* VertexData, 
-                               mat4 Transform, f32 DepthBias)
-{
-    bool Result = false;
-
-    u64 Offset = AlignTo(Frame->VertexStack.At, alignof(vertex));
-    u32 DataSize = VertexCount * sizeof(vertex);
-    if (Offset + DataSize <= Frame->VertexStack.Size)
-    {
-        memcpy(OffsetPtr(Frame->VertexStack.Mapping, Offset), VertexData, DataSize);
-        Frame->VertexStack.At = Offset + DataSize;
-
-        vkCmdBindPipeline(Frame->ImmediateCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImPipeline);
-        vkCmdSetPrimitiveTopology(Frame->ImmediateCmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
-        vkCmdBindVertexBuffers(Frame->ImmediateCmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &Offset);
-        vkCmdPushConstants(Frame->ImmediateCmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 
-                           0, sizeof(Transform), &Transform);
-        // TODO(boti): depth bias should probably be separately parameterized
-        vkCmdSetDepthBias(Frame->ImmediateCmdBuffer, DepthBias, 0.0f, DepthBias);
-        vkCmdDraw(Frame->ImmediateCmdBuffer, VertexCount, 1, 0, 0);
-
-        Result = true;
-    }
-    else
-    {
-        UnhandledError("Immediate renderer out of memory");
-    }
-    return(Result);
-}
-
-void ImBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBias /*= 0.0f*/)
-{
-    TIMED_FUNCTION();
-
-    const vertex VertexData[] =
-    {
-        // EAST
-        { { Box.Max.x, Box.Min.y, Box.Min.z, }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
-        { { Box.Max.x, Box.Min.y, Box.Min.z, }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
-        { { Box.Max.x, Box.Min.y, Box.Max.z, }, { }, Color },
-                                        
-        // WEST                         
-        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
-        { { Box.Min.x, Box.Max.y, Box.Max.z, }, { }, Color },
-        { { Box.Min.x, Box.Max.y, Box.Min.z, }, { }, Color },
-        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
-        { { Box.Min.x, Box.Min.y, Box.Max.z, }, { }, Color },
-        { { Box.Min.x, Box.Max.y, Box.Max.z, }, { }, Color },
-                                        
-        // NORTH                        
-        { { Box.Min.x, Box.Max.y, Box.Min.z, }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
-        { { Box.Min.x, Box.Max.y, Box.Min.z, }, { }, Color },
-        { { Box.Min.x, Box.Max.y, Box.Max.z, }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
-                                        
-        // SOUTH                        
-        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
-        { { Box.Max.x, Box.Min.y, Box.Min.z, }, { }, Color },
-        { { Box.Max.x, Box.Min.y, Box.Max.z, }, { }, Color },
-        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
-        { { Box.Max.x, Box.Min.y, Box.Max.z, }, { }, Color },
-        { { Box.Min.x, Box.Min.y, Box.Max.z, }, { }, Color },
-                                        
-        // TOP                          
-        { { Box.Min.x, Box.Min.y, Box.Max.z, }, { }, Color },
-        { { Box.Max.x, Box.Min.y, Box.Max.z, }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
-        { { Box.Min.x, Box.Min.y, Box.Max.z, }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Max.z, }, { }, Color },
-        { { Box.Min.x, Box.Max.y, Box.Max.z, }, { }, Color },
-                                        
-        // BOTTOM                       
-        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
-        { { Box.Max.x, Box.Min.y, Box.Min.z, }, { }, Color },
-        { { Box.Min.x, Box.Min.y, Box.Min.z, }, { }, Color },
-        { { Box.Min.x, Box.Max.y, Box.Min.z, }, { }, Color },
-        { { Box.Max.x, Box.Max.y, Box.Min.z, }, { }, Color },
-    };
-    constexpr u32 VertexCount = CountOf(VertexData);
-    mat4 Transform = Frame->ProjectionTransform * Frame->ViewTransform;
-    ImTriangleList(Frame, VertexCount, VertexData, Transform, DepthBias);
-}
-
-void ImBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box, u32 Color)
-{
-    TIMED_FUNCTION();
-
-    const aabb Boxes[] = 
-    {
-        // Bottom
-        MakeAABB({ Box.Min.x, Box.Min.y, Box.Min.z }, { Box.Max.x, Box.Min.y + OutlineSize, Box.Min.z + OutlineSize }),
-        MakeAABB({ Box.Min.x, Box.Min.y, Box.Min.z }, { Box.Min.x + OutlineSize, Box.Max.y, Box.Min.z + OutlineSize }),
-        MakeAABB({ Box.Max.x, Box.Min.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Max.y, Box.Min.z + OutlineSize }),
-        MakeAABB({ Box.Min.x, Box.Max.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Max.y - OutlineSize, Box.Min.z + OutlineSize }),
-
-        // Top
-        MakeAABB({ Box.Min.x, Box.Min.y, Box.Max.z }, { Box.Max.x, Box.Min.y + OutlineSize, Box.Max.z - OutlineSize }),
-        MakeAABB({ Box.Min.x, Box.Min.y, Box.Max.z }, { Box.Min.x + OutlineSize, Box.Max.y, Box.Max.z - OutlineSize }),
-        MakeAABB({ Box.Max.x, Box.Min.y, Box.Max.z }, { Box.Max.x - OutlineSize, Box.Max.y, Box.Max.z - OutlineSize }),
-        MakeAABB({ Box.Min.x, Box.Max.y, Box.Max.z }, { Box.Max.x - OutlineSize, Box.Max.y - OutlineSize, Box.Max.z - OutlineSize }),
-
-        // Side
-        MakeAABB({ Box.Min.x, Box.Min.y, Box.Min.z }, { Box.Min.x + OutlineSize, Box.Min.y + OutlineSize, Box.Max.z }),
-        MakeAABB({ Box.Max.x, Box.Min.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Min.y + OutlineSize, Box.Max.z }),
-        MakeAABB({ Box.Min.x, Box.Max.y, Box.Min.z }, { Box.Min.x + OutlineSize, Box.Max.y - OutlineSize, Box.Max.z }),
-        MakeAABB({ Box.Max.x, Box.Max.y, Box.Min.z }, { Box.Max.x - OutlineSize, Box.Max.y - OutlineSize, Box.Max.z }),
-    };
-    constexpr u32 BoxCount = CountOf(Boxes);
-    for (u32 i = 0; i < BoxCount; i++)
-    {
-        ImBox(Frame, Boxes[i], Color, -1.0f);
-    }
-}
-
-void ImRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color)
-{
-    TIMED_FUNCTION();
-
-    vertex VertexData[] = 
-    {
-        { { p1.x, p0.y, 0.0f }, {}, Color }, 
-        { { p1.x, p1.y, 0.0f }, {}, Color },
-        { { p0.x, p0.y, 0.0f }, {}, Color },
-        { { p0.x, p1.y, 0.0f }, {}, Color },
-    };
-    vertex VertexDataExploded[] = 
-    {
-        VertexData[0], VertexData[1], VertexData[2],
-        VertexData[2], VertexData[1], VertexData[3],
-    };
-    u32 VertexCount = CountOf(VertexDataExploded);
-    ImTriangleList(Frame, VertexCount, VertexDataExploded, Frame->PixelTransform, 0.0f);
-}
-
-void ImRectOutline2D(render_frame* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color)
-{
-    TIMED_FUNCTION();
-
-    vec2 P0, P1;
-    if (Type == outline_type::Outer)
-    {
-        P0 = p0;
-        P1 = p1;
-    }
-    else if (Type == outline_type::Inner)
-    {
-        P0 = p0 + vec2{ OutlineSize, OutlineSize };
-        P1 = p1 + vec2{ -OutlineSize, -OutlineSize };
-    }
-    else
-    {
-        P0 = {};
-        P1 = {};
-        assert(!"Invalid code path");
-    }
-
-    // Top
-    ImRect2D(Frame,
-        vec2{ P0.x - OutlineSize, P0.y - OutlineSize },
-        vec2{ P1.x + OutlineSize, P0.y               },
-        Color);
-    // Left
-    ImRect2D(Frame, 
-        vec2{ P0.x - OutlineSize, P0.y - OutlineSize },
-        vec2{ P0.x              , P1.y + OutlineSize },
-        Color);
-    // Right
-    ImRect2D(Frame, 
-        vec2{ P1.x              , P0.y - OutlineSize },
-        vec2{ P1.x + OutlineSize, P1.y + OutlineSize },
-        Color);
-    // Bottom
-    ImRect2D(Frame, 
-        vec2{ P0.x - OutlineSize, P1.y               },
-        vec2{ P1.x + OutlineSize, P1.y + OutlineSize },
-        Color);
-}
-
-void RenderImGui(render_frame* Frame, const ImDrawData* DrawData)
-{
-    TIMED_FUNCTION();
-    if (DrawData && (DrawData->TotalVtxCount > 0) && (DrawData->TotalIdxCount > 0))
-    {
-        u64 VertexDataOffset = AlignTo(Frame->VertexStack.At, sizeof(ImDrawVert));
-        u64 VertexDataSize = ((u64)DrawData->TotalVtxCount * sizeof(ImDrawVert));
-        u64 VertexDataEnd = VertexDataOffset + VertexDataSize;
-
-        u64 IndexDataOffset = AlignTo(VertexDataEnd, sizeof(ImDrawIdx));
-        u64 IndexDataSize = (u64)DrawData->TotalIdxCount * sizeof(ImDrawIdx);
-        u64 IndexDataEnd = IndexDataOffset + IndexDataSize;
-
-        u64 ImGuiDataSize = VertexDataSize + IndexDataSize;
-        u64 ImGuiDataEnd = IndexDataEnd;
-
-        if (ImGuiDataEnd <= Frame->VertexStack.Size)
-        {
-            Frame->VertexStack.At = ImGuiDataEnd;
-
-            vkCmdBindPipeline(Frame->ImGuiCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImGuiPipeline);
-            vkCmdBindDescriptorSets(
-                Frame->ImGuiCmdBuffer, 
-                VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                Frame->Renderer->ImGuiPipelineLayout,
-                0, 1, &Frame->Renderer->ImGuiDescriptorSet, 0, nullptr);
-
-            vkCmdPushConstants(
-                Frame->ImGuiCmdBuffer, 
-                Frame->Renderer->ImGuiPipelineLayout, 
-                VK_SHADER_STAGE_VERTEX_BIT,
-                0, sizeof(Frame->PixelTransform), &Frame->PixelTransform);
-
-            vkCmdBindVertexBuffers(Frame->ImGuiCmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &VertexDataOffset);
-            VkIndexType IndexType = (sizeof(ImDrawIdx) == 2) ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
-            vkCmdBindIndexBuffer(Frame->ImGuiCmdBuffer, Frame->VertexStack.Buffer, IndexDataOffset, IndexType);
-
-            ImDrawVert* VertexDataAt = (ImDrawVert*)((u8*)Frame->VertexStack.Mapping + VertexDataOffset);
-            ImDrawIdx* IndexDataAt = (ImDrawIdx*)((u8*)Frame->VertexStack.Mapping + IndexDataOffset);
-
-            u32 VertexOffset = 0;
-            u32 IndexOffset = 0;
-            for (int CmdListIndex = 0; CmdListIndex < DrawData->CmdListsCount; CmdListIndex++)
-            {
-                ImDrawList* CmdList = DrawData->CmdLists[CmdListIndex];
-
-                memcpy(VertexDataAt, CmdList->VtxBuffer.Data, (u64)CmdList->VtxBuffer.Size * sizeof(ImDrawVert));
-                VertexDataAt += CmdList->VtxBuffer.Size;
-
-                memcpy(IndexDataAt, CmdList->IdxBuffer.Data, (u64)CmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
-                IndexDataAt += CmdList->IdxBuffer.Size;
-
-                for (int CmdBufferIndex = 0; CmdBufferIndex < CmdList->CmdBuffer.Size; CmdBufferIndex++)
-                {
-                    ImDrawCmd* Command = &CmdList->CmdBuffer[CmdBufferIndex];
-                    assert((u64)Command->TextureId == Frame->Renderer->ImGuiTextureID);
-
-                    VkRect2D Scissor = 
-                    {
-                        .offset = { (s32)Command->ClipRect.x, (s32)Command->ClipRect.y },
-                        .extent = 
-                        { 
-                            .width = (u32)Command->ClipRect.z,
-                            .height = (u32)Command->ClipRect.w,
-                        },
-                    };
-                    vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
-                    vkCmdDrawIndexed(
-                        Frame->ImGuiCmdBuffer, Command->ElemCount, 1, 
-                        Command->IdxOffset + IndexOffset, 
-                        Command->VtxOffset + VertexOffset, 
-                        0);
-                }
-
-                VertexOffset += CmdList->VtxBuffer.Size;
-                IndexOffset += CmdList->IdxBuffer.Size;
-            }
-
-            // Reset the scissor in case someone wants to render after us
-            VkRect2D Scissor = 
-            {
-                .offset = { 0, 0 },
-                .extent = Frame->RenderExtent,
-            };
-            vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
-        }
-        else
-        {
-            Platform.DebugPrint("WARNING: not enough memory for ImGui\n");
-        }
-    }
 }

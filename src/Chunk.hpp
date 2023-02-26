@@ -127,12 +127,6 @@ struct chunk
     struct vertex_buffer_block* VertexBlock;
 };
 
-struct chunk_render_data
-{
-    vec2i P;
-    struct vertex_buffer_block* VertexBlock;
-};
-
 struct voxel_neighborhood
 {
     u16 VoxelTypes[27];
