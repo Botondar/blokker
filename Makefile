@@ -11,7 +11,7 @@ DATETIME = $(DATETIME: =0)
 !endif
 
 # Cpp
-LANG = -std:c++20 -arch:AVX2 -MD -EHsc
+LANG = -std:c++20 -arch:AVX2 -MD -EHsc -Zc:char8_t-
 WARNINGS = -W4 -WX -wd4201 -wd4100 -wd4189 -wd4200 -wd4505
 DEFINES = -DDEVELOPER=1 -DPLATFORM_WIN32=1 -DWIN32_LEAN_AND_MEAN=1 -DNOMINMAX=1
 FP_ENV = -fp:strict -fp:except-
