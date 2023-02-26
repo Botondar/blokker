@@ -1,7 +1,5 @@
 #include "Chunk.hpp"
 
-#include <Game.hpp>
-
 static void Generate(chunk* Chunk, world* World)
 {
     TIMED_FUNCTION();

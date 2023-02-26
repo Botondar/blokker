@@ -1,11 +1,5 @@
 #include "World.hpp"
 
-#include <Game.hpp>
-#include <Platform.hpp>
-#include <Renderer/Renderer.hpp>
-
-#include <Profiler.hpp>
-
 //
 // Internal functions
 //

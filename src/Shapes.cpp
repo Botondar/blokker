@@ -1,7 +1,5 @@
 #include "Shapes.hpp"
 
-#include <World.hpp>
-
 aabb MakeAABB(const vec3& a, const vec3& b)
 {
     aabb Result = 

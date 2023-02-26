@@ -11,8 +11,9 @@
 #include "VertexBuffer.cpp"
 
 static bool Renderer_InitializeFrameParams(renderer* Renderer);
+static bool Renderer_ResizeRenderTargets(renderer* Renderer);
 
-bool Renderer_ResizeRenderTargets(renderer* Renderer)
+static bool Renderer_ResizeRenderTargets(renderer* Renderer)
 {
     bool Result = true;
 
@@ -1789,9 +1790,7 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
                         if (vkBindBufferMemory(Renderer->RenderDevice.Device, Renderer->FrameParams[i].FrameUniformBuffer.Buffer, Memory, Offset) == VK_SUCCESS)
                         {
                             Renderer->FrameParams[i].FrameUniformBuffer.Memory = Memory;
-
                             Renderer->FrameParams[i].FrameUniformBuffer.Mapping = OffsetPtr(MappingBase, Offset);
-
                         }
                         else
                         {

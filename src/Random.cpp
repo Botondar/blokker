@@ -1,5 +1,4 @@
 #include "Random.hpp"
-#include <Common.hpp>
 
 void Perlin2_Init(perlin2* Perlin, u32 Seed)
 {

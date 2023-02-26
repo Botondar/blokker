@@ -169,7 +169,6 @@ struct renderer
     u64 CurrentFrameIndex;
 };
 
-bool Renderer_ResizeRenderTargets(renderer* Renderer);
 bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena);
 
 // NOTE(boti): Texture data must be RGBA8 format

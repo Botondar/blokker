@@ -1,11 +1,5 @@
 #include "Player.hpp"
 
-#include <Profiler.hpp>
-#include <World.hpp>
-
-// Only for game_input, should be moved
-#include <Game.hpp>
-
 //
 // Player
 //
