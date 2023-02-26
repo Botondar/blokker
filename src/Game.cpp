@@ -76,8 +76,6 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
             IO->ShouldQuit = true;
             return;
         }
-
-        Game->HitSound = Game->Sounds + 0;
     }
 
     Game->TransientArenaMaxUsed = Max(Game->TransientArenaMaxUsed, Game->TransientArena.Used);
@@ -334,6 +332,11 @@ static bool InitializeSounds(game_state* Game)
         }
 
         RestoreArena(&Game->TransientArena, Checkpoint);
+    }
+
+    if (Result)
+    {
+        Game->HitSound = Game->Sounds + 0;
     }
 
     return(Result);
