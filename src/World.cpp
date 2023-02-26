@@ -634,7 +634,7 @@ static void FlushChunkWorks(world* World, render_frame* Frame, bool WaitForPlaye
                 u64 HeadSize = HeadCount * sizeof(terrain_vertex);
                 u64 TailSize = TailCount * sizeof(terrain_vertex);
 
-                Chunk->VertexBlock = AllocateAndUploadVertexData(Frame, 
+                Chunk->VertexBlock = AllocateAndUploadVertexBlock(Frame, 
                                                                  HeadSize, Queue->VertexBuffer + FirstIndexModCount,
                                                                  TailSize, Queue->VertexBuffer);
                 if (Chunk->VertexBlock)
@@ -891,7 +891,7 @@ void UpdateAndRenderWorld(game_state* Game, world* World, game_io* IO, render_fr
     while (World->ChunkDeletionReadIndex != World->ChunkDeletionWriteIndex)
     {
         u32 Index = (World->ChunkDeletionReadIndex++) % World->MaxChunkDeletionQueueCount;
-        VB_Free(&Frame->Renderer->VB, World->ChunkDeletionQueue[Index]);
+        FreeVertexBlock(Frame, World->ChunkDeletionQueue[Index]);
     }
 
     LoadChunksAroundPlayer(World, &Game->TransientArena);

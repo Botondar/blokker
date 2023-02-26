@@ -392,7 +392,7 @@ void EndRenderFrame(render_frame* Frame)
     }
 }
 
-bool UploadVertexData(render_frame* Frame, 
+bool UploadVertexBlock(render_frame* Frame, 
                       vertex_buffer_block* Block,
                       u64 DataSize0, const void* Data0, 
                       u64 DataSize1, const void* Data1)
@@ -454,7 +454,12 @@ bool UploadVertexData(render_frame* Frame,
     return(Result);
 }
 
-vertex_buffer_block* AllocateAndUploadVertexData(render_frame* Frame,
+void FreeVertexBlock(render_frame* Frame, vertex_buffer_block* Block)
+{
+    VB_Free(&Frame->Renderer->VB, Block);
+}
+
+vertex_buffer_block* AllocateAndUploadVertexBlock(render_frame* Frame,
                                                  u64 DataSize0, const void* Data0,
                                                  u64 DataSize1, const void* Data1)
 {
@@ -462,7 +467,7 @@ vertex_buffer_block* AllocateAndUploadVertexData(render_frame* Frame,
     vertex_buffer_block* Block = VB_Allocate(&Frame->Renderer->VB, VertexCount);
     if (Block)
     {
-        if (UploadVertexData(Frame, Block, DataSize0, Data0, DataSize1, Data1) == false)
+        if (UploadVertexBlock(Frame, Block, DataSize0, Data0, DataSize1, Data1) == false)
         {
             VB_Free(&Frame->Renderer->VB, Block);
             Block = nullptr;

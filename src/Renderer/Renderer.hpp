@@ -180,14 +180,14 @@ bool Renderer_CreateImGuiTexture(renderer* Renderer, u32 Width, u32 Height, cons
 render_frame* BeginRenderFrame(renderer* Renderer, bool DoResize);
 void EndRenderFrame(render_frame* Frame);
 
-vertex_buffer_block* AllocateAndUploadVertexData(render_frame* Frame,
+vertex_buffer_block* AllocateAndUploadVertexBlock(render_frame* Frame,
                                                  u64 DataSize0, const void* Data0,
                                                  u64 DataSize1, const void* Data1);
-
-bool UploadVertexData(render_frame* Frame, 
+bool UploadVertexBlock(render_frame* Frame, 
                       vertex_buffer_block* Block,
                       u64 DataSize0, const void* Data0,
                       u64 DataSize1, const void* Data1);
+void FreeVertexBlock(render_frame* Frame, vertex_buffer_block* Block);
 
 void RenderChunk(render_frame* Frame, vertex_buffer_block* VertexBlock, vec2 P);
 
