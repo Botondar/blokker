@@ -924,12 +924,18 @@ void UpdateAndRenderWorld(game_state* Game, world* World, game_io* IO, render_fr
     {
         TIMED_BLOCK("ChunkUpdate");
 
+        frustum CameraFrustum = Frame->Camera.GetFrustum((f32)Frame->RenderExtent.width / Frame->RenderExtent.height);
         for (u32 i = 0; i < World->MaxChunkCount; i++)
         {
             chunk* Chunk = World->Chunks + i;
             if (Chunk->VertexBlock)
             {
-                RenderChunk(Frame, Chunk->VertexBlock, (vec2)Chunk->P);
+                vec3 MinP = vec3{ (f32)Chunk->P.x, (f32)Chunk->P.y, 0.0f };
+                vec3 MaxP = MinP + vec3{ CHUNK_DIM_XY, CHUNK_DIM_XY, CHUNK_DIM_Z };
+                if (IntersectFrustumAABB(CameraFrustum, MakeAABB(MinP, MaxP)))
+                {
+                    RenderChunk(Frame, Chunk->VertexBlock, (vec2)Chunk->P);
+                }
             }
         }
     }
