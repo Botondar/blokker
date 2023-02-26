@@ -38,21 +38,6 @@ struct render_device
     u32 TransferFamilyIndex;
     VkQueue GraphicsQueue;
     VkQueue TransferQueue;
-#if 0
-    // Surface
-    VkSurfaceFormatKHR SurfaceFormat;
-    VkSurfaceKHR Surface;
-    VkSampleCountFlagBits Multisampling;
-
-    // Swapchain
-    static constexpr u32 MaxSwapchainImageCount = 16;
-
-    u32 SwapchainImageCount;
-    VkSwapchainKHR Swapchain;
-    VkExtent2D SwapchainSize;
-    VkImage SwapchainImages[MaxSwapchainImageCount];
-    VkImageView SwapchainImageViews[MaxSwapchainImageCount];
-#endif
 };
 
 bool CreateRenderDevice(render_device* RenderDevice);
