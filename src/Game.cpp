@@ -52,26 +52,19 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
         {
             Game->PrimaryArena = PermanentArena;
             Game->TransientArena = TransientArena;
-            void* TransientMemory = PushSize(&Game->PrimaryArena, TransientMemorySize, KiB(64));
-            if (TransientMemory)
+            InitializeSounds(Game);
+            
+            Game->Renderer = PushStruct<renderer>(&Game->PrimaryArena);
+            if (Game->Renderer)
             {
-                Game->TransientArena = InitializeArena(TransientMemorySize, TransientMemory);
-
-                if (InitializeSounds(Game))
+                // TODO(boti): WE DON'T WANT THE RENDERER TO USE THE PRIMARY ARENA FOR LOADING TEMPORARY DATA !!!!!!!!!!
+                if (Renderer_Initialize(Game->Renderer, &Game->PrimaryArena))
                 {
-                    Game->Renderer = PushStruct<renderer>(&Game->PrimaryArena);
-                    if (Game->Renderer)
+                    if (InitializeTextures(Game->Renderer, &Game->TransientArena))
                     {
-                        // TODO(boti): WE DON'T WANT THE RENDERER TO USE THE PRIMARY ARENA FOR LOADING TEMPORARY DATA !!!!!!!!!!
-                        if (Renderer_Initialize(Game->Renderer, &Game->PrimaryArena))
+                        if (InitializeImGui(Game))
                         {
-                            if (InitializeTextures(Game->Renderer, &Game->TransientArena))
-                            {
-                                if (InitializeImGui(Game))
-                                {
-                                    InitializationSuccessful = true;
-                                }
-                            }
+                            InitializationSuccessful = true;
                         }
                     }
                 }
