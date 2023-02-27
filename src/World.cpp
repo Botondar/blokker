@@ -45,7 +45,7 @@ static void FreeChunkMesh(world* World, chunk* Chunk)
         u32 DeletionIndex = World->ChunkDeletionWriteIndex++;
         World->ChunkDeletionQueue[DeletionIndex % World->MaxChunkDeletionQueueCount] = Chunk->VertexBlock;
         Chunk->VertexBlock = nullptr;
-        Chunk->Flags &= ~CHUNK_STATE_MESHED_BIT;
+        Chunk->IsMeshDirty = false;
     }
 }
 
@@ -89,7 +89,7 @@ void ResetPlayer(world* World)
     
     vec3i RelP;
     chunk* Chunk = GetChunkFromP(World, PlayerP, &RelP);
-    if (Chunk && (Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
+    if (Chunk && Chunk->GenerationState != 0)
     {
         for (s32 z = CHUNK_DIM_Z - 1; z >= 0; z--)
         {
@@ -175,7 +175,7 @@ u16 GetVoxelTypeAt(world* World, vec3i P)
         vec3i RelP = {};
         chunk* Chunk = GetChunkFromP(World, P, &RelP);
 
-        if (Chunk && (Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
+        if (Chunk && Chunk->GenerationState != 0)
         {
             assert(Chunk->Data);
             Result = Chunk->Data->Voxels[RelP.z][RelP.y][RelP.x];
@@ -195,44 +195,44 @@ bool SetVoxelTypeAt(world* World, vec3i P, u16 Type)
     vec3i RelP = {};
     chunk* Chunk = GetChunkFromP(World, P, &RelP);
 
-    if (Chunk && (Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
+    if (Chunk && Chunk->GenerationState != 0)
     {
         assert(Chunk->Data);
         if ((0 <= RelP.z) && (RelP.z < CHUNK_DIM_Z))
         {
             Chunk->Data->Voxels[RelP.z][RelP.y][RelP.x] = Type;
-            Chunk->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
+            Chunk->IsMeshDirty = true;
 
             if (RelP.x == 0)
             {
                 chunk* Neighbor = GetChunkFromP(World, Chunk->P + CardinalDirections[West] * CHUNK_DIM_XY);
-                if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
+                if (Neighbor && Neighbor->VertexBlock)
                 {
-                    Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
+                    Neighbor->IsMeshDirty = true;
                 }
             }
             else if (RelP.x == CHUNK_DIM_XY - 1)
             {
                 chunk* Neighbor = GetChunkFromP(World, Chunk->P + CardinalDirections[East] * CHUNK_DIM_XY);
-                if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
+                if (Neighbor && Neighbor->VertexBlock)
                 {
-                    Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
+                    Neighbor->IsMeshDirty = true;
                 }
             }
             if (RelP.y == 0)
             {
                 chunk* Neighbor = GetChunkFromP(World, Chunk->P + CardinalDirections[South] * CHUNK_DIM_XY);
-                if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
+                if (Neighbor && Neighbor->VertexBlock)
                 {
-                    Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
+                    Neighbor->IsMeshDirty = true;
                 }
             }
             else if (RelP.y == CHUNK_DIM_XY - 1)
             {
                 chunk* Neighbor = GetChunkFromP(World, Chunk->P + CardinalDirections[North] * CHUNK_DIM_XY);
-                if (Neighbor && (Neighbor->Flags & CHUNK_STATE_MESHED_BIT))
+                if (Neighbor && Neighbor->VertexBlock)
                 {
-                    Neighbor->Flags |= CHUNK_STATE_MESH_DIRTY_BIT;
+                    Neighbor->IsMeshDirty = true;
                 }
             }
 
@@ -272,7 +272,8 @@ static chunk* ReserveChunk(world* World, vec2i P)
     {
         FreeChunkMesh(World, Result);
         Result->P = P;
-        Result->Flags = 0;
+        Result->GenerationState = 0;
+        Result->IsMeshDirty = false;
     }
 
     return Result;
@@ -472,10 +473,7 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
         }
     }
     
-    if (!(PlayerChunk->Flags & CHUNK_STATE_GENERATED_BIT) ||
-        !(PlayerChunk->Flags & CHUNK_STATE_MESHED_BIT) ||
-        !(PlayerChunk->Flags & CHUNK_STATE_UPLOADED_BIT) ||
-        (PlayerChunk->Flags & CHUNK_STATE_MESH_DIRTY_BIT))
+    if (PlayerChunk->GenerationState == 0 || !PlayerChunk->VertexBlock || PlayerChunk->IsMeshDirty)
     {
         Stack[StackAt++] = PlayerChunk;
     }
@@ -502,18 +500,15 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
                     Chunk = ReserveChunk(World, CurrentP);
                 }
 
-                if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT) ||
-                    !(Chunk->Flags & CHUNK_STATE_MESHED_BIT) ||
-                    !(Chunk->Flags & CHUNK_STATE_UPLOADED_BIT) ||
-                    (Chunk->Flags & CHUNK_STATE_MESH_DIRTY_BIT))
+                if (Chunk->GenerationState == 0 || !Chunk->VertexBlock || Chunk->IsMeshDirty)
                 {
                     Stack[StackAt++] = Chunk;
 
-                    if (!(Chunk->Flags & CHUNK_STATE_GENERATED_BIT))
+                    if (Chunk->GenerationState == 0)
                     {
                         ClosestNotGeneratedDistance = Min(Ring, ClosestNotGeneratedDistance);
                     }
-                    if (!(Chunk->Flags & CHUNK_STATE_MESHED_BIT))
+                    if (!Chunk->VertexBlock)
                     {
                         ClosestNotMeshedDistance = Min(Ring, ClosestNotMeshedDistance);
                     }
@@ -529,8 +524,7 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
 
         bool ShouldGenerate = Distance <= ClosestNotGeneratedDistance/* || Distance < ImmediateGenerationDistance*/;
 
-        if (ShouldGenerate && !Chunk->InGenerationQueue && 
-            ((Chunk->Flags & CHUNK_STATE_GENERATED_BIT) == 0))
+        if (ShouldGenerate && !Chunk->InGenerationQueue && Chunk->GenerationState == 0)
         {
             Chunk->InGenerationQueue = true;
             Platform.AddWork(Platform.LowPriorityQueue,
@@ -557,10 +551,9 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
             Distance <= MeshDistance;
         
         if (ShouldMesh && !Chunk->InMeshQueue &&
-            (((Chunk->Flags & CHUNK_STATE_MESHED_BIT) == 0) ||
-            ((Chunk->Flags & CHUNK_STATE_MESH_DIRTY_BIT) != 0)))
+            (!Chunk->VertexBlock || Chunk->IsMeshDirty))
         {
-            platform_work_queue* Queue = ((Chunk->Flags & CHUNK_STATE_MESH_DIRTY_BIT) != 0) ?
+            platform_work_queue* Queue = Chunk->IsMeshDirty ?
                 Platform.HighPriorityQueue : Platform.LowPriorityQueue;
 
             Chunk->InMeshQueue = true;
@@ -610,7 +603,7 @@ static void FlushChunkWorks(world* World, render_frame* Frame, bool WaitForPlaye
             chunk* Chunk = Work->Chunk;
             if (Work->Type == ChunkWork_Generate)
             {
-                Chunk->Flags |= CHUNK_STATE_GENERATED_BIT;
+                Chunk->GenerationState = 1;
                 Chunk->InGenerationQueue = false;
                 if (Chunk == PlayerChunk)
                 {
@@ -639,15 +632,7 @@ static void FlushChunkWorks(world* World, render_frame* Frame, bool WaitForPlaye
                 Chunk->VertexBlock = AllocateAndUploadVertexBlock(Frame, 
                                                                  HeadSize, Queue->VertexBuffer + FirstIndexModCount,
                                                                  TailSize, Queue->VertexBuffer);
-                if (Chunk->VertexBlock)
-                {
-                    Chunk->Flags |= CHUNK_STATE_UPLOADED_BIT | CHUNK_STATE_MESHED_BIT;
-                    Chunk->Flags &= ~CHUNK_STATE_MESH_DIRTY_BIT;
-                }
-                else
-                {
-                    Chunk->Flags &= ~(CHUNK_STATE_UPLOADED_BIT|CHUNK_STATE_MESHED_BIT|CHUNK_STATE_MESH_DIRTY_BIT);
-                }
+                Chunk->IsMeshDirty = false;
                 
                 if (Queue->VertexReadIndex == Work->Mesh.FirstIndex)
                 {
@@ -906,7 +891,7 @@ void UpdateAndRenderWorld(game_state* Game, world* World, game_io* IO, render_fr
 
     bool WaitForPlayerChunk = false;
     chunk* PlayerChunk = FindPlayerChunk(World);
-    if ((PlayerChunk->Flags & CHUNK_STATE_GENERATED_BIT) == 0)
+    if (PlayerChunk->GenerationState == 0)
     {
         WaitForPlayerChunk = true;
         assert(PlayerChunk->InGenerationQueue);

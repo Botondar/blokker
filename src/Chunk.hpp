@@ -101,15 +101,6 @@ static const voxel_desc VoxelDescs[] =
 };
 static constexpr u32 VoxelDescCount = CountOf(VoxelDescs);
 
-enum chunk_state_flags : u32
-{
-    CHUNK_STATE_NONE          = 0,
-    CHUNK_STATE_GENERATED_BIT = (1 << 0),
-    CHUNK_STATE_MESHED_BIT    = (1 << 1),
-    CHUNK_STATE_UPLOADED_BIT  = (1 << 2),
-    CHUNK_STATE_MESH_DIRTY_BIT = (1 << 3),
-};
-
 struct chunk_data
 {
     u16 Voxels[CHUNK_DIM_Z][CHUNK_DIM_XY][CHUNK_DIM_XY];
@@ -118,7 +109,8 @@ struct chunk_data
 struct chunk 
 {
     vec2i P;
-    u32 Flags;
+    u32 GenerationState;
+    b32 IsMeshDirty;
     b32 InGenerationQueue;
     b32 InMeshQueue;
 
