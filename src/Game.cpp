@@ -100,7 +100,6 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
     }
 
     // Disable stepping if there was giant lag-spike
-    // TODO: The physics step should subdivide the frame when dt gets too large
     if (IO->DeltaTime > 0.4f)
     {
         IO->DeltaTime = 0.0f;
@@ -115,7 +114,7 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
     render_frame* Frame = BeginRenderFrame(Game->Renderer, IO->NeedRendererResize);
     IO->NeedRendererResize = false;
 
-    DoDebugUI(Game, IO);
+    DoDebugUI(Game, IO, Frame);
     
     UpdateAndRenderWorld(Game, Game->World, IO, Frame);
 
@@ -125,11 +124,11 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
     EndRenderFrame(Frame);
 }
 
-static void DoDebugUI(game_state* Game, game_io* IO)
+static void DoDebugUI(game_state* Game, game_io* IO, render_frame* Frame)
 {
     {
         ImGuiIO& ImIO = ImGui::GetIO();
-        ImIO.DisplaySize = { (f32)Game->Renderer->SwapchainSize.width, (f32)Game->Renderer->SwapchainSize.height };
+        ImIO.DisplaySize = { (f32)Frame->RenderExtent.width, (f32)Frame->RenderExtent.height };
         ImIO.DeltaTime = (IO->DeltaTime == 0.0f) ? 1000.0f : IO->DeltaTime; // NOTE(boti): ImGui doesn't want 0 dt
 
         if (IO->IsCursorEnabled)
