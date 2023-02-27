@@ -27,7 +27,6 @@ f32 SampleNoise01(const perlin2* Perlin, vec2 P);
 struct perlin3
 {
     static constexpr u32 TableCount = 256;
-    u32 Seed;
     u32 Permutation[TableCount];
 };
 

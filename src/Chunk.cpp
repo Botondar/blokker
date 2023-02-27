@@ -7,6 +7,7 @@ static void Generate(chunk* Chunk, world* World)
     assert(Chunk);
     assert(Chunk->Data);
 
+    world_generator* Gen = &World->Generator;
     vec2 ChunkP = { (f32)Chunk->P.x, (f32)Chunk->P.y };
     for (u32 y = 0; y < CHUNK_DIM_XY; y++)
     {
@@ -18,7 +19,7 @@ static void Generate(chunk* Chunk, world* World)
 
             vec2 TerrainP = TerrainBaseFrequency * (vec2{ (f32)x, (f32)y } + ChunkP);
 
-            f32 TerrainSample = SampleOctave(&World->Perlin2, TerrainP, 8, 0.5f, 2.0f);
+            f32 TerrainSample = SampleOctave(&Gen->Perlin2, TerrainP, 8, 0.5f, 2.0f);
             TerrainSample = 0.5f * (TerrainSample + 1.0f);
             TerrainSample = Fade3(TerrainSample*TerrainSample);
             s32 Height = (s32)Round(TerrainBaseScale * TerrainSample) + TerrainBaseHeight;
@@ -43,7 +44,7 @@ static void Generate(chunk* Chunk, world* World)
 
                 // Generate ores
                 constexpr f32 OreScale = 1.0f / 8.0f;
-                f32 OreSample = OctaveNoise(&World->Perlin3, OreScale*P, 3, 0.5f, 2.0f);
+                f32 OreSample = OctaveNoise(&Gen->Perlin3, OreScale*P, 3, 0.5f, 2.0f);
                 // Only replace stone with ores
                 if (Chunk->Data->Voxels[z][y][x] == VOXEL_STONE)
                 {
@@ -59,7 +60,7 @@ static void Generate(chunk* Chunk, world* World)
 
                 // Generate caves
                 constexpr f32 CaveScale = 1.0f / 16.0f;
-                f32 CaveSample = OctaveNoise(&World->Perlin3, CaveScale*P, 1, 0.5f, 2.0f);
+                f32 CaveSample = OctaveNoise(&Gen->Perlin3, CaveScale*P, 1, 0.5f, 2.0f);
 #if 0
                 CaveSample = Abs(CaveSample);
                 if (CaveSample < 0.01f)

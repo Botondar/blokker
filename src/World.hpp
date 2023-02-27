@@ -97,22 +97,23 @@ struct map_view
     mat2 GetAxesXY() const;
 };
 
+struct world_generator
+{
+    u32 Seed;
+    perlin2 Perlin2;
+    perlin3 Perlin3;
+};
+
 struct world
 {
     // NOTE(boti): for now the world just piggy-backs off of the game state's memory arena
     memory_arena* Arena;
 
-    perlin2 Perlin2;
-    perlin3 Perlin3;
+    world_generator Generator;
 
-#if BLOKKER_TINY_RENDER_DISTANCE
-    static constexpr u32 MaxChunkCount = 81;
-    static constexpr u32 MaxChunkCountSqrt = 9;
-#else
     static constexpr u32 MaxChunkCount = 16384;
     static constexpr u32 MaxChunkCountSqrt = 128;
     static_assert(MaxChunkCountSqrt*MaxChunkCountSqrt == MaxChunkCount);
-#endif
 
     chunk* Chunks;
     chunk_data* ChunkData;

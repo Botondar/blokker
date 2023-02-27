@@ -3,6 +3,8 @@
 //
 // Internal functions
 //
+static void InitializeWorldGenerator(world_generator* Generator, u32 Seed);
+
 static u32 HashChunkP(const world* World, vec2i P, vec2i* Coords = nullptr);
 static void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena);
 static chunk* ReserveChunk(world* World, vec2i P);
@@ -679,6 +681,13 @@ static void FlushChunkWorks(world* World, render_frame* Frame, bool WaitForPlaye
     } while (WaitForPlayerChunk);
 }
 
+static void InitializeWorldGenerator(world_generator* Generator, u32 Seed)
+{
+    Generator->Seed = Seed;
+    Perlin2_Init(&Generator->Perlin2, Seed);
+    Perlin3_Init(&Generator->Perlin3, Seed);
+}
+
 bool InitializeWorld(world* World)
 {
     // Allocate chunk memory
@@ -712,8 +721,7 @@ bool InitializeWorld(world* World)
 
     World->Debug.DebugCamera.FieldOfView = ToRadians(90.0f);
 
-    Perlin2_Init(&World->Perlin2, 1);
-    Perlin3_Init(&World->Perlin3, 1);
+    InitializeWorldGenerator(&World->Generator, 1337);
 
     return true;
 }
