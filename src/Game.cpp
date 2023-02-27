@@ -22,7 +22,7 @@ static bool InitializeImGui(game_state* Game);
 static bool InitializeSounds(game_state* Game);
 static bool InitializeTextures(renderer* Renderer, memory_arena* Arena);
 
-static void DoDebugUI(game_state* Game, game_io* IO);
+static void DoDebugUI(game_state* Game, game_io* IO, render_frame* Frame);
 
 //
 // Implementation
