@@ -106,10 +106,19 @@ struct chunk_data
     u16 Voxels[CHUNK_DIM_Z][CHUNK_DIM_XY][CHUNK_DIM_XY];
 };
 
+enum chunk_gen_level : u32
+{
+    ChunkGen_Level0 = 0,
+    ChunkGen_Level1,
+
+    ChunkGen_LevelCount,
+    ChunkGen_LevelFinal = ChunkGen_LevelCount - 1,
+};
+
 struct chunk 
 {
     vec2i P;
-    u32 GenerationState;
+    u32 GenerationLevel;
     b32 IsMeshDirty;
     b32 InGenerationQueue;
     b32 InMeshQueue;

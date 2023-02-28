@@ -209,11 +209,14 @@ void UpdatePlayer(game_state* Game, world* World, game_io* IO, player* Player, r
                     case 5: DeltaP = { 0, 0, -1 }; break;
                     default: assert(!"Invalid code path");
                 }
-
                 vec3i PlacementP = Player->TargetBlock + DeltaP;
                 u16 VoxelType = GetVoxelTypeAt(World, PlacementP);
                 if (VoxelType == VOXEL_AIR)
                 {
+#if 1
+                    PlantStructure(World, World->Generator.TreeStructure, PlacementP);
+                    Player->TimeSinceLastBlockPlacement = 0.0f;
+#else
                     aabb PlayerBox = GetAABB(Player);
                     vec3i BoxP = PlacementP;
                     aabb BlockBox = MakeAABB((vec3)BoxP, (vec3)(BoxP + vec3i{1, 1, 1}));
@@ -225,6 +228,7 @@ void UpdatePlayer(game_state* Game, world* World, game_io* IO, player* Player, r
                         SetVoxelTypeAt(World, PlacementP, VOXEL_LEAVES);
                         Player->TimeSinceLastBlockPlacement = 0.0f;
                     }
+#endif
                 }
             }
         }

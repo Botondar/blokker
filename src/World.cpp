@@ -3,7 +3,7 @@
 //
 // Internal functions
 //
-static void InitializeWorldGenerator(world_generator* Generator, u32 Seed);
+static void InitializeWorldGenerator(world_generator* Generator, u32 Seed, memory_arena* Arena);
 
 static u32 HashChunkP(const world* World, vec2i P, vec2i* Coords = nullptr);
 static void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena);
@@ -14,9 +14,50 @@ static void FreeChunkMesh(world* World, chunk* Chunk);
 static void FlushChunkWorks(world* World, render_frame* Frame, bool WaitForPlayerChunk, chunk* PlayerChunk);
 static chunk_work* GetNextChunkWorkToWrite(chunk_work_queue* Queue);
 
+static bool PlantStructure(world* World, world_structure* Structure, vec3i P);
+
 //
 // Implementations
 //
+
+static bool PlantStructure(world* World, world_structure* Structure, vec3i P)
+{
+    bool Result = false;
+    if (Structure && Structure->Voxels)
+    {
+        Assert((Structure->Extent.x % 2) == 1 && (Structure->Extent.y % 2) == 1); // TODO(boti)
+        vec3i MinP = 
+        {
+            P.x - (Structure->Extent.x / 2),
+            P.y - (Structure->Extent.y / 2),
+            P.z,
+        };
+        vec3i MaxP = 
+        {
+            P.x + (Structure->Extent.x / 2),
+            P.y + (Structure->Extent.y / 2),
+            P.z + Structure->Extent.z,
+        };
+
+        Result = true;
+        for (s32 z = 0; z < Structure->Extent.z; z++)
+        {
+            for (s32 y = 0; y < Structure->Extent.y; y++)
+            {
+                for (s32 x = 0; x < Structure->Extent.x; x++)
+                {
+                    s32 Index = x + Structure->Extent.x * (y + z * Structure->Extent.y);
+                    u16 VoxelType = Structure->Voxels[Index];
+                    if (VoxelType != VOXEL_INVALID)
+                    {
+                        Result &= SetVoxelTypeAt(World, MinP + vec3i{ x, y, z }, VoxelType);
+                    }
+                }
+            }
+        }
+    }
+    return(Result);
+}
 
 static chunk_work* GetNextChunkWorkToWrite(chunk_work_queue* Queue)
 {
@@ -89,7 +130,7 @@ void ResetPlayer(world* World)
     
     vec3i RelP;
     chunk* Chunk = GetChunkFromP(World, PlayerP, &RelP);
-    if (Chunk && Chunk->GenerationState != 0)
+    if (Chunk && Chunk->GenerationLevel == ChunkGen_LevelFinal)
     {
         for (s32 z = CHUNK_DIM_Z - 1; z >= 0; z--)
         {
@@ -175,7 +216,7 @@ u16 GetVoxelTypeAt(world* World, vec3i P)
         vec3i RelP = {};
         chunk* Chunk = GetChunkFromP(World, P, &RelP);
 
-        if (Chunk && Chunk->GenerationState != 0)
+        if (Chunk && Chunk->GenerationLevel == ChunkGen_LevelFinal)
         {
             assert(Chunk->Data);
             Result = Chunk->Data->Voxels[RelP.z][RelP.y][RelP.x];
@@ -195,7 +236,7 @@ bool SetVoxelTypeAt(world* World, vec3i P, u16 Type)
     vec3i RelP = {};
     chunk* Chunk = GetChunkFromP(World, P, &RelP);
 
-    if (Chunk && Chunk->GenerationState != 0)
+    if (Chunk && Chunk->GenerationLevel == ChunkGen_LevelFinal)
     {
         assert(Chunk->Data);
         if ((0 <= RelP.z) && (RelP.z < CHUNK_DIM_Z))
@@ -272,7 +313,7 @@ static chunk* ReserveChunk(world* World, vec2i P)
     {
         FreeChunkMesh(World, Result);
         Result->P = P;
-        Result->GenerationState = 0;
+        Result->GenerationLevel = ChunkGen_Level0;
         Result->IsMeshDirty = false;
     }
 
@@ -473,7 +514,7 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
         }
     }
     
-    if (PlayerChunk->GenerationState == 0 || !PlayerChunk->VertexBlock || PlayerChunk->IsMeshDirty)
+    if (PlayerChunk->GenerationLevel != ChunkGen_LevelFinal || !PlayerChunk->VertexBlock || PlayerChunk->IsMeshDirty)
     {
         Stack[StackAt++] = PlayerChunk;
     }
@@ -500,11 +541,11 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
                     Chunk = ReserveChunk(World, CurrentP);
                 }
 
-                if (Chunk->GenerationState == 0 || !Chunk->VertexBlock || Chunk->IsMeshDirty)
+                if (Chunk->GenerationLevel != ChunkGen_LevelFinal || !Chunk->VertexBlock || Chunk->IsMeshDirty)
                 {
                     Stack[StackAt++] = Chunk;
 
-                    if (Chunk->GenerationState == 0)
+                    if (Chunk->GenerationLevel != ChunkGen_LevelFinal)
                     {
                         ClosestNotGeneratedDistance = Min(Ring, ClosestNotGeneratedDistance);
                     }
@@ -524,7 +565,7 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
 
         bool ShouldGenerate = Distance <= ClosestNotGeneratedDistance/* || Distance < ImmediateGenerationDistance*/;
 
-        if (ShouldGenerate && !Chunk->InGenerationQueue && Chunk->GenerationState == 0)
+        if (ShouldGenerate && !Chunk->InGenerationQueue && Chunk->GenerationLevel != ChunkGen_LevelFinal)
         {
             Chunk->InGenerationQueue = true;
             Platform.AddWork(Platform.LowPriorityQueue,
@@ -603,7 +644,7 @@ static void FlushChunkWorks(world* World, render_frame* Frame, bool WaitForPlaye
             chunk* Chunk = Work->Chunk;
             if (Work->Type == ChunkWork_Generate)
             {
-                Chunk->GenerationState = 1;
+                Chunk->GenerationLevel++;
                 Chunk->InGenerationQueue = false;
                 if (Chunk == PlayerChunk)
                 {
@@ -666,11 +707,79 @@ static void FlushChunkWorks(world* World, render_frame* Frame, bool WaitForPlaye
     } while (WaitForPlayerChunk);
 }
 
-static void InitializeWorldGenerator(world_generator* Generator, u32 Seed)
+static void InitializeWorldGenerator(world_generator* Generator, u32 Seed, memory_arena* Arena)
 {
     Generator->Seed = Seed;
     Perlin2_Init(&Generator->Perlin2, Seed);
     Perlin3_Init(&Generator->Perlin3, Seed);
+
+    Generator->StructureCount = 1;
+    Generator->Structures = PushArray<world_structure>(Arena, Generator->StructureCount);
+    if (Generator->Structures)
+    {
+        world_structure* Tree = Generator->TreeStructure = Generator->Structures + 0;
+        
+        constexpr u16 O = VOXEL_INVALID;
+        constexpr u16 T = VOXEL_TREE_TRUNK;
+        constexpr u16 L = VOXEL_LEAVES;
+
+        constexpr s32 DIM_Z = 6;
+        constexpr s32 DIM_Y = 5;
+        constexpr s32 DIM_X = 5;
+
+        u16 Voxels[DIM_Z][DIM_Y][DIM_X] = 
+        {
+            {
+                { O, O, O, O, O, },
+                { O, O, O, O, O, },
+                { O, O, T, O, O, },
+                { O, O, O, O, O, },
+                { O, O, O, O, O, },
+            },
+            {
+                { O, O, O, O, O, },
+                { O, O, O, O, O, },
+                { O, O, T, O, O, },
+                { O, O, O, O, O, },
+                { O, O, O, O, O, },
+            },
+            {
+                { L, L, L, L, L, },
+                { L, L, L, L, L, },
+                { L, L, T, L, L, },
+                { L, L, L, L, L, },
+                { L, L, L, L, L, },
+            },
+            {
+                { L, L, L, L, L, },
+                { L, L, L, L, L, },
+                { L, L, T, L, L, },
+                { L, L, L, L, L, },
+                { L, L, L, L, L, },
+            },
+            {
+                { O, L, L, L, O, },
+                { L, L, L, L, L, },
+                { L, L, T, L, L, },
+                { L, L, L, L, L, },
+                { O, L, L, L, O, },
+            },
+            {
+                { O, O, O, O, O, },
+                { O, L, L, L, O, },
+                { O, L, L, L, O, },
+                { O, L, L, L, O, },
+                { O, O, O, O, O, },
+            },
+        };
+
+        Tree->Voxels = PushArray<u16>(Arena, DIM_Z*DIM_Y*DIM_X);
+        if (Tree->Voxels)
+        {
+            Tree->Extent = vec3i{ DIM_X, DIM_Y, DIM_Z };
+            memcpy(Tree->Voxels, Voxels, sizeof(Voxels));
+        }
+    }
 }
 
 bool InitializeWorld(world* World)
@@ -706,7 +815,7 @@ bool InitializeWorld(world* World)
 
     World->Debug.DebugCamera.FieldOfView = ToRadians(90.0f);
 
-    InitializeWorldGenerator(&World->Generator, 1337);
+    InitializeWorldGenerator(&World->Generator, 1337, World->Arena);
 
     return true;
 }
@@ -891,7 +1000,7 @@ void UpdateAndRenderWorld(game_state* Game, world* World, game_io* IO, render_fr
 
     bool WaitForPlayerChunk = false;
     chunk* PlayerChunk = FindPlayerChunk(World);
-    if (PlayerChunk->GenerationState == 0)
+    if (PlayerChunk->GenerationLevel != ChunkGen_LevelFinal)
     {
         WaitForPlayerChunk = true;
         assert(PlayerChunk->InGenerationQueue);

@@ -97,11 +97,22 @@ struct map_view
     mat2 GetAxesXY() const;
 };
 
+struct world_structure
+{
+    vec3i Extent;
+    u16* Voxels;
+};
+
 struct world_generator
 {
     u32 Seed;
     perlin2 Perlin2;
     perlin3 Perlin3;
+
+    u32 StructureCount;
+    world_structure* Structures;
+
+    world_structure* TreeStructure;
 };
 
 struct world
