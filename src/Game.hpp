@@ -3,6 +3,7 @@
 #include <Common.hpp>
 #include <Intrinsics.hpp>
 #include <Math.hpp>
+#include <Random.hpp>
 #include <Shapes.hpp>
 
 #include <Platform.hpp>

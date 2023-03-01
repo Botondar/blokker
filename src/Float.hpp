@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Common.hpp>
-#include <immintrin.h>
+#include <Intrinsics.hpp>
 
 enum FLOAT_CATEGORY
 {
