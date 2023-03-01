@@ -1,5 +1,4 @@
 #include <Platform.hpp>
-#include <Renderer/Renderer.hpp>
 #include <Profiler.hpp>
 
 #include <Windows.h>
