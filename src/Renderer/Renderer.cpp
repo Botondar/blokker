@@ -12,6 +12,16 @@
 
 static bool Renderer_InitializeFrameParams(renderer* Renderer);
 static bool Renderer_ResizeRenderTargets(renderer* Renderer);
+static bool Renderer_CreateVoxelTextureArray(renderer* Renderer, u32 Width, u32 Height, u32 MipCount, u32 ArrayCount,const u8* Data);
+static bool Renderer_CreateImGuiTexture(renderer* Renderer, u32 Width, u32 Height, const u8* Data);
+
+inline VkExtent2D VkExtent2DFromVec2i(vec2i Extent);
+
+inline VkExtent2D VkExtent2DFromVec2i(vec2i Extent)
+{
+    VkExtent2D Result = { (u32)Extent.x, (u32)Extent.y };
+    return(Result);
+}
 
 //
 // Render API
@@ -31,19 +41,22 @@ render_frame* BeginRenderFrame(renderer* Renderer, bool DoResize)
     u64 FrameIndex = Renderer->CurrentFrameIndex++;
     u32 BufferIndex = (u32)(FrameIndex % 2);
 
-    render_frame* Frame = Renderer->FrameParams + BufferIndex;
-    Frame->FrameIndex = FrameIndex;
-    Frame->BufferIndex = BufferIndex;
-    Frame->RenderExtent = Renderer->SwapchainSize;
+    vulkan_render_frame* Frame = Renderer->FrameParams + BufferIndex;
     Frame->Renderer = Renderer;
-    Frame->SwapchainImageIndex = INVALID_INDEX_U32;
-    Frame->VertexStack.At = 0;
-    Frame->DrawCommands.DrawIndex = 0;
-    Frame->ChunkPositions.ChunkAt = 0;
-    Frame->PixelTransform = Mat4(2.0f / Frame->RenderExtent.width, 0.0f, 0.0f, -1.0f,
-                                 0.0f, 2.0f / Frame->RenderExtent.height, 0.0f, -1.0f,
+    //Frame->FrameIndex = FrameIndex;
+    //Frame->BufferIndex = BufferIndex;
+    Frame->RenderExtent = vec2i{ (s32)Renderer->SwapchainSize.width, (s32)Renderer->SwapchainSize.height };
+    Frame->PixelTransform = Mat4(2.0f / Frame->RenderExtent.x, 0.0f, 0.0f, -1.0f,
+                                 0.0f, 2.0f / Frame->RenderExtent.y, 0.0f, -1.0f,
                                  0.0f, 0.0f, 1.0f, 0.0f,
                                  0.0f, 0.0f, 0.0f, 1.0f);
+
+    Frame->SwapchainImageIndex = INVALID_INDEX_U32;
+
+    Frame->DrawCount = 0;
+    Frame->DrawList = (draw_cmd*)Frame->DrawMapping;
+    Frame->DrawPositions = (vec2*)Frame->PositionMapping;
+    Frame->VertexOffset = 0;
 
     {
         TIMED_BLOCK("WaitForPreviousFrames");
@@ -173,7 +186,7 @@ render_frame* BeginRenderFrame(renderer* Renderer, bool DoResize)
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
         .pNext = nullptr,
         .flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT,
-        .renderArea = { { 0, 0 }, Frame->RenderExtent },
+        .renderArea = { { 0, 0 }, { (u32)Frame->RenderExtent.x, (u32)Frame->RenderExtent.y } },
         .layerCount = 1,
         .viewMask = 0,
         .colorAttachmentCount = 1,
@@ -227,8 +240,8 @@ render_frame* BeginRenderFrame(renderer* Renderer, bool DoResize)
     {
         .x = 0.0f,
         .y = 0.0f,
-        .width = (f32)Frame->RenderExtent.width,
-        .height = (f32)Frame->RenderExtent.height,
+        .width = (f32)Frame->RenderExtent.x,
+        .height = (f32)Frame->RenderExtent.y,
         .minDepth = 0.0f,
         .maxDepth = 1.0f,
     };
@@ -236,7 +249,7 @@ render_frame* BeginRenderFrame(renderer* Renderer, bool DoResize)
     VkRect2D Scissor = 
     {
         .offset = { 0, 0 },
-        .extent = Frame->RenderExtent,
+        .extent = { (u32)Frame->RenderExtent.x, (u32)Frame->RenderExtent.y },
     };
     
     vkCmdSetViewport(Frame->SceneCmdBuffer, 0, 1, &Viewport);
@@ -245,12 +258,13 @@ render_frame* BeginRenderFrame(renderer* Renderer, bool DoResize)
     vkCmdSetScissor(Frame->ImmediateCmdBuffer, 0, 1, &Scissor);
     vkCmdSetViewport(Frame->ImGuiCmdBuffer, 0, 1, &Viewport);
     vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
-    return Frame;
+    return((render_frame*)Frame);
 }
 
-void EndRenderFrame(render_frame* Frame)
+void EndRenderFrame(render_frame* Frame_)
 {
     TIMED_FUNCTION();
+    vulkan_render_frame* Frame = (vulkan_render_frame*)Frame_;
 
     {
         vkCmdBindPipeline(Frame->SceneCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->Pipeline);
@@ -259,7 +273,7 @@ void EndRenderFrame(render_frame* Frame)
 
         VkDeviceSize VertexBufferOffset = 0;
         vkCmdBindVertexBuffers(Frame->SceneCmdBuffer, 0, 1, &Frame->Renderer->VB.Buffer, &VertexBufferOffset);
-        vkCmdBindVertexBuffers(Frame->SceneCmdBuffer, 1, 1, &Frame->ChunkPositions.Buffer, &VertexBufferOffset);
+        vkCmdBindVertexBuffers(Frame->SceneCmdBuffer, 1, 1, &Frame->PositionBuffer, &VertexBufferOffset);
     
         mat4 VP = Frame->ProjectionTransform * Frame->ViewTransform;
 
@@ -268,7 +282,7 @@ void EndRenderFrame(render_frame* Frame)
             Frame->Renderer->PipelineLayout,
             VK_SHADER_STAGE_VERTEX_BIT, 0,
             sizeof(mat4), &VP);
-        vkCmdDrawIndirect(Frame->SceneCmdBuffer, Frame->DrawCommands.Buffer, 0, (u32)Frame->DrawCommands.DrawIndex, sizeof(VkDrawIndirectCommand));
+        vkCmdDrawIndirect(Frame->SceneCmdBuffer, Frame->DrawBuffer, 0, Frame->DrawCount, sizeof(VkDrawIndirectCommand));
 
         vkEndCommandBuffer(Frame->SceneCmdBuffer);
         vkCmdExecuteCommands(Frame->PrimaryCmdBuffer, 1, &Frame->SceneCmdBuffer);
@@ -392,12 +406,14 @@ void EndRenderFrame(render_frame* Frame)
     }
 }
 
-bool UploadVertexBlock(render_frame* Frame, 
+bool UploadVertexBlock(render_frame* Frame_, 
                       vertex_buffer_block* Block,
                       u64 DataSize0, const void* Data0, 
                       u64 DataSize1, const void* Data1)
 {
     bool Result = false;
+
+    vulkan_render_frame* Frame = (vulkan_render_frame*)Frame_;
 
     staging_heap* Heap = &Frame->Renderer->StagingHeap;
     vertex_buffer* VertexBuffer = &Frame->Renderer->VB;
@@ -450,7 +466,6 @@ bool UploadVertexBlock(render_frame* Frame,
     }
 
     Heap->HeapOffset = Range.offset + Range.size;
-
     return(Result);
 }
 
@@ -460,8 +475,8 @@ void FreeVertexBlock(render_frame* Frame, vertex_buffer_block* Block)
 }
 
 vertex_buffer_block* AllocateAndUploadVertexBlock(render_frame* Frame,
-                                                 u64 DataSize0, const void* Data0,
-                                                 u64 DataSize1, const void* Data1)
+                                                  u64 DataSize0, const void* Data0,
+                                                  u64 DataSize1, const void* Data1)
 {
     u32 VertexCount = (u32)((DataSize0 + DataSize1) / sizeof(terrain_vertex));
     vertex_buffer_block* Block = VB_Allocate(&Frame->Renderer->VB, VertexCount);
@@ -476,36 +491,38 @@ vertex_buffer_block* AllocateAndUploadVertexBlock(render_frame* Frame,
     return(Block);
 }
 
-void RenderChunk(render_frame* Frame, vertex_buffer_block* VertexBlock, vec2 P)
+void RenderVertexBlock(render_frame* Frame, vertex_buffer_block* VertexBlock, vec2 P)
 {
-    u32 Index = Frame->DrawCommands.DrawIndex++;
-    Frame->ChunkPositions.Mapping[Index] = P;
-    Frame->DrawCommands.Commands[Index] = 
+    u32 Index = Frame->DrawCount++;
+    Frame->DrawPositions[Index] = P;
+    Frame->DrawList[Index] = 
     {
-        .vertexCount = VertexBlock->VertexCount,
-        .instanceCount = 1,
-        .firstVertex = VertexBlock->VertexOffset,
-        .firstInstance = Index,
+        .VertexCount = VertexBlock->VertexCount,
+        .InstanceCount = 1,
+        .VertexOffset = VertexBlock->VertexOffset,
+        .InstanceOffset = Index,
     };
 }
 
-bool ImTriangleList(render_frame* Frame, 
-                    u32 VertexCount, const vertex* VertexData, 
-                    mat4 Transform, f32 DepthBias)
+bool ImTriangleList(render_frame* Frame_, 
+                    mat4 Transform, f32 DepthBias,
+                    u32 VertexCount, const vertex* VertexData)
 {
     bool Result = false;
 
-    u64 Offset = AlignTo(Frame->VertexStack.At, alignof(vertex));
+    vulkan_render_frame* Frame = (vulkan_render_frame*)Frame_;
+
+    u64 Offset = AlignTo(Frame->VertexOffset, alignof(vertex));
     u32 DataSize = VertexCount * sizeof(vertex);
-    if (Offset + DataSize <= Frame->VertexStack.Size)
+    if (Offset + DataSize <= Frame->VertexSize)
     {
-        memcpy(OffsetPtr(Frame->VertexStack.Mapping, Offset), VertexData, DataSize);
-        Frame->VertexStack.At = Offset + DataSize;
+        memcpy(OffsetPtr(Frame->VertexMapping, Offset), VertexData, DataSize);
+        Frame->VertexOffset = Offset + DataSize;
 
         vkCmdBindPipeline(Frame->ImmediateCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImPipeline);
         vkCmdSetPrimitiveTopology(Frame->ImmediateCmdBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
-        vkCmdBindVertexBuffers(Frame->ImmediateCmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &Offset);
+        vkCmdBindVertexBuffers(Frame->ImmediateCmdBuffer, 0, 1, &Frame->VertexBuffer, &Offset);
         vkCmdPushConstants(Frame->ImmediateCmdBuffer, Frame->Renderer->ImPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 
                            0, sizeof(Transform), &Transform);
         // TODO(boti): depth bias should probably be separately parameterized
@@ -577,10 +594,10 @@ void ImBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBias /*= 0.0f*/)
     };
     constexpr u32 VertexCount = CountOf(VertexData);
     mat4 Transform = Frame->ProjectionTransform * Frame->ViewTransform;
-    ImTriangleList(Frame, VertexCount, VertexData, Transform, DepthBias);
+    ImTriangleList(Frame, Transform, DepthBias, VertexCount, VertexData);
 }
 
-void ImBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box, u32 Color)
+void ImBoxOutline(render_frame* Frame, aabb Box, u32 Color, f32 OutlineSize)
 {
     TIMED_FUNCTION();
 
@@ -628,10 +645,10 @@ void ImRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color)
         VertexData[2], VertexData[1], VertexData[3],
     };
     u32 VertexCount = CountOf(VertexDataExploded);
-    ImTriangleList(Frame, VertexCount, VertexDataExploded, Frame->PixelTransform, 0.0f);
+    ImTriangleList(Frame, Frame->PixelTransform, 0.0f, VertexCount, VertexDataExploded);
 }
 
-void ImRectOutline2D(render_frame* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color)
+void ImRectOutline2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color, f32 OutlineSize, outline_type Type)
 {
     TIMED_FUNCTION();
 
@@ -675,12 +692,14 @@ void ImRectOutline2D(render_frame* Frame, outline_type Type, f32 OutlineSize, ve
              Color);
 }
 
-void RenderImGui(render_frame* Frame, const ImDrawData* DrawData)
+void RenderImGui(render_frame* Frame_, const ImDrawData* DrawData)
 {
     TIMED_FUNCTION();
+    vulkan_render_frame* Frame = (vulkan_render_frame*)Frame_;
+
     if (DrawData && (DrawData->TotalVtxCount > 0) && (DrawData->TotalIdxCount > 0))
     {
-        u64 VertexDataOffset = AlignTo(Frame->VertexStack.At, sizeof(ImDrawVert));
+        u64 VertexDataOffset = AlignTo(Frame->VertexOffset, sizeof(ImDrawVert));
         u64 VertexDataSize = ((u64)DrawData->TotalVtxCount * sizeof(ImDrawVert));
         u64 VertexDataEnd = VertexDataOffset + VertexDataSize;
 
@@ -691,9 +710,9 @@ void RenderImGui(render_frame* Frame, const ImDrawData* DrawData)
         u64 ImGuiDataSize = VertexDataSize + IndexDataSize;
         u64 ImGuiDataEnd = IndexDataEnd;
 
-        if (ImGuiDataEnd <= Frame->VertexStack.Size)
+        if (ImGuiDataEnd <= Frame->VertexSize)
         {
-            Frame->VertexStack.At = ImGuiDataEnd;
+            Frame->VertexOffset = ImGuiDataEnd;
 
             vkCmdBindPipeline(Frame->ImGuiCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImGuiPipeline);
             vkCmdBindDescriptorSets(
@@ -708,12 +727,12 @@ void RenderImGui(render_frame* Frame, const ImDrawData* DrawData)
                 VK_SHADER_STAGE_VERTEX_BIT,
                 0, sizeof(Frame->PixelTransform), &Frame->PixelTransform);
 
-            vkCmdBindVertexBuffers(Frame->ImGuiCmdBuffer, 0, 1, &Frame->VertexStack.Buffer, &VertexDataOffset);
+            vkCmdBindVertexBuffers(Frame->ImGuiCmdBuffer, 0, 1, &Frame->VertexBuffer, &VertexDataOffset);
             VkIndexType IndexType = (sizeof(ImDrawIdx) == 2) ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
-            vkCmdBindIndexBuffer(Frame->ImGuiCmdBuffer, Frame->VertexStack.Buffer, IndexDataOffset, IndexType);
+            vkCmdBindIndexBuffer(Frame->ImGuiCmdBuffer, Frame->VertexBuffer, IndexDataOffset, IndexType);
 
-            ImDrawVert* VertexDataAt = (ImDrawVert*)((u8*)Frame->VertexStack.Mapping + VertexDataOffset);
-            ImDrawIdx* IndexDataAt = (ImDrawIdx*)((u8*)Frame->VertexStack.Mapping + IndexDataOffset);
+            ImDrawVert* VertexDataAt = (ImDrawVert*)OffsetPtr(Frame->VertexMapping, VertexDataOffset);
+            ImDrawIdx* IndexDataAt = (ImDrawIdx*)OffsetPtr(Frame->VertexMapping, IndexDataOffset);
 
             u32 VertexOffset = 0;
             u32 IndexOffset = 0;
@@ -730,7 +749,7 @@ void RenderImGui(render_frame* Frame, const ImDrawData* DrawData)
                 for (int CmdBufferIndex = 0; CmdBufferIndex < CmdList->CmdBuffer.Size; CmdBufferIndex++)
                 {
                     ImDrawCmd* Command = &CmdList->CmdBuffer[CmdBufferIndex];
-                    assert((u64)Command->TextureId == Frame->Renderer->ImGuiTextureID);
+                    Assert((u64)Command->TextureId == Frame->Renderer->ImGuiTextureID);
 
                     VkRect2D Scissor = 
                     {
@@ -757,7 +776,7 @@ void RenderImGui(render_frame* Frame, const ImDrawData* DrawData)
             VkRect2D Scissor = 
             {
                 .offset = { 0, 0 },
-                .extent = Frame->RenderExtent,
+                .extent = VkExtent2DFromVec2i(Frame->RenderExtent),
             };
             vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
         }
@@ -943,17 +962,29 @@ static bool Renderer_ResizeRenderTargets(renderer* Renderer)
 //
 // Initialization
 //
-bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
+renderer* CreateRenderer(memory_arena* Arena, memory_arena* TransientArena,
+                         const renderer_init_info* RendererInfo)
 {
+    renderer* Renderer = PushStruct<renderer>(Arena);
+    if (!Renderer)
+    {
+        return nullptr;
+    }
+
+    if (!RendererInfo->TextureData || !RendererInfo->ImGuiTextureData)
+    {
+        return nullptr;
+    }
+
     if (!CreateRenderDevice(&Renderer->RenderDevice))
     {
-        return false;
+        return nullptr;
     }
 
     Renderer->Surface = Platform.CreateVulkanSurface(Renderer->RenderDevice.Instance);
     if (Renderer->Surface == VK_NULL_HANDLE)
     {
-        return false;
+        return nullptr;
     }
 
     Renderer->DepthFormat = VK_FORMAT_D32_SFLOAT;
@@ -965,13 +996,13 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         Result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(Renderer->RenderDevice.PhysicalDevice, Renderer->Surface, &SurfaceCaps);
         if (Result != VK_SUCCESS)
         {
-            return false;
+            return nullptr;
         }
 
         // TODO
         if ((SurfaceCaps.currentExtent.width == 0) || (SurfaceCaps.currentExtent.height == 0))
         {
-            return false;
+            return nullptr;
         }
 
         u32 SurfaceFormatCount = 0;
@@ -980,7 +1011,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             vkGetPhysicalDeviceSurfaceFormatsKHR(Renderer->RenderDevice.PhysicalDevice, Renderer->Surface, &SurfaceFormatCount, nullptr);
             if (SurfaceFormatCount > 64)
             {
-                return false;
+                return nullptr;
             }
             vkGetPhysicalDeviceSurfaceFormatsKHR(Renderer->RenderDevice.PhysicalDevice, Renderer->Surface, &SurfaceFormatCount, SurfaceFormats);
         }
@@ -1007,7 +1038,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         }
         if (!FormatFound)
         {
-            return false;
+            return nullptr;
         }
     }
 
@@ -1025,7 +1056,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         Result = vkCreateCommandPool(Renderer->RenderDevice.Device, &CmdPoolInfo, nullptr, &Renderer->TransferCmdPool);
         if (Result != VK_SUCCESS)
         {
-            return false;
+            return nullptr;
         }
 
         VkCommandBufferAllocateInfo AllocInfo = 
@@ -1039,7 +1070,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         Result = vkAllocateCommandBuffers(Renderer->RenderDevice.Device, &AllocInfo, &Renderer->TransferCmdBuffer);
         if (Result != VK_SUCCESS)
         {
-            return false;
+            return nullptr;
         }
     }
 
@@ -1050,23 +1081,23 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
 
     if (!Renderer_InitializeFrameParams(Renderer))
     {
-        return false;
+        return nullptr;
     }
     
     if (!StagingHeap_Create(&Renderer->StagingHeap, 256*1024*1024, Renderer))
     {
-        return false;
+        return nullptr;
     }
 
     if (!VB_Create(&Renderer->VB, Renderer->RenderDevice.MemoryTypes.DeviceLocal, 1024*1024*1024, Renderer->RenderDevice.Device, Arena))
     {
-        return false;
+        return nullptr;
     }
 
-    auto LoadAndCompileShaders = [Renderer, Arena](const char* Path, VkShaderModule* VS, VkShaderModule* FS) -> bool
+    auto LoadAndCompileShaders = [Renderer, TransientArena](const char* Path, VkShaderModule* VS, VkShaderModule* FS) -> bool
     {
         bool Result = false;
-        memory_arena_checkpoint Checkpoint = ArenaCheckpoint(Arena);
+        memory_arena_checkpoint Checkpoint = ArenaCheckpoint(TransientArena);
         constexpr u64 MaxPathLength = 256;
         char Filename[MaxPathLength] = {};
 
@@ -1074,9 +1105,9 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         
         if (CopyZString(MaxPathLength - PathLength, Filename + PathLength, ".vs") == 3)
         {
-            buffer VSBuff = Platform.LoadEntireFile(Filename, Arena);
+            buffer VSBuff = Platform.LoadEntireFile(Filename, TransientArena);
             CopyZString(MaxPathLength - PathLength, Filename + PathLength, ".fs");
-            buffer FSBuff = Platform.LoadEntireFile(Filename, Arena);
+            buffer FSBuff = Platform.LoadEntireFile(Filename, TransientArena);
 
             if (VSBuff.Size > 0 && FSBuff.Size > 0)
             {
@@ -1104,7 +1135,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             }
         }
 
-        RestoreArena(Arena, Checkpoint);
+        RestoreArena(TransientArena, Checkpoint);
         return(Result);
     };
 
@@ -1140,7 +1171,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             }
             else
             {
-                return false;
+                return nullptr;
             }
         }
 
@@ -1187,7 +1218,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             }
             else
             {
-                return false;
+                return nullptr;
             }
         }
 
@@ -1232,12 +1263,12 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
                 else
                 {
                     vkDestroyDescriptorPool(Renderer->RenderDevice.Device, Pool, nullptr);
-                    return false;
+                    return nullptr;
                 }
             }
             else
             {
-                return false;
+                return nullptr;
             }
         }
     }
@@ -1266,7 +1297,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             Result = vkCreatePipelineLayout(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->PipelineLayout);
             if (Result != VK_SUCCESS)
             {
-                return false;
+                return nullptr;
             }
         }
         
@@ -1530,7 +1561,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         Result = vkCreateGraphicsPipelines(Renderer->RenderDevice.Device, VK_NULL_HANDLE, 1, &Info, nullptr, &Renderer->Pipeline);
         if (Result != VK_SUCCESS)
         {
-            return false;
+            return nullptr;
         }
 
         vkDestroyShaderModule(Renderer->RenderDevice.Device, VSModule, nullptr);
@@ -1570,7 +1601,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             }
             else
             {
-                return false;
+                return nullptr;
             }
         }
 
@@ -1600,7 +1631,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             }
             else
             {
-                return false;
+                return nullptr;
             }
 
             VkDescriptorPoolSize PoolSize = 
@@ -1637,12 +1668,12 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
                 }
                 else
                 {
-                    return false;
+                    return nullptr;
                 }
             }
             else
             {
-                return false;
+                return nullptr;
             }
         }
 
@@ -1668,7 +1699,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             Result = vkCreatePipelineLayout(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->ImGuiPipelineLayout);
             if (Result != VK_SUCCESS)
             {
-                return false;
+                return nullptr;
             }
         }
         
@@ -1920,7 +1951,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         Result = vkCreateGraphicsPipelines(Renderer->RenderDevice.Device, VK_NULL_HANDLE, 1, &Info, nullptr, &Renderer->ImGuiPipeline);
         if (Result != VK_SUCCESS)
         {
-            return false;
+            return nullptr;
         }
 
         vkDestroyShaderModule(Renderer->RenderDevice.Device, VSModule, nullptr);
@@ -1951,7 +1982,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             Result = vkCreatePipelineLayout(Renderer->RenderDevice.Device, &Info, nullptr, &Renderer->ImPipelineLayout);
             if (Result != VK_SUCCESS)
             {
-                return false;
+                return nullptr;
             }
         }
         
@@ -2180,7 +2211,7 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
             .depthAttachmentFormat = Renderer->DepthFormat,
             .stencilAttachmentFormat = Renderer->StencilFormat,
         };
-        
+
         VkGraphicsPipelineCreateInfo Info = 
         {
             .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -2207,14 +2238,30 @@ bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena)
         Result = vkCreateGraphicsPipelines(Renderer->RenderDevice.Device, VK_NULL_HANDLE, 1, &Info, nullptr, &Renderer->ImPipeline);
         if (Result != VK_SUCCESS)
         {
-            return false;
+            return nullptr;
         }
 
         vkDestroyShaderModule(Renderer->RenderDevice.Device, VSModule, nullptr);
         vkDestroyShaderModule(Renderer->RenderDevice.Device, FSModule, nullptr);
     }
 
-    return true;
+    if (!Renderer_CreateVoxelTextureArray(Renderer, RendererInfo->TextureWidth, RendererInfo->TextureHeight,
+                                          RendererInfo->TextureMipCount, RendererInfo->TextureArrayCount, (u8*)RendererInfo->TextureData))
+    {
+        return nullptr;
+    }
+
+    if (!Renderer_CreateImGuiTexture(Renderer, RendererInfo->ImGuiTextureWidth, RendererInfo->ImGuiTextureHeight, 
+                                     (u8*)RendererInfo->ImGuiTextureData))
+    {
+        return nullptr;
+    }
+    else
+    {
+        ImGui::GetIO().Fonts->SetTexID((ImTextureID)(u64)Renderer->ImGuiTextureID);
+    }
+
+    return(Renderer);
 }
 
 bool Renderer_CreateVoxelTextureArray(renderer* Renderer, 
@@ -2485,96 +2532,9 @@ bool Renderer_CreateImGuiTexture(renderer* Renderer, u32 Width, u32 Height, cons
 
 static bool Renderer_InitializeFrameParams(renderer* Renderer)
 {
-    // Create per frame uniform params
-    {
-        // Memory size of the entire allocation (which contains uniform buffers for each frame in flight)
-        constexpr u64 MemorySize = 64*1024;
-
-        u64 Alignment = 0;
-        u32 MemoryTypes = Renderer->RenderDevice.MemoryTypes.DeviceLocalAndHostVisible;
-        constexpr u64 UniformParamSize = 8 * 1024;
-        for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
-        {
-            VkBufferCreateInfo BufferInfo = 
-            {
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-                .size = UniformParamSize,
-                .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-                .queueFamilyIndexCount = 0,
-                .pQueueFamilyIndices = nullptr,
-            };
-
-            VkBuffer Buffer = VK_NULL_HANDLE;
-            if (vkCreateBuffer(Renderer->RenderDevice.Device, &BufferInfo, nullptr, &Buffer) == VK_SUCCESS)
-            {
-                VkMemoryRequirements MemoryRequirements = {};
-                vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
-
-                MemoryTypes &= MemoryRequirements.memoryTypeBits;
-                Alignment = Max(Alignment, MemoryRequirements.alignment);
-
-                Renderer->FrameParams[i].FrameUniformBuffer.BufferSize = UniformParamSize;
-                Renderer->FrameParams[i].FrameUniformBuffer.Buffer = Buffer;
-            }
-            else
-            {
-                return false;
-            }
-        }
-
-        u32 MemoryTypeIndex = 0;
-        if (BitScanForward(&MemoryTypeIndex, MemoryTypes))
-        {
-            VkMemoryAllocateInfo AllocInfo = 
-            {
-                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                .pNext = nullptr,
-                .allocationSize = MemorySize,
-                .memoryTypeIndex = MemoryTypeIndex,
-            };
-
-            VkDeviceMemory Memory = VK_NULL_HANDLE;
-            if (vkAllocateMemory(Renderer->RenderDevice.Device, &AllocInfo, nullptr, &Memory) == VK_SUCCESS)
-            {
-                void* MappingBase = nullptr;
-                if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, VK_WHOLE_SIZE, 0, &MappingBase) == VK_SUCCESS)
-                {
-                    for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
-                    {
-                        u64 Offset = i * UniformParamSize;
-                        if (vkBindBufferMemory(Renderer->RenderDevice.Device, Renderer->FrameParams[i].FrameUniformBuffer.Buffer, Memory, Offset) == VK_SUCCESS)
-                        {
-                            Renderer->FrameParams[i].FrameUniformBuffer.Memory = Memory;
-                            Renderer->FrameParams[i].FrameUniformBuffer.Mapping = OffsetPtr(MappingBase, Offset);
-                        }
-                        else
-                        {
-                            return false;
-                        }
-                    }
-                }
-                else
-                {
-                    return false;
-                }
-            }
-            else
-            {
-                return false;
-            }
-        }
-        else
-        {
-            return false;
-        }
-    }
-
     for (u32 i = 0; i < Renderer->SwapchainImageCount; i++)
     {
-        render_frame* Frame = Renderer->FrameParams + i;
+        vulkan_render_frame* Frame = Renderer->FrameParams + i;
         {
             VkCommandPoolCreateInfo Info = 
             {
@@ -2663,12 +2623,13 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
         }
         // Create per frame vertex stack
         {
+            u64 VertexSize = MiB(64);
             VkBufferCreateInfo BufferInfo = 
             {
                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                 .pNext = nullptr,
                 .flags = 0,
-                .size = Frame->VertexStack.VertexStackSize,
+                .size = VertexSize,
                 .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                 .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
                 .queueFamilyIndexCount = 0,
@@ -2680,7 +2641,7 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
                 VkMemoryRequirements MemoryRequirements = {};
                 vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
 
-                assert(MemoryRequirements.size == Frame->VertexStack.VertexStackSize);
+                assert(MemoryRequirements.size == VertexSize);
 
                 u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.HostVisibleCoherent;
                 u32 MemoryType = 0;
@@ -2690,7 +2651,7 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
                     {
                         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                         .pNext = nullptr,
-                        .allocationSize = Frame->VertexStack.VertexStackSize,
+                        .allocationSize = VertexSize,
                         .memoryTypeIndex = MemoryType,
                     };
 
@@ -2703,11 +2664,11 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
                             void* Mapping = nullptr;
                             if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, VK_WHOLE_SIZE, 0, &Mapping) == VK_SUCCESS)
                             {
-                                Frame->VertexStack.Memory = Memory;
-                                Frame->VertexStack.Buffer = Buffer;
-                                Frame->VertexStack.Size = Frame->VertexStack.VertexStackSize;
-                                Frame->VertexStack.At = 0;
-                                Frame->VertexStack.Mapping = Mapping;
+                                Frame->VertexMemory = Memory;
+                                Frame->VertexBuffer = Buffer;
+                                Frame->VertexSize = VertexSize;
+                                Frame->VertexOffset = 0;
+                                Frame->VertexMapping = Mapping;
                             }
                             else
                             {
@@ -2742,13 +2703,15 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
         }
 
         // Create per frame (indirect) command buffer
+        u32 DrawCountPerFrame = 1u << 18;
         {
-            VkBufferCreateInfo BufferInfo = 
+            u64 DrawMemorySize = (u64)DrawCountPerFrame * sizeof(draw_cmd);
+            VkBufferCreateInfo BufferInfo =
             {
                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                 .pNext = nullptr,
                 .flags = 0,
-                .size = Frame->DrawCommands.MemorySize,
+                .size = DrawMemorySize,
                 .usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
                 .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
                 .queueFamilyIndexCount = 0,
@@ -2761,7 +2724,7 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
                 VkMemoryRequirements MemoryRequirements = {};
                 vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
 
-                assert(MemoryRequirements.size == Frame->DrawCommands.MemorySize);
+                assert(MemoryRequirements.size == DrawMemorySize);
 
                 u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.HostVisibleCoherent;
                 u32 MemoryType = 0;
@@ -2771,7 +2734,7 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
                     {
                         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                         .pNext = nullptr,
-                        .allocationSize = Frame->DrawCommands.MemorySize,
+                        .allocationSize = DrawMemorySize,
                         .memoryTypeIndex = MemoryType,
                     };
 
@@ -2781,13 +2744,11 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
                         if (vkBindBufferMemory(Renderer->RenderDevice.Device, Buffer, Memory, 0) == VK_SUCCESS)
                         {
                             void* Mapping = nullptr;
-                            if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, Frame->DrawCommands.MemorySize, 0, &Mapping) == VK_SUCCESS)
+                            if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, DrawMemorySize, 0, &Mapping) == VK_SUCCESS)
                             {
-                                Frame->DrawCommands.Memory = Memory;
-                                Frame->DrawCommands.Buffer = Buffer;
-
-                                Frame->DrawCommands.DrawIndex = 0;
-                                Frame->DrawCommands.Commands = (VkDrawIndirectCommand*)Mapping;
+                                Frame->DrawMemory = Memory;
+                                Frame->DrawBuffer = Buffer;
+                                Frame->DrawMapping = Mapping;
                             }
                             else
                             {
@@ -2823,12 +2784,13 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
 
         // Create per frame instance data
         {
+            u64 InstanceDataMemorySize = DrawCountPerFrame * sizeof(vec2);
             VkBufferCreateInfo BufferInfo = 
             {
                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                 .pNext = nullptr,
                 .flags = 0,
-                .size = Frame->ChunkPositions.MemorySize,
+                .size = InstanceDataMemorySize,
                 .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                 .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
                 .queueFamilyIndexCount = 0,
@@ -2841,7 +2803,7 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
                 VkMemoryRequirements MemoryRequirements = {};
                 vkGetBufferMemoryRequirements(Renderer->RenderDevice.Device, Buffer, &MemoryRequirements);
 
-                assert(MemoryRequirements.size == Frame->ChunkPositions.MemorySize);
+                assert(MemoryRequirements.size == InstanceDataMemorySize);
 
                 u32 MemoryTypes = MemoryRequirements.memoryTypeBits & Renderer->RenderDevice.MemoryTypes.HostVisibleCoherent;
                 u32 MemoryType = 0;
@@ -2851,7 +2813,7 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
                     {
                         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                         .pNext = nullptr,
-                        .allocationSize = Frame->ChunkPositions.MemorySize,
+                        .allocationSize = InstanceDataMemorySize,
                         .memoryTypeIndex = MemoryType,
                     };
 
@@ -2861,13 +2823,11 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
                         if (vkBindBufferMemory(Renderer->RenderDevice.Device, Buffer, Memory, 0) == VK_SUCCESS)
                         {
                             void* Mapping = nullptr;
-                            if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, Frame->ChunkPositions.MemorySize, 0, &Mapping) == VK_SUCCESS)
+                            if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, InstanceDataMemorySize, 0, &Mapping) == VK_SUCCESS)
                             {
-                                Frame->ChunkPositions.Memory = Memory;
-                                Frame->ChunkPositions.Buffer = Buffer;
-
-                                Frame->ChunkPositions.ChunkAt = 0;
-                                Frame->ChunkPositions.Mapping = (vec2*)Mapping;
+                                Frame->PositionMemory = Memory;
+                                Frame->PositionBuffer = Buffer;
+                                Frame->PositionMapping = Mapping;
                             }
                             else
                             {

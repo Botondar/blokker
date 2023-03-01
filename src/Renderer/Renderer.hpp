@@ -5,20 +5,71 @@
 #include <Common.hpp>
 #include <Intrinsics.hpp>
 #include <Math.hpp>
-#include <Platform.hpp>
+#include <Memory.hpp>
 #include <Shapes.hpp>
+#include <imgui/imgui.h>
 
-#include <Camera.hpp>
+#include <Renderer/RenderAPI.hpp>
 
+#include <Platform.hpp>
+
+#include <vulkan/vulkan.h>
 #include <Renderer/RenderDevice.hpp>
-
-#include <Renderer/RendererCommon.hpp>
 #include <Renderer/RTHeap.hpp>
 #include <Renderer/StagingHeap.hpp>
 #include <Renderer/VertexBuffer.hpp>
 
 extern platform_api Platform;
 
+enum attrib_location : u32
+{
+    ATTRIB_POS = 0,
+    ATTRIB_TEXCOORD = 1,
+    ATTRIB_COLOR = 2,
+    ATTRIB_CHUNK_P = 3,
+};
+
+#if 1
+struct vulkan_render_frame : public render_frame
+{
+    VkCommandPool CmdPool;
+    VkCommandBuffer PrimaryCmdBuffer;
+    VkCommandBuffer TransferCmdBuffer;
+
+    VkCommandBuffer SceneCmdBuffer;
+    VkCommandBuffer ImmediateCmdBuffer;
+    VkCommandBuffer ImGuiCmdBuffer;
+
+    VkSemaphore ImageAcquiredSemaphore;
+    VkSemaphore RenderFinishedSemaphore;
+    VkSemaphore TransferFinishedSemaphore;
+    VkFence RenderFinishedFence;
+
+    VkImage DepthBuffer;
+    VkImageView DepthBufferView;
+
+    VkImage SwapchainImage;
+    VkImageView SwapchainImageView;
+    u32 SwapchainImageIndex;
+
+    // Indirect draw commands
+    VkDeviceMemory DrawMemory;
+    VkBuffer DrawBuffer;
+    void* DrawMapping;
+
+    // Per-instance data for indirect draw commands
+    VkDeviceMemory PositionMemory;
+    VkBuffer PositionBuffer;
+    void* PositionMapping;
+
+    // Vertex buffer for immediate-mode rendering
+    VkDeviceMemory VertexMemory;
+    VkBuffer VertexBuffer;
+    void* VertexMapping;
+    u64 VertexSize;
+    u64 VertexOffset;
+};
+#else
 struct render_frame
 {
     u64 FrameIndex;
@@ -26,7 +77,7 @@ struct render_frame
 
     VkExtent2D RenderExtent;
 
-    camera Camera;
+    //camera Camera;
     mat4 ProjectionTransform;
     mat4 ViewTransform;
     mat4 PixelTransform;
@@ -52,16 +103,6 @@ struct render_frame
     VkImage SwapchainImage;
     VkImageView SwapchainImageView;
     u32 SwapchainImageIndex;
-
-    struct
-    {
-        VkBuffer Buffer;
-        u64 BufferSize;
-
-        VkDeviceMemory Memory; // Shared between all the frame params
-        
-        void* Mapping;
-    } FrameUniformBuffer;
 
     struct 
     {
@@ -102,9 +143,7 @@ struct render_frame
 
     struct renderer* Renderer;
 };
-
-u64 Frame_PushToStack(render_frame* Frame, u64 Alignment, const void* Data, u64 Size);
-
+#endif
 struct renderer 
 {
     render_device RenderDevice;
@@ -130,7 +169,7 @@ struct renderer
     VkFormat DepthFormat;
     VkFormat StencilFormat;
 
-    render_frame FrameParams[MaxSwapchainImageCount];
+    vulkan_render_frame FrameParams[MaxSwapchainImageCount];
 
     staging_heap StagingHeap;
 
@@ -168,14 +207,9 @@ struct renderer
     u64 CurrentFrameIndex;
 };
 
-bool Renderer_Initialize(renderer* Renderer, memory_arena* Arena);
-
-// NOTE(boti): Texture data must be RGBA8 format
-bool Renderer_CreateVoxelTextureArray(renderer* Renderer, 
-                                      u32 Width, u32 Height, 
-                                      u32 MipCount, u32 ArrayCount,
-                                      const u8* Data);
-bool Renderer_CreateImGuiTexture(renderer* Renderer, u32 Width, u32 Height, const u8* Data);
+#if 0
+renderer* CreateRenderer(memory_arena* Arena, memory_arena* TransientArena,
+                         const renderer_init_info* RendererInfo);
 
 render_frame* BeginRenderFrame(renderer* Renderer, bool DoResize);
 void EndRenderFrame(render_frame* Frame);
@@ -207,3 +241,4 @@ void ImRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color);
 void ImRectOutline2D(render_frame* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color);
 
 void RenderImGui(render_frame* Frame, const ImDrawData* DrawData);
+#endif

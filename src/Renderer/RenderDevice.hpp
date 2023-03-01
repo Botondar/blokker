@@ -1,8 +1,5 @@
 #pragma once
 
-#include <vulkan/vulkan.h>
-#include <Common.hpp>
-
 struct vulkan_physical_device_desc
 {
     static constexpr u32 MaxQueueFamilyCount = 8;

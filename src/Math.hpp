@@ -1,8 +1,8 @@
 #pragma once
 
 #include <Common.hpp>
-#include <cmath>
 #include <Intrinsics.hpp>
+#include <cmath>
 
 //
 // Constants

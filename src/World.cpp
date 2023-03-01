@@ -494,14 +494,14 @@ void LoadChunksAroundPlayer(world* World, memory_arena* TransientArena)
 #if BLOKKER_TINY_RENDER_DISTANCE
     constexpr s32 MeshDistance = 3;
 #else
-    constexpr s32 MeshDistance = 20;
+    constexpr s32 MeshDistance = 32;
 #endif
     constexpr s32 GenerationDistance = MeshDistance + 1;
 
     // Create a stack that'll hold the chunks that haven't been meshed/generated around the player.
     constexpr u32 StackSize = (2*GenerationDistance + 1)*(2*GenerationDistance + 1);
     u32 StackAt = 0;
-    chunk* Stack[StackSize];
+    chunk** Stack = PushArray<chunk*>(TransientArena, StackSize);
 
     chunk* PlayerChunk = FindPlayerChunk(World);
     if (!PlayerChunk)
@@ -949,14 +949,14 @@ void UpdateAndRenderWorld(game_state* Game, world* World, game_io* IO, render_fr
         World->MapView.ZoomCurrent = Lerp(World->MapView.ZoomCurrent, World->MapView.ZoomTarget, 1.0f - Exp(-20.0f * IO->DeltaTime));
     }
 
-    Frame->Camera = 
+    camera Camera = 
         World->Debug.IsDebugCameraEnabled ? 
         World->Debug.DebugCamera : 
         GetCamera(&World->Player);
-    Frame->ViewTransform = Frame->Camera.GetInverseTransform();
+    Frame->ViewTransform = Camera.GetInverseTransform();
 
-    const f32 AspectRatio = (f32)Frame->RenderExtent.width / (f32)Frame->RenderExtent.height;
-    Frame->ProjectionTransform = PerspectiveMat4(Frame->Camera.FieldOfView, AspectRatio, Frame->Camera.Near, Frame->Camera.Far);
+    const f32 AspectRatio = (f32)Frame->RenderExtent.x / (f32)Frame->RenderExtent.y;
+    Frame->ProjectionTransform = PerspectiveMat4(Camera.FieldOfView, AspectRatio, Camera.Near, Camera.Far);
 
     if (World->MapView.IsEnabled)
     {
@@ -1026,7 +1026,7 @@ void UpdateAndRenderWorld(game_state* Game, world* World, game_io* IO, render_fr
     {
         TIMED_BLOCK("ChunkUpdate");
 
-        frustum CameraFrustum = Frame->Camera.GetFrustum((f32)Frame->RenderExtent.width / Frame->RenderExtent.height);
+        frustum CameraFrustum = Camera.GetFrustum((f32)Frame->RenderExtent.x / Frame->RenderExtent.y);
         for (u32 i = 0; i < World->MaxChunkCount; i++)
         {
             chunk* Chunk = World->Chunks + i;
@@ -1036,7 +1036,7 @@ void UpdateAndRenderWorld(game_state* Game, world* World, game_io* IO, render_fr
                 vec3 MaxP = MinP + vec3{ CHUNK_DIM_XY, CHUNK_DIM_XY, CHUNK_DIM_Z };
                 if (IntersectFrustumAABB(CameraFrustum, MakeAABB(MinP, MaxP)))
                 {
-                    RenderChunk(Frame, Chunk->VertexBlock, (vec2)Chunk->P);
+                    RenderVertexBlock(Frame, Chunk->VertexBlock, (vec2)Chunk->P);
                 }
             }
         }

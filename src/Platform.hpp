@@ -3,8 +3,6 @@
 #include <Common.hpp>
 #include <Math.hpp>
 #include <Memory.hpp>
-
-#include <vulkan/vulkan.h>
 #include <imgui/imgui.h>
 
 typedef function<void(memory_arena*)> work_function;
@@ -23,11 +21,19 @@ typedef void (wait_for_all_work_func)(platform_work_queue* Queue);
 typedef void (debug_print_func)(const char* Format, ...);
 typedef void (log_msg_func)(const char* Function, int Line, const char* Format, ...);
 typedef buffer (load_entire_file_func)(const char* Path, memory_arena* Arena);
-typedef VkSurfaceKHR (create_vulkan_surface_func)(VkInstance VulkanInstance);
 typedef bool (toggle_cursor_func)();
 typedef counter (get_performance_counter_func)();
 typedef f32 (get_elapsed_time_func)(counter Start, counter End);
 typedef f32 (get_time_from_counter_func)(counter Counter);
+
+#ifndef VULKAN_CORE_H_
+extern "C"
+{
+    typedef struct VkInstance_T* VkInstance;
+    typedef struct VkSurfaceKHR_T* VkSurfaceKHR; // NOTE(boti): this only works on 64-bit architectures!
+}
+#endif
+typedef VkSurfaceKHR (create_vulkan_surface_func)(VkInstance VulkanInstance);
 
 struct platform_api
 {

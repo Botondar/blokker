@@ -122,7 +122,7 @@ void UpdatePlayer(game_state* Game, world* World, game_io* IO, player* Player, r
     f32 dt = IO->DeltaTime;
 
     // Crosshair
-    vec2 ScreenExtent = { (f32)Frame->RenderExtent.width, (f32)Frame->RenderExtent.height };
+    vec2 ScreenExtent = { (f32)Frame->RenderExtent.x, (f32)Frame->RenderExtent.y };
     vec2 ScreenCenterP = 0.5f * ScreenExtent;
     constexpr f32 CrosshairRadius = 20.0f;
     constexpr f32 CrosshairWidth = 1.0f;
@@ -137,8 +137,8 @@ void UpdatePlayer(game_state* Game, world* World, game_io* IO, player* Player, r
 
     if (World->Debug.IsHitboxEnabled)
     {
-        ImBoxOutline(Frame, 0.0025f, GetAABB(Player), PackColor(0xFF, 0x00, 0x00));
-        ImBoxOutline(Frame, 0.0025f, GetVerticalAABB(Player), PackColor(0xFF, 0xFF, 0x00));
+        ImBoxOutline(Frame, GetAABB(Player), PackColor(0xFF, 0x00, 0x00), 0.0025f);
+        ImBoxOutline(Frame, GetVerticalAABB(Player), PackColor(0xFF, 0xFF, 0x00), 0.0025f);
     }
 
     // Block breaking
@@ -152,9 +152,10 @@ void UpdatePlayer(game_state* Game, world* World, game_io* IO, player* Player, r
 
         if (Player->HasTargetBlock)
         {
-            ImBoxOutline(Frame, 0.0025f, 
-                         MakeAABB((vec3)Player->TargetBlock, (vec3)Player->TargetBlock + vec3{ 1.0, 1.0 , 1.0 }), 
-                         PackColor(0x00, 0x00, 0x00));
+            ImBoxOutline(Frame,
+                         MakeAABB((vec3)Player->TargetBlock, (vec3)Player->TargetBlock + vec3{ 1.0, 1.0 , 1.0 }),
+                         PackColor(0x00, 0x00, 0x00),
+                         0.0025f);
 
             // Breaking
             if ((OldTargetBlock == Player->TargetBlock) && Player->Control.PrimaryAction)
@@ -169,7 +170,7 @@ void UpdatePlayer(game_state* Game, world* World, game_io* IO, player* Player, r
                     vec2 P0 = { ScreenCenterP.x - 0.5f * Width, ScreenExtent.y - OffsetY - 0.5f * Height }; // Upper-left
                     vec2 P1 = P0 + vec2{Width, Height}; // Lower-right
 
-                    ImRectOutline2D(Frame, outline_type::Outer, OutlineSize, P0, P1, PackColor(0xFF, 0xFF, 0xFF));
+                    ImRectOutline2D(Frame, P0, P1, PackColor(0xFF, 0xFF, 0xFF), OutlineSize, outline_type::Outer);
 
                     // Center
                     f32 FillRatio = World->Player.BreakTime / World->Player.BlockBreakTime;

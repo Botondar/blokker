@@ -1,9 +1,8 @@
 #pragma once
+
 #include <Common.hpp>
 #include <Math.hpp>
 #include <Random.hpp>
-#include <Renderer/RendererCommon.hpp>
-
 #include <Memory.hpp>
 
 struct world;

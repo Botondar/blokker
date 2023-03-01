@@ -1,8 +1,5 @@
 #pragma once
 
-//#include <vulkan/vulkan.h>
-//#include <Common.hpp>
-
 struct render_target_heap
 {
     VkDevice Device;

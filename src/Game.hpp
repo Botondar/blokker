@@ -1,10 +1,12 @@
 #pragma once
 
 #include <Common.hpp>
+#include <Intrinsics.hpp>
 #include <Math.hpp>
+#include <Shapes.hpp>
 
 #include <Platform.hpp>
-#include <Renderer/Renderer.hpp>
+#include <Renderer/RenderAPI.hpp>
 #include <Audio.hpp>
 #include <World.hpp>
 

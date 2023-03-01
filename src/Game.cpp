@@ -18,9 +18,9 @@
 //
 // Internal interface
 //
-static bool InitializeImGui(game_state* Game);
 static bool InitializeSounds(game_state* Game);
-static bool InitializeTextures(renderer* Renderer, memory_arena* Arena);
+static bool InitializeImGui(game_state* Game);
+static bool InitializeTextures(memory_arena* Arena, renderer_init_info* RendererInfo);
 
 static void DoDebugUI(game_state* Game, game_io* IO, render_frame* Frame);
 
@@ -53,21 +53,20 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
             Game->PrimaryArena = PermanentArena;
             Game->TransientArena = TransientArena;
             InitializeSounds(Game);
-            
-            Game->Renderer = PushStruct<renderer>(&Game->PrimaryArena);
+            InitializeImGui(Game);
+
+            renderer_init_info RendererInfo = {};
+            InitializeTextures(&Game->TransientArena, &RendererInfo);
+            u8* ImGuiTextureData = nullptr;
+            ImGui::GetIO().Fonts->GetTexDataAsAlpha8(&ImGuiTextureData,
+                                                     (s32*)&RendererInfo.ImGuiTextureWidth,
+                                                     (s32*)&RendererInfo.ImGuiTextureHeight);
+            RendererInfo.ImGuiTextureData = (void*)ImGuiTextureData;
+
+            Game->Renderer = CreateRenderer(&Game->PrimaryArena, &Game->TransientArena, &RendererInfo);
             if (Game->Renderer)
             {
-                // TODO(boti): WE DON'T WANT THE RENDERER TO USE THE PRIMARY ARENA FOR LOADING TEMPORARY DATA !!!!!!!!!!
-                if (Renderer_Initialize(Game->Renderer, &Game->PrimaryArena))
-                {
-                    if (InitializeTextures(Game->Renderer, &Game->TransientArena))
-                    {
-                        if (InitializeImGui(Game))
-                        {
-                            InitializationSuccessful = true;
-                        }
-                    }
-                }
+                InitializationSuccessful = true;
             }
         }
 
@@ -77,7 +76,7 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
             return;
         }
     }
-
+    
     Game->TransientArenaMaxUsed = Max(Game->TransientArenaMaxUsed, Game->TransientArena.Used);
     Game->TransientArenaLastUsed = Game->TransientArena.Used;
     ResetArena(&Game->TransientArena);
@@ -128,7 +127,7 @@ static void DoDebugUI(game_state* Game, game_io* IO, render_frame* Frame)
 {
     {
         ImGuiIO& ImIO = ImGui::GetIO();
-        ImIO.DisplaySize = { (f32)Frame->RenderExtent.width, (f32)Frame->RenderExtent.height };
+        ImIO.DisplaySize = { (f32)Frame->RenderExtent.x, (f32)Frame->RenderExtent.y };
         ImIO.DeltaTime = (IO->DeltaTime == 0.0f) ? 1000.0f : IO->DeltaTime; // NOTE(boti): ImGui doesn't want 0 dt
 
         if (IO->IsCursorEnabled)
@@ -172,6 +171,7 @@ static void DoDebugUI(game_state* Game, game_io* IO, render_frame* Frame)
                         Game->TransientArenaMaxUsed >> 20,
                         Game->TransientArena.Size >> 20,
                         100.0 * ((f64)Game->TransientArenaMaxUsed / (f64)Game->TransientArena.Size));
+#if 0
             ImGui::Text("RenderTarget: %lluMB / %lluMB (%.1f%%)\n",
                         Game->Renderer->RTHeap.HeapOffset >> 20,
                         Game->Renderer->RTHeap.HeapSize >> 20,
@@ -180,6 +180,7 @@ static void DoDebugUI(game_state* Game, game_io* IO, render_frame* Frame)
                         Game->Renderer->VB.MemoryUsage >> 20,
                         Game->Renderer->VB.MemorySize >> 20,
                         100.0 * Game->Renderer->VB.MemoryUsage / Game->Renderer->VB.MemorySize);
+#endif
         }
         ImGui::End();
 
@@ -194,27 +195,14 @@ static void DoDebugUI(game_state* Game, game_io* IO, render_frame* Frame)
 
 static bool InitializeImGui(game_state* Game)
 {
-    bool Result = false;
+    bool Result = true;
 
-    ImGui::CreateContext();
     ImGui::StyleColorsDark();
-
     ImGuiIO& IO = ImGui::GetIO();
     IO.BackendPlatformName = "Blokker";
 
     IO.ImeWindowHandle = nullptr; // TODO(boti): needed for IME positionion
 
-    // TODO(boti): implement IO.KeyMap here
-
-    s32 TexWidth, TexHeight;
-    u8* TexData;
-    IO.Fonts->GetTexDataAsAlpha8(&TexData, &TexWidth, &TexHeight);
-
-    if (Renderer_CreateImGuiTexture(Game->Renderer, (u32)TexWidth, (u32)TexHeight, TexData))
-    {
-        IO.Fonts->SetTexID((ImTextureID)(u64)Game->Renderer->ImGuiTextureID);
-        Result = true;
-    }
     return Result;
 }
 
@@ -341,7 +329,7 @@ static bool InitializeSounds(game_state* Game)
     return(Result);
 }
 
-static bool InitializeTextures(renderer* Renderer, memory_arena* Arena)
+static bool InitializeTextures(memory_arena* Arena, renderer_init_info* RendererInfo)
 {
     bool Result = false;
     const char* TexturePaths[] = 
@@ -368,8 +356,12 @@ static bool InitializeTextures(renderer* Renderer, memory_arena* Arena)
         TexelCountPerTexture += (TextureWidth >> i) * (TextureHeight >> i);
     }
 
-    u32* PixelBuffer = PushArray<u32>(Arena, TexelCountPerTexture * TextureCount);
-    u32* PixelBufferAt = PixelBuffer;
+    RendererInfo->TextureWidth = TextureWidth;
+    RendererInfo->TextureHeight = TextureHeight;
+    RendererInfo->TextureArrayCount = TextureCount;
+    RendererInfo->TextureMipCount = TextureMipCount;
+    RendererInfo->TextureData = (void*)PushArray<u32>(Arena, TexelCountPerTexture * TextureCount);
+    u32* PixelBufferAt = (u32*)RendererInfo->TextureData;
     for (u32 TextureIndex = 0; TextureIndex < TextureCount; TextureIndex++)
     {
         buffer BitmapBuffer = Platform.LoadEntireFile(TexturePaths[TextureIndex], Arena);
@@ -448,8 +440,5 @@ static bool InitializeTextures(renderer* Renderer, memory_arena* Arena)
         }
     }
 
-    Result = Renderer_CreateVoxelTextureArray(Renderer, 
-                                              TextureWidth, TextureHeight, TextureMipCount,
-                                              TextureCount, (u8*)PixelBuffer);
     return(Result);
 }

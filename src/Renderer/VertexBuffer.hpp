@@ -1,8 +1,5 @@
 #pragma once
 
-//#include <vulkan/vulkan.h>
-//#include <Common.hpp>
-
 struct vertex_buffer_block
 {
     u32 VertexCount;

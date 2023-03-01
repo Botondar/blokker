@@ -1,8 +1,5 @@
 #pragma once
 
-//#include <vulkan/vulkan.hpp>
-//#include <Common.hpp>
-
 enum class resource_type : u32
 {
     Undefined = 0,
