@@ -30,7 +30,8 @@ typedef f32 (get_time_from_counter_func)(counter Counter);
 extern "C"
 {
     typedef struct VkInstance_T* VkInstance;
-    typedef struct VkSurfaceKHR_T* VkSurfaceKHR; // NOTE(boti): this only works on 64-bit architectures!
+    // NOTE(boti): VkSurfaceKHR is a non-dispatchable handle so this only works on 64-bit architectures!
+    typedef struct VkSurfaceKHR_T* VkSurfaceKHR; 
 }
 #endif
 typedef VkSurfaceKHR (create_vulkan_surface_func)(VkInstance VulkanInstance);
