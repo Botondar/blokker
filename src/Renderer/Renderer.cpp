@@ -493,15 +493,22 @@ vertex_buffer_block* AllocateAndUploadVertexBlock(render_frame* Frame,
 
 void RenderVertexBlock(render_frame* Frame, vertex_buffer_block* VertexBlock, vec2 P)
 {
-    u32 Index = Frame->DrawCount++;
-    Frame->DrawPositions[Index] = P;
-    Frame->DrawList[Index] = 
+    if (Frame->DrawCount < Frame->MaxDrawCount)
     {
-        .VertexCount = VertexBlock->VertexCount,
-        .InstanceCount = 1,
-        .VertexOffset = VertexBlock->VertexOffset,
-        .InstanceOffset = Index,
-    };
+        u32 Index = Frame->DrawCount++;
+        Frame->DrawPositions[Index] = P;
+        Frame->DrawList[Index] = 
+        {
+            .VertexCount = VertexBlock->VertexCount,
+            .InstanceCount = 1,
+            .VertexOffset = VertexBlock->VertexOffset,
+            .InstanceOffset = Index,
+        };
+    }
+    else
+    {
+        UnhandledError("Draw buffer out of memory");
+    }
 }
 
 bool ImTriangleList(render_frame* Frame_, 
@@ -2746,6 +2753,9 @@ static bool Renderer_InitializeFrameParams(renderer* Renderer)
                             void* Mapping = nullptr;
                             if (vkMapMemory(Renderer->RenderDevice.Device, Memory, 0, DrawMemorySize, 0, &Mapping) == VK_SUCCESS)
                             {
+                                // TODO(boti): We should only set this if both the draw buffer and the instance buffer
+                                //             have been successfully created.
+                                Frame->MaxDrawCount = DrawCountPerFrame;
                                 Frame->DrawMemory = Memory;
                                 Frame->DrawBuffer = Buffer;
                                 Frame->DrawMapping = Mapping;
