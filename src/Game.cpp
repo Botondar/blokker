@@ -83,7 +83,6 @@ extern "C" void Game_UpdateAndRender(game_memory* Memory, game_io* IO)
     if (!Game->World)
     {
         Game->World = PushStruct<world>(&Game->PrimaryArena);
-        *Game->World = {}; // TODO(boti): see renderer initialization. The reason we have to clear this manually is because the renderer trashes the primary arena
         Game->World->Arena = &Game->PrimaryArena;
         if (!InitializeWorld(Game->World))
         {
