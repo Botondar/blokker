@@ -235,10 +235,24 @@ static bool RenderDevice_ChooseAndCreateDevice(
             .pNext = &DynamicStateFeatures,
         };
 
+#if ENABLE_VK_SHADER_OBJECT
+        VkPhysicalDeviceShaderObjectFeaturesEXT ShaderObjectFeatures = 
+        {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT,
+            .pNext = nullptr,
+            .shaderObject = VK_FALSE,
+        };
+        DynamicRenderingFeatures.pNext = &ShaderObjectFeatures;
+#endif
+
         vkGetPhysicalDeviceFeatures2(Device->PhysicalDevice, &DeviceFeatures);
         if ((DynamicRenderingFeatures.dynamicRendering) &&
             (DynamicStateFeatures.extendedDynamicState) &&
-            (DynamicStateFeatures2.extendedDynamicState2))
+            (DynamicStateFeatures2.extendedDynamicState2) 
+#if ENABLE_VK_SHADER_OBJECT
+            && (ShaderObjectFeatures.shaderObject)
+#endif
+        )
         {
             // Enumerate queues and queue families
             Device->GraphicsFamilyIndex = INVALID_INDEX_U32;
@@ -306,7 +320,22 @@ static bool RenderDevice_ChooseAndCreateDevice(
                     vkGetDeviceQueue(Device->Device, Device->GraphicsFamilyIndex, 0, &Device->GraphicsQueue);
                     vkGetDeviceQueue(Device->Device, Device->TransferFamilyIndex, 0, &Device->TransferQueue);
 
+#if ENABLE_VK_SHADER_OBJECT
+                    #define Vulkan_LoadFunction(dev, name) name = (PFN_##name)vkGetDeviceProcAddr(dev, #name);
+                    Vulkan_LoadFunction(Device->Device, vkCreateShadersEXT);
+                    Vulkan_LoadFunction(Device->Device, vkDestroyShaderEXT);
+                    Vulkan_LoadFunction(Device->Device, vkGetShaderBinaryDataEXT);
+                    Vulkan_LoadFunction(Device->Device, vkCmdBindShadersEXT);
+                    #undef Vulkan_LoadFunction
+
+                    if (vkCreateShadersEXT && vkDestroyShaderEXT &&
+                        vkGetShaderBinaryDataEXT && vkCmdBindShadersEXT)
+                    {
+                        Result = true;
+                    }
+#else
                     Result = true;
+#endif
                 }
             }
         }
@@ -376,22 +405,7 @@ bool CreateRenderDevice(render_device* RenderDevice)
                     RequiredDeviceLayers, RequiredDeviceLayerCount,
                     RequiredDeviceExtensions, RequiredDeviceExtensionCount))
             {
-#if ENABLE_VK_SHADER_OBJECT
-                #define Vulkan_LoadFunction(dev, name) name = (PFN_##name)vkGetDeviceProcAddr(dev, #name);
-                Vulkan_LoadFunction(RenderDevice->Device, vkCreateShadersEXT);
-                Vulkan_LoadFunction(RenderDevice->Device, vkDestroyShaderEXT);
-                Vulkan_LoadFunction(RenderDevice->Device, vkGetShaderBinaryDataEXT);
-                Vulkan_LoadFunction(RenderDevice->Device, vkCmdBindShadersEXT);
-                #undef Vulkan_LoadFunction
-
-                if (vkCreateShadersEXT && vkDestroyShaderEXT &&
-                    vkGetShaderBinaryDataEXT && vkCmdBindShadersEXT)
-                {
-                    Result = true;
-                }
-#else
                 Result = true;
-#endif
             }
         }
     }
