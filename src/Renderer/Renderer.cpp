@@ -10,6 +10,11 @@
 #include "StagingHeap.cpp"
 #include "VertexBuffer.cpp"
 
+Vulkan_DeclareFunctionPointer(vkCreateShadersEXT) = nullptr;
+Vulkan_DeclareFunctionPointer(vkDestroyShaderEXT) = nullptr;
+Vulkan_DeclareFunctionPointer(vkGetShaderBinaryDataEXT) = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdBindShadersEXT) = nullptr;
+
 static bool Renderer_InitializeFrameParams(renderer* Renderer);
 static bool Renderer_ResizeRenderTargets(renderer* Renderer);
 static bool Renderer_CreateVoxelTextureArray(renderer* Renderer, u32 Width, u32 Height, u32 MipCount, u32 ArrayCount,const u8* Data);

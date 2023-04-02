@@ -355,6 +355,9 @@ bool CreateRenderDevice(render_device* RenderDevice)
     static const char* RequiredDeviceExtensions[] = 
     {
         "VK_KHR_swapchain",
+#if ENABLE_VK_SHADER_OBJECT
+        "VK_EXT_shader_object",
+#endif
         //"VK_KHR_synchronization2",
     };
 
@@ -373,7 +376,22 @@ bool CreateRenderDevice(render_device* RenderDevice)
                     RequiredDeviceLayers, RequiredDeviceLayerCount,
                     RequiredDeviceExtensions, RequiredDeviceExtensionCount))
             {
+#if ENABLE_VK_SHADER_OBJECT
+                #define Vulkan_LoadFunction(dev, name) name = (PFN_##name)vkGetDeviceProcAddr(dev, #name);
+                Vulkan_LoadFunction(RenderDevice->Device, vkCreateShadersEXT);
+                Vulkan_LoadFunction(RenderDevice->Device, vkDestroyShaderEXT);
+                Vulkan_LoadFunction(RenderDevice->Device, vkGetShaderBinaryDataEXT);
+                Vulkan_LoadFunction(RenderDevice->Device, vkCmdBindShadersEXT);
+                #undef Vulkan_LoadFunction
+
+                if (vkCreateShadersEXT && vkDestroyShaderEXT &&
+                    vkGetShaderBinaryDataEXT && vkCmdBindShadersEXT)
+                {
+                    Result = true;
+                }
+#else
                 Result = true;
+#endif
             }
         }
     }

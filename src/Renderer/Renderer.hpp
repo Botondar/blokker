@@ -1,6 +1,6 @@
 #pragma once
 
-#define BLOKKER_RENDERER_REWRITE 1
+#define ENABLE_VK_SHADER_OBJECT 1
 
 #include <Common.hpp>
 #include <Intrinsics.hpp>
@@ -14,6 +14,72 @@
 #include <Platform.hpp>
 
 #include <vulkan/vulkan.h>
+#define Vulkan_FunctionSignature(name, ret, ...) typedef ret (VKAPI_CALL *PFN_##name)(__VA_ARGS__)
+#define Vulkan_CommandSignature(name, ...) Vulkan_FunctionSignature(name, void, VkCommandBuffer, __VA_ARGS__)
+#define Vulkan_DeclareFunctionPointer(name) PFN_##name name
+
+#define VK_EXT_shader_object 1
+
+VK_DEFINE_HANDLE(VkShaderEXT);
+
+typedef enum VkShaderCodeTypeEXT {
+    VK_SHADER_CODE_TYPE_BINARY_EXT = 0,
+    VK_SHADER_CODE_TYPE_SPIRV_EXT = 1,
+} VkShaderCodeTypeEXT;
+
+typedef enum VkShaderCreateFlagBitsEXT {
+    VK_SHADER_CREATE_LINK_STAGE_BIT_EXT = 0x00000001,
+    VK_SHADER_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT_EXT = 0x00000002,
+    VK_SHADER_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT = 0x00000004,
+    VK_SHADER_CREATE_NO_TASK_SHADER_BIT_EXT = 0x00000008,
+    VK_SHADER_CREATE_DISPATCH_BASE_BIT_EXT = 0x00000010,
+    VK_SHADER_CREATE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_EXT = 0x00000020,
+    VK_SHADER_CREATE_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT = 0x00000040,
+} VkShaderCreateFlagBitsEXT;
+typedef VkFlags VkShaderCreateFlagsEXT;
+
+// Extends VkPhysicalDeviceFeatures2, VkDeviceCreateInfo
+typedef struct VkPhysicalDeviceShaderObjectFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           shaderObject;
+} VkPhysicalDeviceShaderObjectFeaturesEXT;
+
+// Extends VkPhysicalDeviceProperties2
+typedef struct VkPhysicalDeviceShaderObjectPropertiesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    uint8_t            shaderBinaryUUID[VK_UUID_SIZE];
+    uint32_t           shaderBinaryVersion;
+} VkPhysicalDeviceShaderObjectPropertiesEXT;
+
+typedef struct VkShaderCreateInfoEXT {
+    VkStructureType                 sType;
+    const void*                     pNext;
+    VkShaderCreateFlagsEXT          flags;
+    VkShaderStageFlagBits           stage;
+    VkShaderStageFlags              nextStage;
+    VkShaderCodeTypeEXT             codeType;
+    size_t                          codeSize;
+    const void*                     pCode;
+    const char*                     pName;
+    uint32_t                        setLayoutCount;
+    const VkDescriptorSetLayout*    pSetLayouts;
+    uint32_t                        pushConstantRangeCount;
+    const VkPushConstantRange*      pPushConstantRanges;
+    const VkSpecializationInfo*     pSpecializationInfo;
+} VkShaderCreateInfoEXT;
+
+Vulkan_FunctionSignature(vkCreateShadersEXT, VkResult, VkDevice, uint32_t, const VkShaderCreateInfoEXT*, const VkAllocationCallbacks*, VkShaderEXT*);
+Vulkan_FunctionSignature(vkDestroyShaderEXT, VkResult, VkDevice, VkShaderEXT, const VkAllocationCallbacks*);
+Vulkan_FunctionSignature(vkGetShaderBinaryDataEXT, VkResult, VkDevice, VkShaderEXT, size_t*, void*);
+Vulkan_CommandSignature(vkCmdBindShadersEXT, uint32_t, const VkShaderStageFlagBits*, const VkShaderEXT*);
+
+extern Vulkan_DeclareFunctionPointer(vkCreateShadersEXT);
+extern Vulkan_DeclareFunctionPointer(vkDestroyShaderEXT);
+extern Vulkan_DeclareFunctionPointer(vkGetShaderBinaryDataEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdBindShadersEXT);
+
 #include <Renderer/RenderDevice.hpp>
 #include <Renderer/RTHeap.hpp>
 #include <Renderer/StagingHeap.hpp>
