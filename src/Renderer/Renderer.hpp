@@ -29,7 +29,6 @@ enum attrib_location : u32
     ATTRIB_CHUNK_P = 3,
 };
 
-#if 1
 struct vulkan_render_frame : public render_frame
 {
     VkCommandPool CmdPool;
@@ -69,81 +68,7 @@ struct vulkan_render_frame : public render_frame
     u64 VertexSize;
     u64 VertexOffset;
 };
-#else
-struct render_frame
-{
-    u64 FrameIndex;
-    u32 BufferIndex;
 
-    VkExtent2D RenderExtent;
-
-    //camera Camera;
-    mat4 ProjectionTransform;
-    mat4 ViewTransform;
-    mat4 PixelTransform;
-
-    VkCommandPool CmdPool;
-    VkCommandBuffer PrimaryCmdBuffer;
-    VkCommandBuffer TransferCmdBuffer;
-
-    VkCommandBuffer SceneCmdBuffer;
-    VkCommandBuffer ImmediateCmdBuffer;
-    VkCommandBuffer ImGuiCmdBuffer;
-
-    VkSemaphore ImageAcquiredSemaphore;
-    VkSemaphore RenderFinishedSemaphore;
-
-    VkSemaphore TransferFinishedSemaphore;
-
-    VkFence RenderFinishedFence;
-
-    VkImage DepthBuffer;
-    VkImageView DepthBufferView;
-
-    VkImage SwapchainImage;
-    VkImageView SwapchainImageView;
-    u32 SwapchainImageIndex;
-
-    struct 
-    {
-        static constexpr u64 VertexStackSize = MiB(64);
-
-        VkDeviceMemory Memory;
-        VkBuffer Buffer;
-
-        u64 Size;
-        u64 At;
-
-        void* Mapping;
-    } VertexStack;
-
-    struct 
-    {
-        static constexpr u64 MaxDrawCount = 128 * 1024;
-        static constexpr u64 MemorySize = MaxDrawCount * sizeof(VkDrawIndirectCommand);
-
-        VkDeviceMemory Memory;
-        VkBuffer Buffer;
-
-        u32 DrawIndex;
-        VkDrawIndirectCommand* Commands;
-    } DrawCommands;
-
-    struct 
-    {
-        static constexpr u64 MemorySize = MiB(4);
-        static constexpr u64 MaxChunkCount = MemorySize / sizeof(vec2);
-
-        VkDeviceMemory Memory;
-        VkBuffer Buffer;
-
-        u64 ChunkAt;
-        vec2* Mapping;
-    } ChunkPositions;
-
-    struct renderer* Renderer;
-};
-#endif
 struct renderer 
 {
     render_device RenderDevice;
@@ -206,39 +131,3 @@ struct renderer
 
     u64 CurrentFrameIndex;
 };
-
-#if 0
-renderer* CreateRenderer(memory_arena* Arena, memory_arena* TransientArena,
-                         const renderer_init_info* RendererInfo);
-
-render_frame* BeginRenderFrame(renderer* Renderer, bool DoResize);
-void EndRenderFrame(render_frame* Frame);
-
-vertex_buffer_block* AllocateAndUploadVertexBlock(render_frame* Frame,
-                                                 u64 DataSize0, const void* Data0,
-                                                 u64 DataSize1, const void* Data1);
-bool UploadVertexBlock(render_frame* Frame, 
-                      vertex_buffer_block* Block,
-                      u64 DataSize0, const void* Data0,
-                      u64 DataSize1, const void* Data1);
-void FreeVertexBlock(render_frame* Frame, vertex_buffer_block* Block);
-
-void RenderChunk(render_frame* Frame, vertex_buffer_block* VertexBlock, vec2 P);
-
-enum class outline_type : u32
-{
-    Outer = 0,
-    Inner,
-};
-
-bool ImTriangleList(render_frame* Frame, 
-                    u32 VertexCount, const vertex* VertexData, 
-                    mat4 Transform, f32 DepthBias);
-
-void ImBox(render_frame* Frame, aabb Box, u32 Color, f32 DepthBias = 0.0f);
-void ImBoxOutline(render_frame* Frame, f32 OutlineSize, aabb Box, u32 Color);
-void ImRect2D(render_frame* Frame, vec2 p0, vec2 p1, u32 Color);
-void ImRectOutline2D(render_frame* Frame, outline_type Type, f32 OutlineSize, vec2 p0, vec2 p1, u32 Color);
-
-void RenderImGui(render_frame* Frame, const ImDrawData* DrawData);
-#endif
