@@ -18,7 +18,21 @@
 #define Vulkan_CommandSignature(name, ...) Vulkan_FunctionSignature(name, void, VkCommandBuffer, __VA_ARGS__)
 #define Vulkan_DeclareFunctionPointer(name) PFN_##name name
 
+#ifndef VK_EXT_shader_object
 #define VK_EXT_shader_object 1
+#define VK_EXT_SHADER_OBJECT_EXTENSION_NAME "VK_EXT_shader_object"
+
+// VkObjectType
+#define VK_OBJECT_TYPE_SHADER_EXT 1000482000
+// VkResult
+#define VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT 1000482000
+// VkStructureType
+#define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT 1000482000
+#define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_PROPERTIES_EXT 1000482001
+#define VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT 1000482002
+#define VK_STRUCTURE_TYPE_SHADER_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO
+#define VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT 1000352002
+#define VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT 1000352001
 
 VK_DEFINE_HANDLE(VkShaderEXT);
 
@@ -74,6 +88,7 @@ Vulkan_FunctionSignature(vkCreateShadersEXT, VkResult, VkDevice, uint32_t, const
 Vulkan_FunctionSignature(vkDestroyShaderEXT, VkResult, VkDevice, VkShaderEXT, const VkAllocationCallbacks*);
 Vulkan_FunctionSignature(vkGetShaderBinaryDataEXT, VkResult, VkDevice, VkShaderEXT, size_t*, void*);
 Vulkan_CommandSignature(vkCmdBindShadersEXT, uint32_t, const VkShaderStageFlagBits*, const VkShaderEXT*);
+#endif
 
 extern Vulkan_DeclareFunctionPointer(vkCreateShadersEXT);
 extern Vulkan_DeclareFunctionPointer(vkDestroyShaderEXT);
