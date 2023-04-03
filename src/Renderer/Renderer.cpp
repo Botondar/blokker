@@ -730,18 +730,21 @@ void RenderImGui(render_frame* Frame_, const ImDrawData* DrawData)
         {
             Frame->VertexOffset = ImGuiDataEnd;
 
-            vkCmdBindPipeline(Frame->ImGuiCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImGuiPipeline);
+            //vkCmdBindPipeline(Frame->ImGuiCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImGuiPipeline);
+            VkShaderStageFlagBits Stages[] = { VK_SHADER_STAGE_VERTEX_BIT, VK_SHADER_STAGE_FRAGMENT_BIT };
+            VkShaderEXT Shaders[] = { Frame->Renderer->ImGuiVS, Frame->Renderer->ImGuiFS };
+
+            vkCmdBindShadersEXT(Frame->ImGuiCmdBuffer, CountOf(Stages), Stages, Shaders);
+            vkCmdPushConstants(
+                Frame->ImGuiCmdBuffer, 
+                VK_NULL_HANDLE,
+                VK_SHADER_STAGE_VERTEX_BIT,
+                0, sizeof(Frame->PixelTransform), &Frame->PixelTransform);
             vkCmdBindDescriptorSets(
                 Frame->ImGuiCmdBuffer, 
                 VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                Frame->Renderer->ImGuiPipelineLayout,
+                VK_NULL_HANDLE,
                 0, 1, &Frame->Renderer->ImGuiDescriptorSet, 0, nullptr);
-
-            vkCmdPushConstants(
-                Frame->ImGuiCmdBuffer, 
-                Frame->Renderer->ImGuiPipelineLayout, 
-                VK_SHADER_STAGE_VERTEX_BIT,
-                0, sizeof(Frame->PixelTransform), &Frame->PixelTransform);
 
             vkCmdBindVertexBuffers(Frame->ImGuiCmdBuffer, 0, 1, &Frame->VertexBuffer, &VertexDataOffset);
             VkIndexType IndexType = (sizeof(ImDrawIdx) == 2) ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
@@ -795,6 +798,7 @@ void RenderImGui(render_frame* Frame_, const ImDrawData* DrawData)
                 .extent = VkExtent2DFromVec2i(Frame->RenderExtent),
             };
             vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
+            vkCmdBindShadersEXT(Frame->ImGuiCmdBuffer, CountOf(Stages), Stages, nullptr);
         }
         else
         {
@@ -1314,7 +1318,7 @@ renderer* CreateRenderer(memory_arena* Arena, memory_arena* TransientArena,
                 {
                     .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
                     .pNext = nullptr,
-                    .flags = 0,
+                    .flags = VK_SHADER_CREATE_LINK_STAGE_BIT_EXT ,
                     .stage = VK_SHADER_STAGE_VERTEX_BIT,
                     .nextStage = VK_SHADER_STAGE_FRAGMENT_BIT,
                     .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
@@ -1330,7 +1334,7 @@ renderer* CreateRenderer(memory_arena* Arena, memory_arena* TransientArena,
                 {
                     .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
                     .pNext = nullptr,
-                    .flags = 0,
+                    .flags = VK_SHADER_CREATE_LINK_STAGE_BIT_EXT ,
                     .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
                     .nextStage = 0,
                     .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
@@ -1757,6 +1761,64 @@ renderer* CreateRenderer(memory_arena* Arena, memory_arena* TransientArena,
             }
         }
 
+#if ENABLE_VK_SHADER_OBJECT
+        {
+            memory_arena_checkpoint Checkpoint = ArenaCheckpoint(TransientArena);
+            shader_bin ShaderBinary = LoadShader("shader/imguishader", TransientArena);
+            Assert(ShaderBinary.VS.Size > 0 && ShaderBinary.FS.Size > 0);
+
+            VkPushConstantRange PushConstants = 
+            {
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                .offset = 0,
+                .size = sizeof(mat4),
+            };
+
+            VkShaderCreateInfoEXT Infos[] = 
+            {
+                {
+                    .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+                    .pNext = nullptr,
+                    .flags = VK_SHADER_CREATE_LINK_STAGE_BIT_EXT ,
+                    .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                    .nextStage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                    .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+                    .codeSize = ShaderBinary.VS.Size,
+                    .pCode = ShaderBinary.VS.Data,
+                    .pName = "main",
+                    .setLayoutCount = 1,
+                    .pSetLayouts = &Renderer->ImGuiSetLayout,
+                    .pushConstantRangeCount = 1,
+                    .pPushConstantRanges = &PushConstants,
+                    .pSpecializationInfo = nullptr,
+                },
+                {
+                    .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+                    .pNext = nullptr,
+                    .flags = VK_SHADER_CREATE_LINK_STAGE_BIT_EXT ,
+                    .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                    .nextStage = 0,
+                    .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+                    .codeSize = ShaderBinary.FS.Size,
+                    .pCode = ShaderBinary.FS.Data,
+                    .pName = "main",
+                    .setLayoutCount = 1,
+                    .pSetLayouts = &Renderer->ImGuiSetLayout,
+                    .pushConstantRangeCount = 1,
+                    .pPushConstantRanges = &PushConstants,
+                    .pSpecializationInfo = nullptr,
+                },
+            };
+
+            VkShaderEXT Shaders[2];
+            Result = vkCreateShadersEXT(Renderer->RenderDevice.Device, CountOf(Infos), Infos, nullptr, Shaders);
+            Assert(Result == VK_SUCCESS);
+            Renderer->ImGuiVS = Shaders[0];
+            Renderer->ImGuiFS = Shaders[1];
+            RestoreArena(TransientArena, Checkpoint);
+        }
+#endif
+
         // Create pipeline layout
         {
             VkPushConstantRange PushConstants = 
@@ -2040,6 +2102,64 @@ renderer* CreateRenderer(memory_arena* Arena, memory_arena* TransientArena,
 
     // ImPipeline
     {
+#if ENABLE_VK_SHADER_OBJECT
+        {
+            memory_arena_checkpoint Checkpoint = ArenaCheckpoint(TransientArena);
+            shader_bin ShaderBinary = LoadShader("shader/imshader", TransientArena);
+            Assert(ShaderBinary.VS.Size > 0 && ShaderBinary.FS.Size > 0);
+
+            VkPushConstantRange PushConstants = 
+            {
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                .offset = 0,
+                .size = sizeof(mat4),
+            };
+
+            VkShaderCreateInfoEXT Infos[] = 
+            {
+                {
+                    .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+                    .pNext = nullptr,
+                    .flags = VK_SHADER_CREATE_LINK_STAGE_BIT_EXT ,
+                    .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                    .nextStage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                    .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+                    .codeSize = ShaderBinary.VS.Size,
+                    .pCode = ShaderBinary.VS.Data,
+                    .pName = "main",
+                    .setLayoutCount = 0,
+                    .pSetLayouts = nullptr,
+                    .pushConstantRangeCount = 1,
+                    .pPushConstantRanges = &PushConstants,
+                    .pSpecializationInfo = nullptr,
+                },
+                {
+                    .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+                    .pNext = nullptr,
+                    .flags = VK_SHADER_CREATE_LINK_STAGE_BIT_EXT ,
+                    .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                    .nextStage = 0,
+                    .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+                    .codeSize = ShaderBinary.FS.Size,
+                    .pCode = ShaderBinary.FS.Data,
+                    .pName = "main",
+                    .setLayoutCount = 0,
+                    .pSetLayouts = nullptr,
+                    .pushConstantRangeCount = 1,
+                    .pPushConstantRanges = &PushConstants,
+                    .pSpecializationInfo = nullptr,
+                },
+            };
+
+            VkShaderEXT Shaders[2];
+            Result = vkCreateShadersEXT(Renderer->RenderDevice.Device, CountOf(Infos), Infos, nullptr, Shaders);
+            Assert(Result == VK_SUCCESS);
+            Renderer->ImVS = Shaders[0];
+            Renderer->ImFS = Shaders[1];
+            RestoreArena(TransientArena, Checkpoint);
+        }
+#endif
+
         // Create pipeline layout
         {
             VkPushConstantRange PushConstants = 
