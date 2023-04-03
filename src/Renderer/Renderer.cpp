@@ -3,8 +3,6 @@
 #include <Platform.hpp>
 #include <Profiler.hpp>
 
-//#include <imgui/imgui.h>
-
 #include "RenderDevice.cpp"
 #include "RTHeap.cpp"
 #include "StagingHeap.cpp"
@@ -14,6 +12,12 @@ Vulkan_DeclareFunctionPointer(vkCreateShadersEXT) = nullptr;
 Vulkan_DeclareFunctionPointer(vkDestroyShaderEXT) = nullptr;
 Vulkan_DeclareFunctionPointer(vkGetShaderBinaryDataEXT) = nullptr;
 Vulkan_DeclareFunctionPointer(vkCmdBindShadersEXT) = nullptr;
+
+struct shader_bin
+{
+    buffer VS;
+    buffer FS;
+};
 
 static bool Renderer_InitializeFrameParams(renderer* Renderer);
 static bool Renderer_ResizeRenderTargets(renderer* Renderer);
@@ -1106,44 +1110,49 @@ renderer* CreateRenderer(memory_arena* Arena, memory_arena* TransientArena,
         return nullptr;
     }
 
-    auto LoadAndCompileShaders = [Renderer, TransientArena](const char* Path, VkShaderModule* VS, VkShaderModule* FS) -> bool
+    auto LoadShader = [](const char* Path, memory_arena* Arena) -> shader_bin
     {
-        bool Result = false;
-        memory_arena_checkpoint Checkpoint = ArenaCheckpoint(TransientArena);
+        shader_bin Result = {};
         constexpr u64 MaxPathLength = 256;
         char Filename[MaxPathLength] = {};
 
         u64 PathLength = CopyZString(MaxPathLength, Filename, Path);
-        
         if (CopyZString(MaxPathLength - PathLength, Filename + PathLength, ".vs") == 3)
         {
-            buffer VSBuff = Platform.LoadEntireFile(Filename, TransientArena);
+            Result.VS = Platform.LoadEntireFile(Filename, Arena);
             CopyZString(MaxPathLength - PathLength, Filename + PathLength, ".fs");
-            buffer FSBuff = Platform.LoadEntireFile(Filename, TransientArena);
+            Result.FS = Platform.LoadEntireFile(Filename, Arena);
+        }
+        return(Result);
+    };
 
-            if (VSBuff.Size > 0 && FSBuff.Size > 0)
+    auto LoadAndCompileShaders = [Renderer, TransientArena, LoadShader](const char* Path, VkShaderModule* VS, VkShaderModule* FS) -> bool
+    {
+        bool Result = false;
+        memory_arena_checkpoint Checkpoint = ArenaCheckpoint(TransientArena);
+        shader_bin ShaderBinary = LoadShader(Path, TransientArena);
+        if (ShaderBinary.VS.Size > 0 && ShaderBinary.VS.Size > 0)
+        {
+            VkShaderModuleCreateInfo VSInfo = 
             {
-                VkShaderModuleCreateInfo VSInfo = 
-                {
-                    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                    .pNext = nullptr,
-                    .flags = 0,
-                    .codeSize = VSBuff.Size,
-                    .pCode = (u32*)VSBuff.Data,
-                };
-                VkShaderModuleCreateInfo FSInfo = 
-                {
-                    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                    .pNext = nullptr,
-                    .flags = 0,
-                    .codeSize = FSBuff.Size,
-                    .pCode = (u32*)FSBuff.Data,
-                };
-                if ((vkCreateShaderModule(Renderer->RenderDevice.Device, &VSInfo, nullptr, VS) == VK_SUCCESS) &&
-                    (vkCreateShaderModule(Renderer->RenderDevice.Device, &FSInfo, nullptr, FS) == VK_SUCCESS))
-                {
-                    Result = true;
-                }
+                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .codeSize = ShaderBinary.VS.Size,
+                .pCode = (u32*)ShaderBinary.VS.Data,
+            };
+            VkShaderModuleCreateInfo FSInfo = 
+            {
+                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .codeSize = ShaderBinary.FS.Size,
+                .pCode = (u32*)ShaderBinary.FS.Data,
+            };
+            if ((vkCreateShaderModule(Renderer->RenderDevice.Device, &VSInfo, nullptr, VS) == VK_SUCCESS) &&
+                (vkCreateShaderModule(Renderer->RenderDevice.Device, &FSInfo, nullptr, FS) == VK_SUCCESS))
+            {
+                Result = true;
             }
         }
 
@@ -1287,6 +1296,65 @@ renderer* CreateRenderer(memory_arena* Arena, memory_arena* TransientArena,
 
     // Main pipeline
     {
+#if ENABLE_VK_SHADER_OBJECT
+        {
+            memory_arena_checkpoint Checkpoint = ArenaCheckpoint(TransientArena);
+            shader_bin ShaderBinary = LoadShader("shader/shader", TransientArena);
+            Assert((ShaderBinary.VS.Size > 0) && (ShaderBinary.FS.Size > 0));
+
+            VkPushConstantRange PushConstants = 
+            {
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                .offset = 0,
+                .size = sizeof(mat4),
+            };
+
+            VkShaderCreateInfoEXT Infos[] = 
+            {
+                {
+                    .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+                    .pNext = nullptr,
+                    .flags = 0,
+                    .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                    .nextStage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                    .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+                    .codeSize = ShaderBinary.VS.Size,
+                    .pCode = ShaderBinary.VS.Data,
+                    .pName = "main",
+                    .setLayoutCount = 1,
+                    .pSetLayouts = &Renderer->DescriptorSetLayout,
+                    .pushConstantRangeCount = 1,
+                    .pPushConstantRanges = &PushConstants,
+                    .pSpecializationInfo = nullptr,
+                },
+                {
+                    .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+                    .pNext = nullptr,
+                    .flags = 0,
+                    .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                    .nextStage = 0,
+                    .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+                    .codeSize = ShaderBinary.FS.Size,
+                    .pCode = ShaderBinary.FS.Data,
+                    .pName = "main",
+                    .setLayoutCount = 1,
+                    .pSetLayouts = &Renderer->DescriptorSetLayout,
+                    .pushConstantRangeCount = 1,
+                    .pPushConstantRanges = &PushConstants,
+                    .pSpecializationInfo = nullptr,
+                },
+            };
+            constexpr u32 InfoCount = CountOf(Infos);
+
+            VkShaderEXT Shaders[InfoCount];
+            Result = vkCreateShadersEXT(Renderer->RenderDevice.Device, InfoCount, Infos, nullptr, Shaders);
+            Assert(Result == VK_SUCCESS);
+            Renderer->MainVS = Shaders[0];
+            Renderer->MainFS = Shaders[1];
+            RestoreArena(TransientArena, Checkpoint);
+        }
+#endif
+
         // Create pipeline layout
         {
             VkPushConstantRange PushConstants = 

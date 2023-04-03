@@ -67,7 +67,8 @@ static bool RenderDevice_CreateInstance(
                 .ppEnabledExtensionNames = Extensions,
             };
 
-            if (vkCreateInstance(&InstanceInfo, nullptr, &Device->Instance) == VK_SUCCESS)
+            VkResult VkRes = VK_SUCCESS;
+            if ((VkRes = vkCreateInstance(&InstanceInfo, nullptr, &Device->Instance)) == VK_SUCCESS)
             {
                 Result = true;
             }
@@ -402,8 +403,8 @@ bool CreateRenderDevice(render_device* RenderDevice)
         if (RenderDevice_EnableDebugging(RenderDevice))
         {
             if (RenderDevice_ChooseAndCreateDevice(RenderDevice, 
-                    RequiredDeviceLayers, RequiredDeviceLayerCount,
-                    RequiredDeviceExtensions, RequiredDeviceExtensionCount))
+                                                   RequiredDeviceLayers, RequiredDeviceLayerCount,
+                                                   RequiredDeviceExtensions, RequiredDeviceExtensionCount))
             {
                 Result = true;
             }

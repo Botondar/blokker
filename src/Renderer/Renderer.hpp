@@ -1,6 +1,6 @@
 #pragma once
 
-#define ENABLE_VK_SHADER_OBJECT 1
+#define ENABLE_VK_SHADER_OBJECT 0
 
 #include <Common.hpp>
 #include <Intrinsics.hpp>
@@ -180,7 +180,17 @@ struct renderer
     staging_heap StagingHeap;
 
     vertex_buffer VB;
+#if ENABLE_VK_SHADER_OBJECT
+    VkShaderEXT MainVS;
+    VkShaderEXT MainFS;
 
+    VkShaderEXT ImVS;
+    VkShaderEXT ImFS;
+
+    VkShaderEXT ImGuiVS;
+    VkShaderEXT ImGuiFS;
+#endif
+//#else
     VkPipelineLayout PipelineLayout;
     VkPipeline Pipeline;
 
@@ -189,7 +199,7 @@ struct renderer
 
     VkPipelineLayout ImGuiPipelineLayout;
     VkPipeline ImGuiPipeline;
-
+//#endif
     VkSampler Sampler;
     VkDescriptorSetLayout DescriptorSetLayout;
     VkDescriptorPool DescriptorPool;
