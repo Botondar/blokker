@@ -377,11 +377,6 @@ bool CreateRenderDevice(render_device* RenderDevice)
         "VK_KHR_xlib_surface",
 #endif
     };
-    static const char* RequiredDeviceLayers[] = 
-    {
-        "VK_LAYER_KHRONOS_validation",
-        //"VK_LAYER_KHRONOS_synchronization2",
-    };
     static const char* RequiredDeviceExtensions[] = 
     {
         "VK_KHR_swapchain",
@@ -393,7 +388,6 @@ bool CreateRenderDevice(render_device* RenderDevice)
 
     constexpr u32 RequiredInstanceLayerCount     = CountOf(RequiredInstanceLayers);
     constexpr u32 RequiredInstanceExtensionCount = CountOf(RequiredInstanceExtensions);
-    constexpr u32 RequiredDeviceLayerCount       = CountOf(RequiredDeviceLayers);
     constexpr u32 RequiredDeviceExtensionCount   = CountOf(RequiredDeviceExtensions);
 
     if (RenderDevice_CreateInstance(RenderDevice, 1, 3,
@@ -403,7 +397,7 @@ bool CreateRenderDevice(render_device* RenderDevice)
         if (RenderDevice_EnableDebugging(RenderDevice))
         {
             if (RenderDevice_ChooseAndCreateDevice(RenderDevice, 
-                                                   RequiredDeviceLayers, RequiredDeviceLayerCount,
+                                                   nullptr, 0,
                                                    RequiredDeviceExtensions, RequiredDeviceExtensionCount))
             {
                 Result = true;
