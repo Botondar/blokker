@@ -1,6 +1,6 @@
 #pragma once
 
-#define ENABLE_VK_SHADER_OBJECT 0
+#define ENABLE_VK_SHADER_OBJECT 1
 
 #include <Common.hpp>
 #include <Intrinsics.hpp>

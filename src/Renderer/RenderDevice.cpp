@@ -370,7 +370,7 @@ bool CreateRenderDevice(render_device* RenderDevice)
         "VK_KHR_get_physical_device_properties2",
         "VK_EXT_debug_report",
         "VK_EXT_debug_utils",
-        "VK_EXT_validation_features",
+        //"VK_EXT_validation_features",
 #if defined(PLATFORM_WIN32)
         "VK_KHR_win32_surface",
 #elif defined(PLATFORM_LINUX)
@@ -380,9 +380,7 @@ bool CreateRenderDevice(render_device* RenderDevice)
     static const char* RequiredDeviceExtensions[] = 
     {
         "VK_KHR_swapchain",
-#if ENABLE_VK_SHADER_OBJECT
         "VK_EXT_shader_object",
-#endif
         //"VK_KHR_synchronization2",
     };
 
@@ -390,8 +388,9 @@ bool CreateRenderDevice(render_device* RenderDevice)
     constexpr u32 RequiredInstanceExtensionCount = CountOf(RequiredInstanceExtensions);
     constexpr u32 RequiredDeviceExtensionCount   = CountOf(RequiredDeviceExtensions);
 
-    if (RenderDevice_CreateInstance(RenderDevice, 1, 3,
-            RequiredInstanceLayers, RequiredInstanceLayerCount,
+    if (RenderDevice_CreateInstance(
+            RenderDevice, 1, 3,
+            nullptr, 0, // TODO(boti): reenable the validation layers once once the SDK catches up
             RequiredInstanceExtensions, RequiredInstanceExtensionCount))
     {
         if (RenderDevice_EnableDebugging(RenderDevice))
