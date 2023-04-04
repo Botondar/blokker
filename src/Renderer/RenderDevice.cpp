@@ -321,22 +321,42 @@ static bool RenderDevice_ChooseAndCreateDevice(
                     vkGetDeviceQueue(Device->Device, Device->GraphicsFamilyIndex, 0, &Device->GraphicsQueue);
                     vkGetDeviceQueue(Device->Device, Device->TransferFamilyIndex, 0, &Device->TransferQueue);
 
-#if ENABLE_VK_SHADER_OBJECT
-                    #define Vulkan_LoadFunction(dev, name) name = (PFN_##name)vkGetDeviceProcAddr(dev, #name);
+                    #define Vulkan_LoadFunction(dev, name) name = (PFN_##name)vkGetDeviceProcAddr(dev, #name)
                     Vulkan_LoadFunction(Device->Device, vkCreateShadersEXT);
                     Vulkan_LoadFunction(Device->Device, vkDestroyShaderEXT);
                     Vulkan_LoadFunction(Device->Device, vkGetShaderBinaryDataEXT);
                     Vulkan_LoadFunction(Device->Device, vkCmdBindShadersEXT);
                     #undef Vulkan_LoadFunction
 
+                    // This might work with the above macro, but I don't want to risk it with the function names being #defines
+                    vkCmdSetVertexInputEXT = (PFN_vkCmdSetVertexInputEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetVertexInputEXT");
+                    vkCmdSetAlphaToCoverageEnableEXT = (PFN_vkCmdSetAlphaToCoverageEnableEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetAlphaToCoverageEnableEXT");
+                    vkCmdSetAlphaToOneEnableEXT = (PFN_vkCmdSetAlphaToOneEnableEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetAlphaToOneEnableEXT");
+                    vkCmdSetColorBlendAdvancedEXT = (PFN_vkCmdSetColorBlendAdvancedEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetColorBlendAdvancedEXT");
+                    vkCmdSetColorBlendEnableEXT = (PFN_vkCmdSetColorBlendEnableEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetColorBlendEnableEXT");
+                    vkCmdSetColorBlendEquationEXT = (PFN_vkCmdSetColorBlendEquationEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetColorBlendEquationEXT");
+                    vkCmdSetColorWriteMaskEXT = (PFN_vkCmdSetColorWriteMaskEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetColorWriteMaskEXT");
+                    vkCmdSetConservativeRasterizationModeEXT = (PFN_vkCmdSetConservativeRasterizationModeEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetConservativeRasterizationModeEXT");
+                    vkCmdSetDepthClampEnableEXT = (PFN_vkCmdSetDepthClampEnableEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetDepthClampEnableEXT");
+                    vkCmdSetDepthClipEnableEXT = (PFN_vkCmdSetDepthClipEnableEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetDepthClipEnableEXT");
+                    vkCmdSetDepthClipNegativeOneToOneEXT = (PFN_vkCmdSetDepthClipNegativeOneToOneEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetDepthClipNegativeOneToOneEXT");
+                    vkCmdSetExtraPrimitiveOverestimationSizeEXT = (PFN_vkCmdSetExtraPrimitiveOverestimationSizeEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetExtraPrimitiveOverestimationSizeEXT");
+                    vkCmdSetLineRasterizationModeEXT = (PFN_vkCmdSetLineRasterizationModeEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetLineRasterizationModeEXT");
+                    vkCmdSetLineStippleEnableEXT = (PFN_vkCmdSetLineStippleEnableEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetLineStippleEnableEXT");
+                    vkCmdSetLogicOpEnableEXT = (PFN_vkCmdSetLogicOpEnableEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetLogicOpEnableEXT");
+                    vkCmdSetPolygonModeEXT = (PFN_vkCmdSetPolygonModeEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetPolygonModeEXT");
+                    vkCmdSetProvokingVertexModeEXT = (PFN_vkCmdSetProvokingVertexModeEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetProvokingVertexModeEXT");
+                    vkCmdSetRasterizationSamplesEXT = (PFN_vkCmdSetRasterizationSamplesEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetRasterizationSamplesEXT");
+                    vkCmdSetRasterizationStreamEXT = (PFN_vkCmdSetRasterizationStreamEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetRasterizationStreamEXT");
+                    vkCmdSetSampleLocationsEnableEXT = (PFN_vkCmdSetSampleLocationsEnableEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetSampleLocationsEnableEXT");
+                    vkCmdSetSampleMaskEXT = (PFN_vkCmdSetSampleMaskEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetSampleMaskEXT");
+                    vkCmdSetTessellationDomainOriginEXT = (PFN_vkCmdSetTessellationDomainOriginEXT)vkGetDeviceProcAddr(Device->Device, "vkCmdSetTessellationDomainOriginEXT");
+
                     if (vkCreateShadersEXT && vkDestroyShaderEXT &&
                         vkGetShaderBinaryDataEXT && vkCmdBindShadersEXT)
                     {
                         Result = true;
                     }
-#else
-                    Result = true;
-#endif
                 }
             }
         }

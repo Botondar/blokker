@@ -8,10 +8,33 @@
 #include "StagingHeap.cpp"
 #include "VertexBuffer.cpp"
 
-Vulkan_DeclareFunctionPointer(vkCreateShadersEXT) = nullptr;
-Vulkan_DeclareFunctionPointer(vkDestroyShaderEXT) = nullptr;
+Vulkan_DeclareFunctionPointer(vkCreateShadersEXT)       = nullptr;
+Vulkan_DeclareFunctionPointer(vkDestroyShaderEXT)       = nullptr;
 Vulkan_DeclareFunctionPointer(vkGetShaderBinaryDataEXT) = nullptr;
-Vulkan_DeclareFunctionPointer(vkCmdBindShadersEXT) = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdBindShadersEXT)      = nullptr;
+
+Vulkan_DeclareFunctionPointer(vkCmdSetVertexInputEXT)                       = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetAlphaToCoverageEnableEXT)             = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetAlphaToOneEnableEXT)                  = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetColorBlendAdvancedEXT)                = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetColorBlendEnableEXT)                  = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetColorBlendEquationEXT)                = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetColorWriteMaskEXT)                    = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetConservativeRasterizationModeEXT)     = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetDepthClampEnableEXT)                  = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetDepthClipEnableEXT)                   = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetDepthClipNegativeOneToOneEXT)         = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetExtraPrimitiveOverestimationSizeEXT)  = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetLineRasterizationModeEXT)             = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetLineStippleEnableEXT)                 = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetLogicOpEnableEXT)                     = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetPolygonModeEXT)                       = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetProvokingVertexModeEXT)               = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetRasterizationSamplesEXT)              = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetRasterizationStreamEXT)               = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetSampleLocationsEnableEXT)             = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetSampleMaskEXT)                        = nullptr;
+Vulkan_DeclareFunctionPointer(vkCmdSetTessellationDomainOriginEXT)          = nullptr;
 
 struct shader_bin
 {
@@ -261,12 +284,12 @@ render_frame* BeginRenderFrame(renderer* Renderer, bool DoResize)
         .extent = { (u32)Frame->RenderExtent.x, (u32)Frame->RenderExtent.y },
     };
     
-    vkCmdSetViewport(Frame->SceneCmdBuffer, 0, 1, &Viewport);
-    vkCmdSetScissor(Frame->SceneCmdBuffer, 0, 1, &Scissor);
-    vkCmdSetViewport(Frame->ImmediateCmdBuffer, 0, 1, &Viewport);
-    vkCmdSetScissor(Frame->ImmediateCmdBuffer, 0, 1, &Scissor);
-    vkCmdSetViewport(Frame->ImGuiCmdBuffer, 0, 1, &Viewport);
-    vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
+    vkCmdSetViewportWithCount(Frame->SceneCmdBuffer, 1, &Viewport);
+    vkCmdSetScissorWithCount(Frame->SceneCmdBuffer, 1, &Scissor);
+    vkCmdSetViewportWithCount(Frame->ImmediateCmdBuffer, 1, &Viewport);
+    vkCmdSetScissorWithCount(Frame->ImmediateCmdBuffer, 1, &Scissor);
+    vkCmdSetViewportWithCount(Frame->ImGuiCmdBuffer, 1, &Viewport);
+    vkCmdSetScissorWithCount(Frame->ImGuiCmdBuffer, 1, &Scissor);
     return((render_frame*)Frame);
 }
 
@@ -712,6 +735,7 @@ void RenderImGui(render_frame* Frame_, const ImDrawData* DrawData)
 {
     TIMED_FUNCTION();
     vulkan_render_frame* Frame = (vulkan_render_frame*)Frame_;
+    VkCommandBuffer Cmd = Frame->ImGuiCmdBuffer;
 
     if (DrawData && (DrawData->TotalVtxCount > 0) && (DrawData->TotalIdxCount > 0))
     {
@@ -730,25 +754,118 @@ void RenderImGui(render_frame* Frame_, const ImDrawData* DrawData)
         {
             Frame->VertexOffset = ImGuiDataEnd;
 
+            // NOTE(boti): For now, we're setting _all_ the state here, but later we'll
+            //             probably be able to collapse the commonalities among the pipelines down to a common place.
+            //             see Vulkan 1.3.246 spec. section 9.1.5. for details
+
             //vkCmdBindPipeline(Frame->ImGuiCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Frame->Renderer->ImGuiPipeline);
             VkShaderStageFlagBits Stages[] = { VK_SHADER_STAGE_VERTEX_BIT, VK_SHADER_STAGE_FRAGMENT_BIT };
             VkShaderEXT Shaders[] = { Frame->Renderer->ImGuiVS, Frame->Renderer->ImGuiFS };
 
-            vkCmdBindShadersEXT(Frame->ImGuiCmdBuffer, CountOf(Stages), Stages, Shaders);
+            vkCmdBindShadersEXT(Cmd, CountOf(Stages), Stages, Shaders);
             vkCmdPushConstants(
-                Frame->ImGuiCmdBuffer, 
-                VK_NULL_HANDLE,
+                Cmd, 
+                Frame->Renderer->ImGuiPipelineLayout,
                 VK_SHADER_STAGE_VERTEX_BIT,
                 0, sizeof(Frame->PixelTransform), &Frame->PixelTransform);
             vkCmdBindDescriptorSets(
-                Frame->ImGuiCmdBuffer, 
+                Cmd, 
                 VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                VK_NULL_HANDLE,
+                Frame->Renderer->ImGuiPipelineLayout,
                 0, 1, &Frame->Renderer->ImGuiDescriptorSet, 0, nullptr);
 
-            vkCmdBindVertexBuffers(Frame->ImGuiCmdBuffer, 0, 1, &Frame->VertexBuffer, &VertexDataOffset);
+            // Input assembler state
+            VkVertexInputBindingDescription2EXT VertexBindings[] = 
+            {
+                {
+                    .sType = VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT,
+                    .pNext = nullptr,
+                    .binding = 0,
+                    .stride = sizeof(ImDrawVert),
+                    .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+                    .divisor = 1,
+                },
+            };
+            VkVertexInputAttributeDescription2EXT VertexAttributes[] = 
+            {
+                {
+                    .sType = VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT,
+                    .pNext = nullptr,
+                    .location = 0,
+                    .binding = 0,
+                    .format = VK_FORMAT_R32G32_SFLOAT,
+                    .offset = offsetof(ImDrawVert, pos),
+                },
+                {
+                    .sType = VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT,
+                    .pNext = nullptr,
+                    .location = 1,
+                    .binding = 0,
+                    .format = VK_FORMAT_R32G32_SFLOAT,
+                    .offset = offsetof(ImDrawVert, uv),
+                },
+                {
+                    .sType = VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT,
+                    .pNext = nullptr,
+                    .location = 2,
+                    .binding = 0,
+                    .format = VK_FORMAT_R8G8B8A8_UNORM,
+                    .offset = offsetof(ImDrawVert, col),
+                },
+            };
+            vkCmdSetVertexInputEXT(Cmd, CountOf(VertexBindings), VertexBindings, CountOf(VertexAttributes), VertexAttributes);
+            vkCmdSetPrimitiveTopology(Cmd, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+            vkCmdSetPrimitiveRestartEnable(Cmd, VK_FALSE);
+
+            vkCmdBindVertexBuffers(Cmd, 0, 1, &Frame->VertexBuffer, &VertexDataOffset);
             VkIndexType IndexType = (sizeof(ImDrawIdx) == 2) ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
-            vkCmdBindIndexBuffer(Frame->ImGuiCmdBuffer, Frame->VertexBuffer, IndexDataOffset, IndexType);
+            vkCmdBindIndexBuffer(Cmd, Frame->VertexBuffer, IndexDataOffset, IndexType);
+
+            // Rasterizer + Depth-stencil state
+            vkCmdSetRasterizerDiscardEnable(Cmd, VK_FALSE);
+            vkCmdSetRasterizationSamplesEXT(Cmd, VK_SAMPLE_COUNT_1_BIT);
+            VkSampleMask SampleMask = 0x01; // ?
+            vkCmdSetSampleMaskEXT(Cmd, VK_SAMPLE_COUNT_1_BIT, &SampleMask);
+            vkCmdSetAlphaToCoverageEnableEXT(Cmd, VK_FALSE);
+            vkCmdSetAlphaToOneEnableEXT(Cmd, VK_FALSE);
+            vkCmdSetPolygonModeEXT(Cmd, VK_POLYGON_MODE_FILL);
+            vkCmdSetCullMode(Cmd, VK_CULL_MODE_NONE);
+            vkCmdSetFrontFace(Cmd, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+            vkCmdSetDepthTestEnable(Cmd, VK_FALSE);
+            vkCmdSetDepthWriteEnable(Cmd, VK_FALSE);
+            vkCmdSetDepthBoundsTestEnable(Cmd, VK_FALSE);
+            vkCmdSetDepthBiasEnable(Cmd, VK_FALSE);
+            vkCmdSetDepthClampEnableEXT(Cmd, VK_FALSE);
+            vkCmdSetStencilTestEnable(Cmd, VK_FALSE);
+
+            vkCmdSetDepthClipEnableEXT(Cmd, VK_FALSE);
+
+            // Blend state
+            vkCmdSetLogicOpEnableEXT(Cmd, VK_FALSE);
+            VkBool32 Attachment0BlendEnablement = VK_TRUE;
+            vkCmdSetColorBlendEnableEXT(Cmd, 0, 1, &Attachment0BlendEnablement);
+            VkColorBlendEquationEXT Attachment0Blend = 
+            {
+                .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+                .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                .colorBlendOp = VK_BLEND_OP_ADD,
+                .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+                .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+                .alphaBlendOp = VK_BLEND_OP_ADD,
+            };
+            vkCmdSetColorBlendEquationEXT(Cmd, 0, 1, &Attachment0Blend);
+            f32 BlendConstants[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+            vkCmdSetBlendConstants(Cmd, BlendConstants);
+            VkColorComponentFlags Attachment0WriteMask = 
+                VK_COLOR_COMPONENT_R_BIT|
+                VK_COLOR_COMPONENT_G_BIT|
+                VK_COLOR_COMPONENT_B_BIT|
+                VK_COLOR_COMPONENT_A_BIT;
+            vkCmdSetColorWriteMaskEXT(Cmd, 0, 1, &Attachment0WriteMask);
+            //VkExtent2D FragmentSize = { 1, 1 };
+            //VkFragmentShadingRateCombinerOpKHR FragmentOp[2] = { VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR, VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR };
+            //vkCmdSetFragmentShadingRateKHR(Cmd, &FragmentSize, FragmentOp); // Do we even have this?
+
 
             ImDrawVert* VertexDataAt = (ImDrawVert*)OffsetPtr(Frame->VertexMapping, VertexDataOffset);
             ImDrawIdx* IndexDataAt = (ImDrawIdx*)OffsetPtr(Frame->VertexMapping, IndexDataOffset);
@@ -779,9 +896,9 @@ void RenderImGui(render_frame* Frame_, const ImDrawData* DrawData)
                             .height = (u32)Command->ClipRect.w,
                         },
                     };
-                    vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
+                    vkCmdSetScissorWithCount(Cmd, 1, &Scissor);
                     vkCmdDrawIndexed(
-                        Frame->ImGuiCmdBuffer, Command->ElemCount, 1, 
+                        Cmd, Command->ElemCount, 1, 
                         Command->IdxOffset + IndexOffset, 
                         Command->VtxOffset + VertexOffset, 
                         0);
@@ -797,8 +914,8 @@ void RenderImGui(render_frame* Frame_, const ImDrawData* DrawData)
                 .offset = { 0, 0 },
                 .extent = VkExtent2DFromVec2i(Frame->RenderExtent),
             };
-            vkCmdSetScissor(Frame->ImGuiCmdBuffer, 0, 1, &Scissor);
-            vkCmdBindShadersEXT(Frame->ImGuiCmdBuffer, CountOf(Stages), Stages, nullptr);
+            vkCmdSetScissor(Cmd, 0, 1, &Scissor);
+            vkCmdBindShadersEXT(Cmd, CountOf(Stages), Stages, nullptr);
         }
         else
         {
@@ -1786,8 +1903,8 @@ renderer* CreateRenderer(memory_arena* Arena, memory_arena* TransientArena,
                     .codeSize = ShaderBinary.VS.Size,
                     .pCode = ShaderBinary.VS.Data,
                     .pName = "main",
-                    .setLayoutCount = 1,
-                    .pSetLayouts = &Renderer->ImGuiSetLayout,
+                    .setLayoutCount = 0,
+                    .pSetLayouts = nullptr,
                     .pushConstantRangeCount = 1,
                     .pPushConstantRanges = &PushConstants,
                     .pSpecializationInfo = nullptr,
@@ -1804,8 +1921,8 @@ renderer* CreateRenderer(memory_arena* Arena, memory_arena* TransientArena,
                     .pName = "main",
                     .setLayoutCount = 1,
                     .pSetLayouts = &Renderer->ImGuiSetLayout,
-                    .pushConstantRangeCount = 1,
-                    .pPushConstantRanges = &PushConstants,
+                    .pushConstantRangeCount = 0,
+                    .pPushConstantRanges = nullptr,
                     .pSpecializationInfo = nullptr,
                 },
             };

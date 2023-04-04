@@ -95,6 +95,71 @@ extern Vulkan_DeclareFunctionPointer(vkDestroyShaderEXT);
 extern Vulkan_DeclareFunctionPointer(vkGetShaderBinaryDataEXT);
 extern Vulkan_DeclareFunctionPointer(vkCmdBindShadersEXT);
 
+// NOTE(boti): Because vulkan_core.h defines function prototypes 
+//             even for the functions they don't themselves export,
+//             we have to do this nonsense...
+#define vkCmdSetVertexInputEXT vkCmdSetVertexInputEXT_
+#define vkCmdSetAlphaToCoverageEnableEXT vkCmdSetAlphaToCoverageEnableEXT_
+#define vkCmdSetAlphaToOneEnableEXT vkCmdSetAlphaToOneEnableEXT_
+#define vkCmdSetColorBlendAdvancedEXT vkCmdSetColorBlendAdvancedEXT_
+#define vkCmdSetColorBlendEnableEXT vkCmdSetColorBlendEnableEXT_
+#define vkCmdSetColorBlendEquationEXT vkCmdSetColorBlendEquationEXT_
+#define vkCmdSetColorWriteMaskEXT vkCmdSetColorWriteMaskEXT_
+#define vkCmdSetConservativeRasterizationModeEXT vkCmdSetConservativeRasterizationModeEXT_
+#define vkCmdSetDepthClampEnableEXT vkCmdSetDepthClampEnableEXT_
+#define vkCmdSetDepthClipEnableEXT vkCmdSetDepthClipEnableEXT_
+#define vkCmdSetDepthClipNegativeOneToOneEXT vkCmdSetDepthClipNegativeOneToOneEXT_
+#define vkCmdSetExtraPrimitiveOverestimationSizeEXT vkCmdSetExtraPrimitiveOverestimationSizeEXT_
+#define vkCmdSetLineRasterizationModeEXT vkCmdSetLineRasterizationModeEXT_
+#define vkCmdSetLineStippleEnableEXT vkCmdSetLineStippleEnableEXT_
+#define vkCmdSetLogicOpEnableEXT vkCmdSetLogicOpEnableEXT_
+#define vkCmdSetPolygonModeEXT vkCmdSetPolygonModeEXT_
+#define vkCmdSetProvokingVertexModeEXT vkCmdSetProvokingVertexModeEXT_
+#define vkCmdSetRasterizationSamplesEXT vkCmdSetRasterizationSamplesEXT_
+#define vkCmdSetRasterizationStreamEXT vkCmdSetRasterizationStreamEXT_
+#define vkCmdSetSampleLocationsEnableEXT vkCmdSetSampleLocationsEnableEXT_
+#define vkCmdSetSampleMaskEXT vkCmdSetSampleMaskEXT_
+#define vkCmdSetTessellationDomainOriginEXT vkCmdSetTessellationDomainOriginEXT_
+
+
+// NOTE(boti): Extension commands inherited from VK_KHR_dynamic_state3 (and VK_EXT_vertex_input_dynamic_state)
+extern Vulkan_DeclareFunctionPointer(vkCmdSetVertexInputEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetAlphaToCoverageEnableEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetAlphaToOneEnableEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetColorBlendAdvancedEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetColorBlendEnableEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetColorBlendEquationEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetColorWriteMaskEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetConservativeRasterizationModeEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetDepthClampEnableEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetDepthClipEnableEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetDepthClipNegativeOneToOneEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetExtraPrimitiveOverestimationSizeEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetLineRasterizationModeEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetLineStippleEnableEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetLogicOpEnableEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetPolygonModeEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetProvokingVertexModeEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetRasterizationSamplesEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetRasterizationStreamEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetSampleLocationsEnableEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetSampleMaskEXT);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetTessellationDomainOriginEXT);
+
+// We probably don't care about the NV extensions (for now)
+#if 0
+extern Vulkan_DeclareFunctionPointer(vkCmdSetCoverageModulationModeNV);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetCoverageModulationTableEnableNV);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetCoverageModulationTableNV);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetCoverageReductionModeNV);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetCoverageToColorEnableNV);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetCoverageToColorLocationNV);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetViewportWScalingEnableNV);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetRepresentativeFragmentTestEnableNV);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetShadingRateImageEnableNV);
+extern Vulkan_DeclareFunctionPointer(vkCmdSetViewportSwizzleNV);
+#endif
+
 #include <Renderer/RenderDevice.hpp>
 #include <Renderer/RTHeap.hpp>
 #include <Renderer/StagingHeap.hpp>
